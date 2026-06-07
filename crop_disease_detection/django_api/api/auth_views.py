@@ -111,7 +111,8 @@ def _create_user(name, email, password, role, phone=''):
                 """INSERT INTO app_users (full_name, email, password_hash, role) VALUES (%s, %s, %s, %s) RETURNING id""",
                 [name, email_norm, hashed, role]
             )
-            user_id = cursor.fetchone()[0]
+            row = cursor.fetchone()
+            user_id = row[0] if row else None
     except Exception as e:
         logger.error(f"Failed to create user {email_norm}: {e}")
         raise

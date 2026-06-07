@@ -37,13 +37,13 @@ CORS_ALLOW_HEADERS = [
 ]
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'annam_farm_db'),
-        'USER': os.getenv('DB_USER', 'postgres'),
-        'PASSWORD': os.getenv('DB_PASSWORD', 'postgres'),
-        'HOST': os.getenv('DB_HOST', 'localhost'),
-        'PORT': os.getenv('DB_PORT', '5432'),
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": "annam_integrated_farm",
+        "USER": "postgres",
+        "PASSWORD": "Kristo@18",
+        "HOST": "localhost",
+        "PORT": "5432",
     }
 }
 

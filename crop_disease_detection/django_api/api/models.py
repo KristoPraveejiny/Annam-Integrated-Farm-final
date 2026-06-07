@@ -13,7 +13,7 @@ class AppUser(models.Model):
 
     class Meta:
         db_table = 'app_users'
-        managed = False
+        managed = True
 
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')

@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 import authRoutes from './routes/authRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
+import livestockRoutes from './routes/livestockRoutes.js';
 
 const app = express();
 
@@ -21,6 +22,7 @@ app.get('/api/health', (req, res) => {
 // Register API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/livestock', livestockRoutes);
 
 const PORT = process.env.PORT || 5000;
 
