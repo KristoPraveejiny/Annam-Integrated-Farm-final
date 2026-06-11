@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { FiActivity, FiAlertTriangle, FiCalendar, FiCheckCircle, FiCloud, FiCpu, FiDatabase, FiDollarSign, FiGrid, FiShield, FiShoppingBag, FiUsers } from 'react-icons/fi';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -232,6 +233,49 @@ function FarmManagerBlocks() {
 }
 
 function WorkerBlocks() {
+  const [livestock, setLivestock] = useState<any[]>([]);
+  const [groups, setGroups] = useState<any[]>([]);
+
+  // Fetch livestock data
+  const fetchLivestock = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/livestock');
+      if (!response.ok) {
+        throw new Error('Failed to fetch livestock');
+      }
+      const data = await response.json();
+      setLivestock(data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  // Fetch groups for pen information
+  const fetchGroups = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/groups');
+      if (!response.ok) {
+        throw new Error('Failed to fetch groups');
+      }
+      const data = await response.json();
+      setGroups(data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  useEffect(() => {
+    fetchLivestock();
+    fetchGroups();
+  }, []);
+
+  // Helper to get group name by pen ID
+  const getGroupName = (penId: any) => {
+    if (!penId) return 'Unknown';
+    const group = groups.find((g: any) => g.id === penId || g.group_code === penId);
+    return group ? group.name || group.group_code : 'Unknown';
+  };
+
   return (
     <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
       <Card title="Daily Tasks" subtitle="Mobile-friendly task management">
@@ -256,6 +300,40 @@ function WorkerBlocks() {
             <MiniMetric label="Weather" value="Clear" icon={<FiCloud />} />
           </div>
         </Card>
+        <Card title="Livestock Overview" subtitle="All livestock details (read‑only)">
+          <div className="w-full overflow-x-auto">
+            <table className="w-full table-auto border-collapse">
+              <thead className="bg-slate-200 text-left">
+                <tr>
+                  <th className="px-4 py-2">Tag</th>
+                  <th className="px-4 py-2">Group</th>
+                  <th className="px-4 py-2">Age</th>
+                  <th className="px-4 py-2">Gender</th>
+                  <th className="px-4 py-2">Health</th>
+                  <th className="px-4 py-2">Created At</th>
+                  <th className="px-4 py-2">Updated At</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white">
+                {livestock.map((l: any) => (
+                  <tr key={l.id} className="border-b border-slate-200">
+                    <td className="px-4 py-2">{l.tag}</td>
+                    <td className="px-4 py-2">{getGroupName(l.pen)}</td>
+                    <td className="px-4 py-2">{l.age}</td>
+                    <td className="px-4 py-2">{l.gender}</td>
+                    <td className="px-4 py-2">{l.health_status}</td>
+                    <td className="px-4 py-2 text-sm text-slate-500">
+                      {l.createdAt ? new Date(l.createdAt).toLocaleDateString() : ''}
+                    </td>
+                    <td className="px-4 py-2 text-sm text-slate-500">
+                      {l.updatedAt ? new Date(l.updatedAt).toLocaleDateString() : ''}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
         <Card title="Notifications" subtitle="Weather and task reminders">
           <div className="space-y-3">
             {alerts.slice(0, 3).map((alert) => (
@@ -270,6 +348,7 @@ function WorkerBlocks() {
     </div>
   );
 }
+
 
 function CustomerBlocks() {
   return (

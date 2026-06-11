@@ -23,10 +23,18 @@ export function verifyToken(req, res, next) {
   }
   try {
     const payload = jwt.verify(token, JWT_SECRET);
+
+    // Validate that userId is a proper UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(payload.userId)) {
+      console.warn('Invalid UUID in token payload:', payload.userId);
+      return res.status(401).json({ error: 'Invalid token payload (malformed userId)' });
+    }
+
     req.user = { userId: payload.userId, role: payload.role };
     next();
   } catch (err) {
-    console.error('JWT verification failed – token prefix:', token?.slice(0,20) + '…', 'error:', err.message);
+    console.error('JWT verification failed – token prefix:', token?.slice(0, 20) + '…', 'error:', err.message);
     // Attempt a decoded payload without verification for debugging purposes
     try {
       const decoded = jwt.decode(token, { json: true });

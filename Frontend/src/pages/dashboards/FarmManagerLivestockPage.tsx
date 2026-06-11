@@ -10,13 +10,13 @@ export default function FarmManagerLivestockPage() {
   const [groups, setGroups] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Form State
   const [formData, setFormData] = useState({
     tagCode: '',
     groupId: '',
-    // species will be derived from selected group
-    // breed removed
     dob: '',
     healthStatus: 'healthy',
     sex: '',
@@ -113,8 +113,15 @@ export default function FarmManagerLivestockPage() {
     try {
       const token = localStorage.getItem('token');
       const cleanToken = token && token.startsWith('"') && token.endsWith('"') ? token.slice(1, -1) : token;
-      const res = await fetch('http://localhost:5000/api/livestock', {
-        method: 'POST',
+      
+      const url = isEditing 
+        ? `http://localhost:5000/api/livestock/${editingId}`
+        : 'http://localhost:5000/api/livestock';
+      
+      const method = isEditing ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${cleanToken}`
@@ -122,8 +129,6 @@ export default function FarmManagerLivestockPage() {
         body: JSON.stringify({
           tagCode: formData.tagCode,
           groupId: formData.groupId,
-          species: groups.find(g => g.id == formData.groupId)?.species,
-          // breed omitted as per requirements
           dob: formData.dob,
           healthStatus: formData.healthStatus,
           sex: formData.sex,
@@ -136,14 +141,54 @@ export default function FarmManagerLivestockPage() {
       if (res.ok) {
         setShowModal(false);
         setFormData({ tagCode: '', groupId: '', dob: '', healthStatus: 'healthy', sex: '', weight: '', acquisitionDate: '', notes: '' });
+        setIsEditing(false);
+        setEditingId(null);
         fetchLivestock(); // Refresh the list
       } else {
         const errorData = await res.json();
-        alert(errorData.error || 'Failed to add animal');
+        alert(errorData.error || `Failed to ${isEditing ? 'update' : 'add'} animal`);
       }
     } catch (err) {
       console.error('Submit error:', err);
       alert('An error occurred while saving.');
+    }
+  };
+
+  const handleEdit = (animal: any) => {
+    setFormData({
+      tagCode: animal.id, // we mapped tag_code to id in getLivestock
+      groupId: groups.find(g => g.group_code === animal.pen)?.id || '',
+      dob: animal.dob !== 'Unknown' ? animal.dob : '',
+      healthStatus: animal.health.toLowerCase(),
+      sex: animal.sex !== 'Unknown' ? animal.sex : '',
+      weight: animal.weight !== 'N/A' ? animal.weight : '',
+      acquisitionDate: animal.acquisitionDate !== 'N/A' ? animal.acquisitionDate : '',
+      notes: animal.notes || ''
+    });
+    setEditingId(animal.dbId);
+    setIsEditing(true);
+    setShowModal(true);
+  };
+
+  const handleDelete = async (dbId: string) => {
+    if (!confirm('Are you sure you want to delete this animal?')) return;
+    try {
+      const token = localStorage.getItem('token');
+      const cleanToken = token && token.startsWith('"') && token.endsWith('"') ? token.slice(1, -1) : token;
+      const res = await fetch(`http://localhost:5000/api/livestock/${dbId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${cleanToken}` }
+      });
+
+      if (res.ok) {
+        fetchLivestock();
+      } else {
+        const errorData = await res.json();
+        alert(errorData.error || 'Failed to delete animal');
+      }
+    } catch (err) {
+      console.error('Delete error:', err);
+      alert('An error occurred while deleting.');
     }
   };
 
@@ -175,13 +220,18 @@ export default function FarmManagerLivestockPage() {
 
       {/* Tab Content */}
       {activeTab === 'overview' && (
-        <div className="grid gap-6 xl:grid-cols-3">
+        <div className="grid gap-6 xl:grid-cols-4">
           <Card title="Total Animals" subtitle="All registered livestock">
             <p className="text-5xl font-black text-emerald-400 mt-2">{livestock.length}</p>
           </Card>
           <Card title="Sick Animals" subtitle="Needs attention">
-            <p className="text-5xl font-black text-amber-500 mt-2">
+            <p className="text-5xl font-black text-rose-500 mt-2">
               {livestock.filter(l => l.health?.toLowerCase() === 'sick').length}
+            </p>
+          </Card>
+          <Card title="Under Treatment" subtitle="Currently receiving care">
+            <p className="text-5xl font-black text-amber-500 mt-2">
+              {livestock.filter(l => l.health?.toLowerCase() === 'treatment').length}
             </p>
           </Card>
           <Card title="Today's Feed Tasks" subtitle="Pending feed deliveries">
@@ -201,7 +251,12 @@ export default function FarmManagerLivestockPage() {
                 className="w-full bg-slate-900/50 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-white text-sm font-medium focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none transition-all"
               />
             </div>
-            <Button onClick={() => setShowModal(true)} className="flex items-center gap-2 whitespace-nowrap">
+            <Button onClick={() => {
+              setIsEditing(false);
+              setEditingId(null);
+              setFormData({ tagCode: '', groupId: '', dob: '', healthStatus: 'healthy', sex: '', weight: '', acquisitionDate: '', notes: '' });
+              setShowModal(true);
+            }} className="flex items-center gap-2 whitespace-nowrap">
               <FiPlus className="text-lg" /> Add Animal
             </Button>
           </div>
@@ -251,10 +306,18 @@ export default function FarmManagerLivestockPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right space-x-4">
-                        <button className="text-blue-400 hover:text-blue-300 transition-colors" title="Edit">
+                        <button 
+                          onClick={() => handleEdit(l)}
+                          className="text-blue-400 hover:text-blue-300 transition-colors" 
+                          title="Edit"
+                        >
                           <FiEdit2 className="text-lg" />
                         </button>
-                        <button className="text-rose-400 hover:text-rose-300 transition-colors" title="Delete">
+                        <button 
+                          onClick={() => handleDelete(l.dbId)}
+                          className="text-rose-400 hover:text-rose-300 transition-colors" 
+                          title="Delete"
+                        >
                           <FiTrash2 className="text-lg" />
                         </button>
                       </td>
@@ -271,7 +334,9 @@ export default function FarmManagerLivestockPage() {
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-slate-900 border border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]">
-            <h3 className="text-2xl font-bold text-white mb-6">Add New Animal</h3>
+            <h3 className="text-2xl font-bold text-white mb-6">
+              {isEditing ? 'Edit Animal' : 'Add New Animal'}
+            </h3>
             <form onSubmit={handleSubmit} className="space-y-4">
               
               <div>
@@ -319,7 +384,6 @@ export default function FarmManagerLivestockPage() {
                   className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
                 >
                   <option value="healthy">Healthy</option>
-                  <option value="watch">Watch</option>
                   <option value="treatment">Treatment</option>
                   <option value="sick">Sick</option>
                 </select>
