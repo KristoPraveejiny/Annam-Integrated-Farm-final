@@ -1,4 +1,4 @@
-import { FiBarChart2, FiBell, FiBox, FiCloud, FiDollarSign, FiHome, FiLayers, FiMessageCircle, FiSettings, FiShield, FiShoppingBag, FiUser, FiUsers, FiAlertTriangle, FiCheckCircle, FiMapPin, FiDroplet, FiHeart, FiActivity } from 'react-icons/fi';
+import { FiBarChart2, FiBell, FiBox, FiCloud, FiDollarSign, FiHome, FiLayers, FiMessageCircle, FiSettings, FiShield, FiShoppingBag, FiUser, FiUsers, FiAlertTriangle, FiCheckCircle, FiMapPin, FiDroplet, FiHeart, FiActivity, FiClipboard } from 'react-icons/fi';
 
 export const metrics = [
   { label: 'Total Farms', value: '48', delta: '+12%', color: 'from-emerald-500 to-lime-400' },
@@ -73,7 +73,9 @@ export const publicNavItems = {
   'farm-manager': [
     { label: 'Dashboard', href: '/dashboard/farm-manager', icon: FiHome },
     { label: 'Crops', href: '/dashboard/farm-manager/crops', icon: FiLayers },
+    { label: 'Tasks', href: '/dashboard/farm-manager/tasks', icon: FiCheckCircle },
     { label: 'Livestock', href: '/dashboard/farm-manager/livestock', icon: FiUser },
+    { label: 'Farmer Updates', href: '/dashboard/farm-manager/recent-updates', icon: FiClipboard },
     { label: 'Disease Detection', href: '/dashboard/farm-manager/disease-detection', icon: FiAlertTriangle },
     { label: 'Marketplace', href: '/marketplace', icon: FiShoppingBag },
     { label: 'Analytics', href: '/dashboard/farm-manager/reports', icon: FiBarChart2 },
@@ -84,6 +86,7 @@ export const publicNavItems = {
     { label: 'Dashboard', href: '/dashboard/farmer-worker', icon: FiHome },
     { label: 'My Tasks', href: '/dashboard/farmer-worker/tasks', icon: FiCheckCircle },
     { label: 'Crop Updates', href: '/dashboard/farmer-worker/crop-updates', icon: FiLayers },
+    { label: 'Livestock Updates', href: '/dashboard/farmer-worker/livestock-updates', icon: FiHeart },
     { label: 'Livestock Management', href: '/dashboard/farmer-worker/livestock', icon: FiHeart },
     { label: 'Weather Updates', href: '/ai-advisory', icon: FiCloud },
     { label: 'Attendance', href: '/dashboard/farmer-worker/attendance', icon: FiActivity },

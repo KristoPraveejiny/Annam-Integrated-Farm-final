@@ -18,11 +18,16 @@ import { AppShell } from './components/layout/AppShell';
 import FarmManagerCropsPage from './pages/dashboards/FarmManagerCropsPage';
 import FarmManagerLivestockPage from './pages/dashboards/FarmManagerLivestockPage';
 import FarmManagerWorkforcePage from './pages/dashboards/FarmManagerWorkforcePage';
+import FarmManagerTasksPage from './pages/dashboards/FarmManagerTasksPage';
 import FarmerTasksPage from './pages/dashboards/FarmerTasksPage';
 import FarmerCropUpdatesPage from './pages/dashboards/FarmerCropUpdatesPage';
 import FarmerLivestockPage from './pages/dashboards/FarmerLivestockPage';
+import FarmerLivestockUpdatesPage from './pages/dashboards/FarmerLivestockUpdatesPage';
+
+
 import FarmerAttendancePage from './pages/dashboards/FarmerAttendancePage';
 import FarmerProfilePage from './pages/dashboards/FarmerProfilePage';
+import RecentFarmerUpdatesPage from './pages/dashboards/RecentFarmerUpdatesPage';
 
 export default function App() {
   return (
@@ -61,6 +66,11 @@ export default function App() {
           <ReportsAnalyticsPage />
         </AppShell>
       } />
+      <Route path="/dashboard/farm-manager/tasks" element={
+        <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
+          <FarmManagerTasksPage />
+        </AppShell>
+      } />
       <Route path="/dashboard/farm-manager/ai-advisory" element={
         <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
           <AIAdvisoryPage />
@@ -69,6 +79,11 @@ export default function App() {
       <Route path="/dashboard/farm-manager/disease-detection" element={
         <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
           <DiseaseDetectionPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/farm-manager/recent-updates" element={
+        <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
+          <RecentFarmerUpdatesPage />
         </AppShell>
       } />
       {/* Farmer Worker subpages */}
@@ -85,6 +100,11 @@ export default function App() {
       <Route path="/dashboard/farmer-worker/livestock" element={
         <AppShell role="farmer-worker" items={publicNavItems['farmer-worker']}>
           <FarmerLivestockPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/farmer-worker/livestock-updates" element={
+        <AppShell role="farmer-worker" items={publicNavItems['farmer-worker']}>
+          <FarmerLivestockUpdatesPage />
         </AppShell>
       } />
       <Route path="/dashboard/farmer-worker/attendance" element={

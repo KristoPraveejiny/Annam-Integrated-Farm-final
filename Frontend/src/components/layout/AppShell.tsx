@@ -21,6 +21,47 @@ type AppShellProps = {
 export function AppShell({ role, items, children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [temp, setTemp] = useState<string>('29.5°C');
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const unreadCount = notifications.filter(n => !n.read_at).length;
+
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        const tokenRaw = localStorage.getItem('token');
+        const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
+        if (!token) return;
+        const response = await fetch('http://localhost:5000/api/notifications', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setNotifications(data);
+        }
+      } catch (err) {
+        // silent fallback
+      }
+    };
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const markAsRead = async (id: string) => {
+    try {
+      const tokenRaw = localStorage.getItem('token');
+      const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
+      if (!token) return;
+      await fetch(`http://localhost:5000/api/notifications/${id}/read`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read_at: new Date().toISOString() } : n));
+    } catch (err) {
+      console.error('Failed to mark as read', err);
+    }
+  };
 
   useEffect(() => {
     const fetchWeather = async () => {
@@ -96,10 +137,52 @@ export function AppShell({ role, items, children }: AppShellProps) {
                 <input className="farm-input pl-11" placeholder="Search farms, tasks, orders, crops..." />
               </div>
 
-              <Button variant="ghost" className="relative">
-                <FiBell className="text-lg" />
-                <span className="absolute right-3 top-3 h-2 w-2 rounded-full bg-rose-500" />
-              </Button>
+              <div className="relative">
+                <Button variant="ghost" className="relative" onClick={() => setShowNotifications(!showNotifications)}>
+                  <FiBell className="text-lg" />
+                  {unreadCount > 0 && (
+                    <span className="absolute right-2 top-2 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white shadow-lg">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </Button>
+
+                {showNotifications && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
+                    <div className="absolute right-0 top-full mt-2 w-80 rounded-2xl border border-white/10 bg-slate-900/95 p-4 shadow-[0_20px_50px_rgba(0,0,0,0.5)] backdrop-blur-xl z-50">
+                      <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-white">Notifications</h3>
+                        {unreadCount > 0 && (
+                          <span className="text-xs text-emerald-400">{unreadCount} unread</span>
+                        )}
+                      </div>
+                      <div className="flex max-h-[350px] flex-col gap-2 overflow-y-auto pr-1">
+                        {notifications.length === 0 ? (
+                          <p className="text-center text-sm text-white/50 py-6">No notifications yet</p>
+                        ) : (
+                          notifications.map(n => (
+                            <div 
+                              key={n.id} 
+                              onClick={() => !n.read_at && markAsRead(n.id)}
+                              className={`cursor-pointer rounded-xl p-3 text-sm transition-all duration-300 ${!n.read_at ? 'bg-white/10 border border-white/10 shadow-sm' : 'bg-transparent hover:bg-white/5'}`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <p className={`font-medium ${!n.read_at ? 'text-white' : 'text-white/70'}`}>{n.title}</p>
+                                {!n.read_at && <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-emerald-400" />}
+                              </div>
+                              <p className="mt-1 text-xs text-white/60 line-clamp-2">{n.message}</p>
+                              <p className="mt-2 text-[10px] text-white/40">
+                                {new Date(n.created_at).toLocaleDateString()} at {new Date(n.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                              </p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
               <UserProfile />
               <div className="hidden rounded-2xl border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur-2xl md:block">
                 Temp: {temp}

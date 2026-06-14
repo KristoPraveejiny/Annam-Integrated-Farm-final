@@ -1,15 +1,94 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { FiCheckCircle, FiUploadCloud, FiSearch, FiLayers, FiDroplet } from 'react-icons/fi';
 
-const crops = ['Wheat - Block A', 'Tomatoes - Block B', 'Corn - Block C'];
-const activities = ['Irrigation', 'Fertilizer Application', 'Pesticide Application', 'Weeding', 'Pruning', 'Harvesting'];
+const activitiesFallback = ['Irrigation', 'Fertilizer Application', 'Pesticide Application', 'Weeding', 'Pruning', 'Harvesting'];
 const stages = ['Seed Sowing', 'Germination', 'Vegetative', 'Flowering', 'Fruiting', 'Harvesting'];
 
 export default function FarmerCropUpdatesPage() {
-  const [activeTab, setActiveTab] = useState('stages');
+  const [activeTab, setActiveTab] = useState('activities');
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [selectedTaskId, setSelectedTaskId] = useState<string>('');
+  
+  // Activity form states
+  const [activityDate, setActivityDate] = useState(new Date().toISOString().split('T')[0]);
+  const [activityNotes, setActivityNotes] = useState('');
+  const [activityImage, setActivityImage] = useState<File | null>(null);
+
+  useEffect(() => {
+    const fetchTasks = async () => {
+      try {
+        const tokenRaw = localStorage.getItem('token');
+        const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
+        const res = await fetch('http://localhost:5000/api/tasks/farmer', { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) {
+          const data = await res.json();
+          const activeTasks = data.filter((t: any) => t.status !== 'done' && t.crop_cycle_id != null);
+          setTasks(activeTasks);
+        }
+      } catch (err) {
+        console.error('Failed to fetch tasks', err);
+      }
+    };
+    fetchTasks();
+  }, []);
+
+  const tasksForDate = tasks.filter(t => {
+    if (!t.due_date) return false;
+    // Convert UTC due_date to local browser timezone YYYY-MM-DD
+    const d = new Date(t.due_date);
+    const localDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return localDateStr === activityDate;
+  });
+
+  useEffect(() => {
+    if (tasksForDate.length > 0 && !tasksForDate.find(t => t.id === selectedTaskId)) {
+      setSelectedTaskId(tasksForDate[0].id);
+    } else if (tasksForDate.length === 0) {
+      setSelectedTaskId('');
+    }
+  }, [tasksForDate, selectedTaskId]);
+
+  // Derive unique crops from tasks for the first tab
+  const uniqueCrops = Array.from(new Set(tasks.filter(t => t.crop_name).map(t => t.crop_name)));
+  const cropsOptions = uniqueCrops.length > 0 ? uniqueCrops : ['No active crops found'];
+
+  const selectedTask = tasks.find(t => t.id === selectedTaskId);
+
+  const handleActivitySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTaskId) return alert('No task selected');
+
+    const tokenRaw = localStorage.getItem('token');
+    const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
+
+    const formData = new FormData();
+    formData.append('notes', activityNotes);
+    if (activityImage) {
+      formData.append('image', activityImage);
+    }
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/tasks/${selectedTaskId}/updates`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData
+      });
+
+      if (res.ok) {
+        alert('Activity updated successfully!');
+        setActivityNotes('');
+        setActivityImage(null);
+      } else {
+        alert('Failed to update activity');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error updating activity');
+    }
+  };
 
   return (
     <div className="space-y-6 pb-20">
@@ -35,7 +114,7 @@ export default function FarmerCropUpdatesPage() {
               <label className="block">
                 <span className="mb-2 block text-sm font-semibold text-white/80">Select Crop</span>
                 <select className="farm-input w-full appearance-none">
-                  {crops.map(c => <option key={c} value={c}>{c}</option>)}
+                  {cropsOptions.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </label>
               <label className="block">
@@ -66,33 +145,82 @@ export default function FarmerCropUpdatesPage() {
 
       {activeTab === 'activities' && (
         <Card title="Record Daily Activity" subtitle="Log irrigation, fertilizing, and other field tasks">
-           <form className="space-y-6 mt-4">
+           <form className="space-y-6 mt-4" onSubmit={handleActivitySubmit}>
             <div className="grid gap-6 md:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-white/80">Activity Type</span>
-                <select className="farm-input w-full appearance-none">
-                  {activities.map(a => <option key={a} value={a}>{a}</option>)}
+                <span className="mb-2 block text-sm font-semibold text-white/80">Activity Type (Today's Tasks)</span>
+                <select 
+                  className="farm-input w-full appearance-none"
+                  value={selectedTaskId}
+                  onChange={(e) => setSelectedTaskId(e.target.value)}
+                >
+                  {tasksForDate.length === 0 ? (
+                    <option value="">No tasks assigned for selected date</option>
+                  ) : (
+                    tasksForDate.map(t => (
+                      <option key={t.id} value={t.id}>{t.title}</option>
+                    ))
+                  )}
                 </select>
               </label>
               <label className="block">
                 <span className="mb-2 block text-sm font-semibold text-white/80">Crop / Field</span>
-                <select className="farm-input w-full appearance-none">
-                  {crops.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <input 
+                  type="text" 
+                  readOnly 
+                  value={selectedTask?.crop_name || 'N/A'}
+                  className="farm-input w-full bg-white/5 cursor-not-allowed text-white/50" 
+                  placeholder="Crop will auto-fill from task"
+                />
               </label>
             </div>
             
             <label className="block">
               <span className="mb-2 block text-sm font-semibold text-white/80">Date</span>
-              <input type="date" className="farm-input w-full" defaultValue={new Date().toISOString().split('T')[0]} />
+              <input 
+                type="date" 
+                className="farm-input w-full" 
+                value={activityDate}
+                onChange={e => setActivityDate(e.target.value)}
+              />
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">Description</span>
-              <textarea className="farm-input w-full min-h-32" placeholder="Details about the activity..." />
+              <span className="mb-2 block text-sm font-semibold text-white/80">Manager's Instructions</span>
+              <textarea 
+                className="farm-input w-full min-h-24 bg-white/5 cursor-not-allowed text-white/50" 
+                placeholder="Details from manager..." 
+                readOnly
+                value={selectedTask?.description || 'No specific instructions provided.'}
+              />
             </label>
 
-            <Button type="button" className="w-full sm:w-auto">Save Activity</Button>
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-white/80">Farmer's Notes</span>
+              <textarea 
+                className="farm-input w-full min-h-24" 
+                placeholder="Describe what you actually did..." 
+                value={activityNotes}
+                onChange={e => setActivityNotes(e.target.value)}
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-white/80">Upload Image of Work</span>
+              <input 
+                type="file" 
+                accept="image/*"
+                onChange={e => e.target.files && setActivityImage(e.target.files[0])}
+                className="block w-full text-sm text-slate-300
+                  file:mr-4 file:py-2 file:px-4
+                  file:rounded-full file:border-0
+                  file:text-sm file:font-semibold
+                  file:bg-emerald-500/10 file:text-emerald-500
+                  hover:file:bg-emerald-500/20 transition-all cursor-pointer"
+              />
+            </label>
+
+            <Button type="submit" className="w-full sm:w-auto" disabled={!selectedTaskId}>Save Activity</Button>
           </form>
         </Card>
       )}

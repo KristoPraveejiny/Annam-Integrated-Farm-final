@@ -5,9 +5,34 @@ import { SectionHeading } from '../../components/ui/SectionHeading';
 import { ChartPanel } from '../../components/ui/ChartPanel';
 import { FiCheckCircle, FiUsers, FiAlertTriangle, FiActivity } from 'react-icons/fi';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { chartSeries, tasks, alerts } from '../../data/mock';
+import { chartSeries, alerts } from '../../data/mock';
+import { useState, useEffect } from 'react';
 
 export default function FarmManagerDashboard() {
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [recentUpdates, setRecentUpdates] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const tokenRaw = localStorage.getItem('token');
+        const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
+        const headers = { Authorization: `Bearer ${token}` };
+
+        const [tasksRes, obsRes] = await Promise.all([
+          fetch('http://localhost:5000/api/tasks/manager', { headers }),
+          fetch('http://localhost:5000/api/crop-observations/recent', { headers })
+        ]);
+
+        if (tasksRes.ok) setTasks(await tasksRes.json());
+        if (obsRes.ok) setRecentUpdates(await obsRes.json());
+      } catch (err) {
+        console.error('Error fetching dashboard data:', err);
+      }
+    };
+    fetchData();
+  }, []);
+
   return (
     <>
       <SectionHeading eyebrow="Dashboard" title="Farm Manager Overview" description="Operations, workforce, and analytics for your farm." tone="light" />
@@ -31,19 +56,31 @@ export default function FarmManagerDashboard() {
         {/* Task Progress Cards */}
         <Card title="Task Progress Cards" subtitle="Work allocation across teams">
           <div className="grid gap-4 md:grid-cols-2">
-            {tasks.map((task) => (
-              <div key={task.title} className="rounded-3xl border border-slate-100 p-4">
+            {tasks.length === 0 ? <p className="text-sm text-slate-500">No tasks assigned.</p> : tasks.map((task) => (
+              <div key={task.id} className="rounded-3xl border border-white/10 p-4 bg-slate-900/50">
                 <div className="flex items-center justify-between">
-                  <p className="font-semibold text-slate-900">{task.title}</p>
-                  <span className="text-xs text-slate-500">{task.assignee}</span>
+                  <p className="font-semibold text-slate-200">{task.title}</p>
+                  <span className="text-xs text-slate-400">{task.assigned_to_name || 'Unassigned'}</span>
                 </div>
-                <div className="mt-3">
-                  <ProgressBar value={task.progress} />
+                <div className="mt-3 flex items-center justify-between">
+                  <span className={`text-xs px-2 py-1 rounded-full ${task.status === 'done' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                    {task.status.replace('_', ' ')}
+                  </span>
+                  <span className="text-xs text-slate-500">{task.due_date ? new Date(task.due_date).toLocaleDateString() : 'No due date'}</span>
                 </div>
               </div>
             ))}
           </div>
         </Card>
+        {/* Recent Farmer Updates Navigation */}
+        <div className="flex justify-end mb-4">
+          <Button
+            onClick={() => navigate('/dashboard/farm-manager/recent-updates')}
+            className="flex items-center gap-2"
+          >
+            View Recent Farmer Updates
+          </Button>
+        </div>
         {/* Calendar View */}
         <Card title="Calendar View" subtitle="Upcoming field events">
           <div className="grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-500">

@@ -1,12 +1,11 @@
 import { pool } from '../db.js';
 
 // Helper function to get or create a default farm for the user
-async function getDefaultFarmId(userId) {
+export async function getDefaultFarmId(userId) {
   // Get user role
   const userRes = await pool.query('SELECT role FROM app_users WHERE id = $1', [userId]);
   const userRole = userRes.rows[0]?.role;
-
-  if (userRole === 'worker') {
+  if (userRole === 'worker' || (userRole && userRole.toLowerCase() === 'farmer')) {
     // 1. Check memberships
     let result = await pool.query('SELECT farm_id FROM farm_memberships WHERE user_id = $1 LIMIT 1', [userId]);
     if (result.rows.length > 0) {
@@ -103,7 +102,7 @@ export async function getLivestock(req, res) {
       breed: row.breed || 'Unknown',
       pen: row.groupCode || 'Unassigned',
       dob: row.dob ? new Date(row.dob).toISOString().split('T')[0] : 'Unknown',
-      health: row.health.charAt(0).toUpperCase() + row.health.slice(1),
+      health: row.health ? row.health.charAt(0).toUpperCase() + row.health.slice(1) : 'Unknown',
       sex: row.sex || 'Unknown',
       weight: row.weight !== null ? row.weight.toString() : 'N/A',
       acquisitionDate: row.acquisitionDate ? new Date(row.acquisitionDate).toISOString().split('T')[0] : 'N/A',

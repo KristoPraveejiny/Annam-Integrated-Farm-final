@@ -6,23 +6,36 @@ dotenv.config();
 import authRoutes from './routes/authRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import livestockRoutes from './routes/livestockRoutes.js';
+import cropRoutes from './routes/cropRoutes.js';
+import blockRoutes from './routes/blockRoutes.js';
+import taskRoutes from './routes/taskRoutes.js';
+import cropObservationRoutes from './routes/cropObservationRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
+import { verifyToken } from './authMiddleware.js';
+
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-app.get('/', (req, res) => {
-    res.send('Annam Farm Backend Running...');
-});
+// Serve uploaded files statically
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok' });
-});
 // Register API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/livestock', livestockRoutes);
+app.use('/api/crops', cropRoutes);
+app.use('/api/blocks', blockRoutes);
+app.use('/api/tasks', taskRoutes);
+app.use('/api/crop-observations', cropObservationRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 const PORT = process.env.PORT || 5000;
 

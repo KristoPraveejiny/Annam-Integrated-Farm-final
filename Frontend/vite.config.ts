@@ -1,8 +1,14 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
+    },
+  },
   server: {
     proxy: {
       // Proxy /django-api/* → Django on port 8000
@@ -10,6 +16,11 @@ export default defineConfig({
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/django-api/, ''),
+      },
+      // Proxy /api/* → NodeJS on port 5000
+      '/api': {
+        target: 'http://127.0.0.1:5000',
+        changeOrigin: true,
       },
     },
   },

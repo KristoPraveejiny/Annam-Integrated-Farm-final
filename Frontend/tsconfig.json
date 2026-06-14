@@ -11,6 +11,10 @@
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "baseUrl": "./",
+    "paths": {
+      "@/*": ["src/*"]
+    },
     "ignoreDeprecations": "5.0",
     "resolveJsonModule": true,
     "isolatedModules": true,

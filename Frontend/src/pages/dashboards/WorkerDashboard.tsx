@@ -30,16 +30,7 @@ function WorkerBlocks() {
               <MiniMetric label="Weather" value="Clear" icon={<FiCloud />} />
             </div>
           </Card>
-          <Card title="Notifications" subtitle="Weather and task reminders">
-            <div className="space-y-3">
-              {alerts.slice(0, 3).map((alert) => (
-                <div key={alert.title} className="rounded-2xl border border-slate-100 p-4">
-                  <p className="font-semibold text-slate-900">{alert.title}</p>
-                  <p className="mt-1 text-sm text-slate-600">{alert.description}</p>
-                </div>
-              ))}
-            </div>
-          </Card>
+
         </div>
       </div>
     </div>
