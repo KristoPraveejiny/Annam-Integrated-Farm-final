@@ -19,7 +19,7 @@ export default function FarmerLivestockPage() {
         setLoading(false);
         return;
       }
-      const res = await fetch('http://localhost:5000/api/livestock', {
+      const res = await fetch('/api/livestock', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -46,7 +46,7 @@ export default function FarmerLivestockPage() {
         ]);
         return;
       }
-      const res = await fetch('http://localhost:5000/api/livestock/groups', {
+      const res = await fetch('/api/livestock/groups', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {

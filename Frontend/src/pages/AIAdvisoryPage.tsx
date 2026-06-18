@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { FiAlertTriangle, FiUploadCloud, FiCloud, FiThermometer, FiDroplet, FiWind, FiCompass } from 'react-icons/fi';
 import { Card } from '../components/ui/Card';
 import { SectionHeading } from '../components/ui/SectionHeading';
-import AIChatbot from '../components/AIChatbot/AIChatbot';
 
 interface WeatherData {
   temperature: number;
@@ -60,17 +59,8 @@ export default function AIAdvisoryPage() {
         tone="light"
       />
 
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        {/* ── Live AI Chatbot ── */}
-        <div>
-          <div className="mb-2 flex items-center gap-2">
-            <span className="text-xs font-semibold uppercase tracking-widest text-emerald-400">AI Chatbot</span>
-            <span className="text-xs text-slate-400">· ask anything about your farm</span>
-          </div>
-          <AIChatbot />
-        </div>
-
-        {/* ── Right Column ── */}
+      <div className="grid gap-6">
+        {/* ── Weather & Recommendations Grid ── */}
         <div className="grid gap-6">
           {/* Live Weather Forecast Widget */}
           <Card title={`Live Weather Forecast - ${weather?.city || 'Neeliyamodai, Vavuniya'}`} subtitle="Real-time OpenWeather updates">

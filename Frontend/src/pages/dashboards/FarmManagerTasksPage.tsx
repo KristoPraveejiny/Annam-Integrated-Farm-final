@@ -19,6 +19,7 @@ export default function FarmManagerTasksPage() {
     livestockGroupId: '',
     assignedToUserId: '',
     priority: 'medium',
+    session: 'morning',
     dueDate: ''
   });
 
@@ -30,10 +31,10 @@ export default function FarmManagerTasksPage() {
       const headers = { Authorization: `Bearer ${token}` };
 
       const [tasksRes, cropsRes, workersRes, livestockRes] = await Promise.all([
-        fetch('http://localhost:5000/api/tasks/manager', { headers }),
-        fetch('http://localhost:5000/api/crops', { headers }),
-        fetch('http://localhost:5000/api/tasks/workers', { headers }),
-        fetch('http://localhost:5000/api/livestock/groups', { headers })
+        fetch('/api/tasks/manager', { headers }),
+        fetch('/api/crops', { headers }),
+        fetch('/api/tasks/workers', { headers }),
+        fetch('/api/livestock/groups', { headers })
       ]);
 
       if (tasksRes.ok) {
@@ -73,7 +74,7 @@ export default function FarmManagerTasksPage() {
       const tokenRaw = localStorage.getItem('token');
       const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
       
-      const res = await fetch('http://localhost:5000/api/tasks', {
+      const res = await fetch('/api/tasks', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -84,7 +85,7 @@ export default function FarmManagerTasksPage() {
 
       if (res.ok) {
         setShowModal(false);
-        setFormData({ title: '', description: '', cropCycleId: '', livestockGroupId: '', assignedToUserId: '', priority: 'medium', dueDate: '' });
+        setFormData({ title: '', description: '', cropCycleId: '', livestockGroupId: '', assignedToUserId: '', priority: 'medium', session: 'morning', dueDate: '' });
         fetchData();
         alert('Task assigned and email sent successfully!');
       } else {
@@ -120,6 +121,7 @@ export default function FarmManagerTasksPage() {
                 <th className="px-6 py-4">Assigned To</th>
                 <th className="px-6 py-4">Related Entity</th>
                 <th className="px-6 py-4">Priority</th>
+                <th className="px-6 py-4">Session</th>
                 <th className="px-6 py-4">Due Date</th>
                 <th className="px-6 py-4">Status</th>
               </tr>
@@ -136,6 +138,7 @@ export default function FarmManagerTasksPage() {
                     <td className="px-6 py-4">{t.assigned_to_name || 'Unassigned'}</td>
                     <td className="px-6 py-4">{t.crop_name || t.livestock_name || 'N/A'}</td>
                     <td className="px-6 py-4 capitalize">{t.priority}</td>
+                    <td className="px-6 py-4 capitalize">{t.session || 'morning'}</td>
                     <td className="px-6 py-4">{t.due_date ? new Date(t.due_date).toLocaleDateString() : 'N/A'}</td>
                     <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
@@ -226,7 +229,7 @@ export default function FarmManagerTasksPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4 mt-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1">Priority</label>
                   <select
@@ -237,6 +240,18 @@ export default function FarmManagerTasksPage() {
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Session</label>
+                  <select
+                    value={formData.session}
+                    onChange={e => setFormData({...formData, session: e.target.value})}
+                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
+                  >
+                    <option value="morning">Morning (Rs. 2000)</option>
+                    <option value="afternoon">Afternoon (Rs. 2000)</option>
+                    <option value="evening">Evening (Rs. 1000)</option>
                   </select>
                 </div>
                 <div>

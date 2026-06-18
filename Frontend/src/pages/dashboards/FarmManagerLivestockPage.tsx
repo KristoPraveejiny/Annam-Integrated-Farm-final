@@ -35,7 +35,7 @@ export default function FarmManagerLivestockPage() {
       setLoading(false);
       return;
     }
-    const res = await fetch('http://localhost:5000/api/livestock', {
+    const res = await fetch('/api/livestock', {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (res.ok) {
@@ -63,7 +63,7 @@ export default function FarmManagerLivestockPage() {
         ]);
         return;
       }
-      const res = await fetch('http://localhost:5000/api/livestock/groups', {
+      const res = await fetch('/api/livestock/groups', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -115,8 +115,8 @@ export default function FarmManagerLivestockPage() {
       const cleanToken = token && token.startsWith('"') && token.endsWith('"') ? token.slice(1, -1) : token;
       
       const url = isEditing 
-        ? `http://localhost:5000/api/livestock/${editingId}`
-        : 'http://localhost:5000/api/livestock';
+        ? `/api/livestock/${editingId}`
+        : '/api/livestock';
       
       const method = isEditing ? 'PUT' : 'POST';
 
@@ -175,7 +175,7 @@ export default function FarmManagerLivestockPage() {
     try {
       const token = localStorage.getItem('token');
       const cleanToken = token && token.startsWith('"') && token.endsWith('"') ? token.slice(1, -1) : token;
-      const res = await fetch(`http://localhost:5000/api/livestock/${dbId}`, {
+      const res = await fetch(`/api/livestock/${dbId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${cleanToken}` }
       });

@@ -22,7 +22,7 @@ export default function FarmerCropUpdatesPage() {
       try {
         const tokenRaw = localStorage.getItem('token');
         const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
-        const res = await fetch('http://localhost:5000/api/tasks/farmer', { headers: { Authorization: `Bearer ${token}` } });
+        const res = await fetch('/api/tasks/farmer', { headers: { Authorization: `Bearer ${token}` } });
         if (res.ok) {
           const data = await res.json();
           const activeTasks = data.filter((t: any) => t.status !== 'done' && t.crop_cycle_id != null);
@@ -71,7 +71,7 @@ export default function FarmerCropUpdatesPage() {
     }
 
     try {
-      const res = await fetch(`http://localhost:5000/api/tasks/${selectedTaskId}/updates`, {
+      const res = await fetch(`/api/tasks/${selectedTaskId}/updates`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData

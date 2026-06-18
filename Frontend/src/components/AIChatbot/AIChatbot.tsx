@@ -1,93 +1,51 @@
-import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from 'react';
-import { FiSend, FiLoader, FiUser, FiCpu, FiAlertCircle, FiCloudRain, FiWind, FiThermometer, FiDroplet, FiImage, FiX } from 'react-icons/fi';
+import { useState, useRef, useEffect, KeyboardEvent } from 'react';
+import { FiSend, FiLoader, FiUser, FiCpu, FiMessageSquare, FiPlus, FiAlertCircle } from 'react-icons/fi';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Message {
   id: string;
-  role: 'user' | 'assistant' | 'error';
-  text: string;
-  timestamp: Date;
-  image?: string;
+  sender: 'USER' | 'AI';
+  message: string;
+  timestamp: string;
 }
 
-interface WeatherContext {
-  temperature: number;
-  humidity: number;
-  condition: string;
-  description: string;
-  wind_speed: number;
-  rain_prob: number;
-  city: string;
-  last_updated: string;
+interface ChatSession {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  messages?: Message[];
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-// Calls Django directly on port 8000 (CORS is allowed in Django settings)
 const DJANGO_API_BASE = 'http://127.0.0.1:8000';
 
-const SUGGESTED_QUESTIONS = [
-  'Should I irrigate today?',
-  'What crops suit current weather?',
-  'Any pest risk I should know about?',
-  'Is today good for fertilizer application?',
-  'What farm activities do you recommend?',
-];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function uid() {
-  return Math.random().toString(36).slice(2, 10);
-}
-
-function formatTime(date: Date) {
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-// ─── Weather Strip ────────────────────────────────────────────────────────────
-function WeatherStrip({ weather }: { weather: WeatherContext }) {
-  return (
-    <div className="chat-weather-strip">
-      <span className="chat-weather-item">
-        <FiThermometer /> {weather.temperature.toFixed(1)}°C
-      </span>
-      <span className="chat-weather-item">
-        <FiDroplet /> {weather.humidity}%
-      </span>
-      <span className="chat-weather-item">
-        <FiWind /> {weather.wind_speed} m/s
-      </span>
-      <span className="chat-weather-item">
-        <FiCloudRain /> {weather.rain_prob} mm
-      </span>
-      <span className="chat-weather-badge">{weather.condition}</span>
-    </div>
-  );
+function formatTime(dateString: string) {
+  return new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 // ─── Single Message Bubble ────────────────────────────────────────────────────
 function MessageBubble({ msg }: { msg: Message }) {
-  const isUser = msg.role === 'user';
-  const isError = msg.role === 'error';
+  const isUser = msg.sender === 'USER';
+  const isError = msg.sender === 'ERROR' as any;
 
   return (
-    <div className={`chat-message-row ${isUser ? 'chat-message-row--user' : 'chat-message-row--ai'}`}>
+    <div className={`chat-message-row ${isUser ? 'chat-message-row--user' : 'chat-message-row--ai'} mb-4 flex w-full`}>
       {/* Avatar */}
       {!isUser && (
-        <div className={`chat-avatar ${isError ? 'chat-avatar--error' : 'chat-avatar--ai'}`}>
+        <div className={`chat-avatar shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-3 ${isError ? 'bg-red-500/20 text-red-500' : 'bg-emerald-500/20 text-emerald-400'}`}>
           {isError ? <FiAlertCircle /> : <FiCpu />}
         </div>
       )}
 
       {/* Bubble */}
-      <div className={`chat-bubble ${isUser ? 'chat-bubble--user' : isError ? 'chat-bubble--error' : 'chat-bubble--ai'}`}>
-        {msg.image && (
-          <img src={msg.image} alt="User upload" className="max-w-[200px] rounded-lg mb-2 object-contain bg-black/10" />
-        )}
-        <p className="chat-bubble-text">{msg.text}</p>
-        <span className="chat-bubble-time">{formatTime(msg.timestamp)}</span>
+      <div className={`chat-bubble max-w-[80%] rounded-2xl px-4 py-2 ${isUser ? 'bg-emerald-600 text-white ml-auto rounded-tr-sm' : isError ? 'bg-red-950 text-red-200 border border-red-800' : 'bg-slate-800 text-slate-200 rounded-tl-sm'}`}>
+        <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.message}</p>
+        <span className="text-[10px] opacity-50 mt-1 block text-right">{formatTime(msg.timestamp)}</span>
       </div>
 
       {isUser && (
-        <div className="chat-avatar chat-avatar--user">
+        <div className="chat-avatar shrink-0 w-8 h-8 rounded-full bg-slate-700 text-slate-300 flex items-center justify-center ml-3">
           <FiUser />
         </div>
       )}
@@ -95,96 +53,123 @@ function MessageBubble({ msg }: { msg: Message }) {
   );
 }
 
-// ─── Typing Indicator ─────────────────────────────────────────────────────────
-function TypingIndicator() {
-  return (
-    <div className="chat-message-row chat-message-row--ai">
-      <div className="chat-avatar chat-avatar--ai">
-        <FiCpu />
-      </div>
-      <div className="chat-bubble chat-bubble--ai chat-bubble--typing">
-        <span className="typing-dot" />
-        <span className="typing-dot" />
-        <span className="typing-dot" />
-      </div>
-    </div>
-  );
-}
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function AIChatbot() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: uid(),
-      role: 'assistant',
-      text: "Hello! I'm Annam Farm AI 🌿 I have access to the live weather data for your farm in Neeliyamodai, Vavuniya. Ask me anything about today's conditions, crop advice, pest risks, irrigation, and more!",
-      timestamp: new Date(),
-    },
-  ]);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [weather, setWeather] = useState<WeatherContext | null>(null);
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [initializing, setInitializing] = useState(true);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-scroll on new messages
+  // Fetch History
+  useEffect(() => {
+    const fetchHistory = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setInitializing(false);
+        return;
+      }
+      try {
+        const res = await fetch(`${DJANGO_API_BASE}/api/chat/`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setSessions(data);
+          if (data.length > 0) {
+            setActiveSessionId(data[0].id);
+            setMessages(data[0].messages || []);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch chat history:", err);
+      } finally {
+        setInitializing(false);
+      }
+    };
+    fetchHistory();
+  }, []);
+
+  // Handle Session Change
+  const handleSelectSession = (id: string) => {
+    const session = sessions.find(s => s.id === id);
+    if (session) {
+      setActiveSessionId(id);
+      setMessages(session.messages || []);
+    }
+  };
+
+  const handleNewChat = () => {
+    setActiveSessionId(null);
+    setMessages([]);
+  };
+
+  // Auto-scroll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
-  // Send message to Django API
+  // Send message
   const sendMessage = async (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed && !selectedImage || loading) return;
+    if (!trimmed || loading) return;
 
-    const imgBase64 = selectedImage;
+    const token = localStorage.getItem('token');
+    if (!token) return;
 
-    // Append user message
-    const userMsg: Message = { id: uid(), role: 'user', text: trimmed, timestamp: new Date(), image: imgBase64 || undefined };
+    const userMsg: Message = { id: Math.random().toString(), sender: 'USER', message: trimmed, timestamp: new Date().toISOString() };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
-    setSelectedImage(null);
     setLoading(true);
 
-    // Build history for context (last 10 msgs)
-    const history = messages.slice(-10).map(m => ({
-      role: m.role === 'user' ? 'user' : 'assistant',
-      text: m.text,
-    }));
-
     try {
-      const res = await fetch(`${DJANGO_API_BASE}/api/weather-chat/`, {
+      const res = await fetch(`${DJANGO_API_BASE}/api/chat/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: trimmed || "What do you see in this image?", history, image_base64: imgBase64 }),
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ chat_id: activeSessionId, message: trimmed }),
       });
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
-        throw new Error(err.detail || `HTTP ${res.status}`);
+        let errorMsg = `HTTP ${res.status}`;
+        try {
+          const errData = await res.json();
+          if (errData.error) errorMsg = errData.error;
+        } catch (e) {}
+        throw new Error(errorMsg);
       }
 
       const data = await res.json();
-
-      // Update weather context if returned
-      if (data.weather) setWeather(data.weather);
-
+      
       const aiMsg: Message = {
-        id: uid(),
-        role: 'assistant',
-        text: data.answer || 'Sorry, I could not generate a response.',
-        timestamp: new Date(),
+        id: Math.random().toString(),
+        sender: 'AI',
+        message: data.reply || 'Sorry, I could not generate a response.',
+        timestamp: new Date().toISOString(),
       };
+      
       setMessages(prev => [...prev, aiMsg]);
+      
+      // Update session list if new
+      if (!activeSessionId && data.chat_id) {
+        setActiveSessionId(data.chat_id);
+        // re-fetch sessions to update list
+        const histRes = await fetch(`${DJANGO_API_BASE}/api/chat/`, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (histRes.ok) setSessions(await histRes.json());
+      }
+
     } catch (err: any) {
       const errorMsg: Message = {
-        id: uid(),
-        role: 'error',
-        text: `Error: ${err.message || 'Failed to reach the AI server. Make sure the Django server is running on port 8000.'}`,
-        timestamp: new Date(),
+        id: Math.random().toString(),
+        sender: 'ERROR' as any,
+        message: `Error: ${err.message || 'Failed to reach the AI server.'}`,
+        timestamp: new Date().toISOString(),
       };
       setMessages(prev => [...prev, errorMsg]);
     } finally {
@@ -200,104 +185,110 @@ export default function AIChatbot() {
     }
   };
 
-  const handleImageSelect = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setSelectedImage(event.target?.result as string);
-    };
-    reader.readAsDataURL(file);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+  if (initializing) {
+    return <div className="h-[600px] flex items-center justify-center text-slate-400 bg-slate-900 rounded-2xl border border-slate-800"><FiLoader className="spin text-3xl" /></div>;
+  }
 
   return (
-    <div className="chatbot-container">
-      {/* Header */}
-      <div className="chatbot-header">
-        <div className="chatbot-header-icon">
-          <FiCpu />
+    <div className="flex h-[600px] bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+      
+      {/* Sidebar - Chat History */}
+      <div className="w-64 bg-slate-950 border-r border-slate-800 flex flex-col hidden md:flex shrink-0">
+        <div className="p-4">
+          <button 
+            onClick={handleNewChat}
+            className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-lg transition-colors font-medium text-sm"
+          >
+            <FiPlus /> New Chat
+          </button>
         </div>
-        <div>
-          <h3 className="chatbot-header-title">Annam Farm AI</h3>
-          <p className="chatbot-header-sub">Powered by Gemini · Live weather context</p>
+        
+        <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-1 custom-scrollbar">
+          <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 ml-1 mt-2">Previous Chats</h4>
+          {sessions.length === 0 ? (
+            <p className="text-sm text-slate-600 italic px-2">No history</p>
+          ) : (
+            sessions.map(s => (
+              <button
+                key={s.id}
+                onClick={() => handleSelectSession(s.id)}
+                className={`w-full text-left flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm transition-colors ${activeSessionId === s.id ? 'bg-slate-800 text-emerald-400' : 'text-slate-300 hover:bg-slate-800/50'}`}
+              >
+                <FiMessageSquare className="shrink-0 opacity-70" />
+                <span className="truncate">{s.title}</span>
+              </button>
+            ))
+          )}
         </div>
-        <div className="chatbot-online-dot" title="AI Online" />
       </div>
 
-      {/* Weather Context Strip */}
-      {weather && <WeatherStrip weather={weather} />}
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col bg-slate-900 relative">
+        {/* Header */}
+        <div className="h-14 border-b border-slate-800 flex items-center px-6 justify-between bg-slate-900/80 backdrop-blur-md absolute top-0 w-full z-10">
+          <div className="flex items-center gap-3">
+            <FiCpu className="text-emerald-500 text-xl" />
+            <h3 className="font-semibold text-slate-200">Annam Smart Farm AI</h3>
+          </div>
+          <span className="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded-full border border-emerald-500/20">OpenRouter</span>
+        </div>
 
-      {/* Messages */}
-      <div className="chatbot-messages">
-        {messages.map(msg => (
-          <MessageBubble key={msg.id} msg={msg} />
-        ))}
-        {loading && <TypingIndicator />}
-        <div ref={bottomRef} />
-      </div>
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto pt-20 pb-4 px-6 custom-scrollbar">
+          {messages.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto opacity-60">
+              <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mb-4">
+                <FiCpu className="text-3xl text-emerald-400" />
+              </div>
+              <h4 className="text-xl font-medium text-slate-200 mb-2">How can I help your farm today?</h4>
+              <p className="text-sm text-slate-400">Ask about crop management, weather risks, pest control, or livestock care.</p>
+            </div>
+          ) : (
+            messages.map((msg, i) => <MessageBubble key={msg.id || i} msg={msg} />)
+          )}
+          {loading && (
+            <div className="chat-message-row chat-message-row--ai mb-4 flex w-full">
+               <div className="chat-avatar shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-3 bg-emerald-500/20 text-emerald-400">
+                  <FiCpu />
+               </div>
+               <div className="chat-bubble bg-slate-800 rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></span>
+                  <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
+                  <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></span>
+               </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
 
-      {/* Suggested Questions */}
-      {messages.length <= 1 && (
-        <div className="chatbot-suggestions">
-          {SUGGESTED_QUESTIONS.map(q => (
-            <button
-              key={q}
-              className="chatbot-suggestion-btn"
-              onClick={() => sendMessage(q)}
+        {/* Input */}
+        <div className="p-4 bg-slate-900 border-t border-slate-800">
+          <div className="relative max-w-4xl mx-auto flex items-end gap-2 bg-slate-800 border border-slate-700 rounded-2xl p-1 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/50 transition-all">
+            <textarea
+              ref={inputRef}
+              className="flex-1 max-h-32 bg-transparent text-slate-200 text-sm p-3 focus:outline-none resize-none custom-scrollbar"
+              placeholder="Ask farm-related questions..."
+              rows={1}
+              value={input}
+              onChange={e => {
+                setInput(e.target.value);
+                e.target.style.height = 'auto';
+                e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+              }}
+              onKeyDown={handleKeyDown}
               disabled={loading}
+            />
+            <button
+              onClick={() => sendMessage(input)}
+              disabled={loading || !input.trim()}
+              className="p-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-xl mb-1 mr-1 transition-colors"
             >
-              {q}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Input Area */}
-      <div className="chatbot-input-row relative">
-        {selectedImage && (
-          <div className="absolute bottom-[calc(100%+8px)] left-0 p-2 bg-emerald-950 border border-emerald-500/20 rounded-xl flex items-center gap-4 z-10 shadow-lg">
-            <img src={selectedImage} alt="Preview" className="h-12 w-auto rounded object-cover" />
-            <button onClick={() => setSelectedImage(null)} className="text-slate-400 hover:text-white p-1 rounded-full bg-white/10 hover:bg-white/20 transition">
-              <FiX />
+              {loading ? <FiLoader className="spin" /> : <FiSend />}
             </button>
           </div>
-        )}
-        <input 
-          type="file" 
-          accept="image/*" 
-          ref={fileInputRef} 
-          className="hidden" 
-          onChange={handleImageSelect} 
-        />
-        <button
-          className="p-2 text-slate-400 hover:text-emerald-400 transition-colors shrink-0"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={loading}
-          title="Upload image"
-        >
-          <FiImage size={20} />
-        </button>
-        <textarea
-          ref={inputRef}
-          className="chatbot-textarea"
-          placeholder="Ask about weather, crops, irrigation, pests…"
-          rows={1}
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={loading}
-        />
-        <button
-          className={`chatbot-send-btn ${loading ? 'chatbot-send-btn--loading' : ''}`}
-          onClick={() => sendMessage(input)}
-          disabled={loading || (!input.trim() && !selectedImage)}
-          title="Send (Enter)"
-        >
-          {loading ? <FiLoader className="spin" /> : <FiSend />}
-        </button>
+          <p className="text-center text-[10px] text-slate-500 mt-2">AI can make mistakes. Verify important farming decisions.</p>
+        </div>
       </div>
-      <p className="chatbot-hint">Press Enter to send · Shift+Enter for new line</p>
     </div>
   );
 }

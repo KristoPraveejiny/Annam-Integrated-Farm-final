@@ -181,6 +181,28 @@ EXCEPTION
     WHEN duplicate_object THEN NULL;
 END $$;
 
+DO $$
+BEGIN
+    CREATE TYPE session_type AS ENUM (
+        'morning',
+        'afternoon',
+        'evening'
+    );
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+    CREATE TYPE payment_status_type AS ENUM (
+        'pending',
+        'approved',
+        'paid'
+    );
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
+
 CREATE TABLE IF NOT EXISTS app_users (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     full_name text NOT NULL,
@@ -500,6 +522,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     title text NOT NULL,
     description text,
     category text,
+    session session_type,
     priority text NOT NULL DEFAULT 'medium',
     status task_status NOT NULL DEFAULT 'todo',
     progress_percent integer NOT NULL DEFAULT 0 CHECK (progress_percent BETWEEN 0 AND 100),
@@ -538,6 +561,22 @@ CREATE TABLE IF NOT EXISTS notifications (
     sent_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS task_attendances (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    farm_id uuid NOT NULL REFERENCES farms(id) ON DELETE CASCADE,
+    worker_id uuid NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+    task_id uuid NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    date date NOT NULL,
+    session session_type NOT NULL,
+    attendance_status text NOT NULL DEFAULT 'Present',
+    task_status text NOT NULL DEFAULT 'In Progress',
+    status payment_status_type NOT NULL DEFAULT 'pending',
+    payment_amount numeric(12,2) NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT task_attendances_unique UNIQUE (farm_id, worker_id, task_id)
 );
 
 CREATE TABLE IF NOT EXISTS ai_advisories (
@@ -648,6 +687,30 @@ CREATE TABLE IF NOT EXISTS system_settings (
     CONSTRAINT system_settings_unique UNIQUE (setting_key, scope)
 );
 
+CREATE TABLE IF NOT EXISTS monthly_salary_payments (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    farm_id uuid REFERENCES farms(id) ON DELETE CASCADE,
+    worker_id uuid REFERENCES app_users(id) ON DELETE CASCADE,
+    manager_id uuid REFERENCES app_users(id) ON DELETE SET NULL,
+    payment_month text NOT NULL,
+    total_completed_tasks integer NOT NULL DEFAULT 0,
+    total_approved_sessions integer NOT NULL DEFAULT 0,
+    basic_salary numeric(12,2) NOT NULL DEFAULT 0,
+    bonus numeric(12,2) NOT NULL DEFAULT 0,
+    deductions numeric(12,2) NOT NULL DEFAULT 0,
+    final_payment_amount numeric(12,2) NOT NULL DEFAULT 0,
+    bank_account_name text,
+    bank_name text,
+    branch_name text,
+    account_number_masked text,
+    payment_method text,
+    transaction_reference text,
+    payment_date timestamptz DEFAULT now(),
+    payment_status text NOT NULL DEFAULT 'Paid',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -681,6 +744,7 @@ BEGIN
         'payments',
         'deliveries',
         'tasks',
+        'task_attendances',
         'attendance_records',
         'notifications',
         'ai_advisories',
@@ -688,7 +752,8 @@ BEGIN
         'marketplace_reviews',
         'auth_verification_codes',
         'auth_refresh_tokens',
-        'system_settings'
+        'system_settings',
+        'monthly_salary_payments'
     ] LOOP
         EXECUTE format('DROP TRIGGER IF EXISTS trg_%I_updated_at ON %I', table_name, table_name);
         EXECUTE format(
@@ -714,6 +779,8 @@ CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_payments_order_id ON payments(order_id);
 CREATE INDEX IF NOT EXISTS idx_deliveries_order_id ON deliveries(order_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_farm_id ON tasks(farm_id);
+CREATE INDEX IF NOT EXISTS idx_task_attendances_worker_id ON task_attendances(worker_id);
+CREATE INDEX IF NOT EXISTS idx_task_attendances_farm_id ON task_attendances(farm_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_records_user_id ON attendance_records(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_advisories_farm_id ON ai_advisories(farm_id);
@@ -723,3 +790,19 @@ CREATE INDEX IF NOT EXISTS idx_marketplace_reviews_product_id ON marketplace_rev
 CREATE INDEX IF NOT EXISTS idx_auth_verification_codes_user_id ON auth_verification_codes(user_id);
 CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_user_id ON auth_refresh_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_user_id ON audit_logs(actor_user_id);
+C R E A T E   T A B L E   I F   N O T   E X I S T S   c h a t _ s e s s i o n s   ( 
+         i d   u u i d   P R I M A R Y   K E Y   D E F A U L T   g e n _ r a n d o m _ u u i d ( ) , 
+         u s e r _ i d   u u i d   N O T   N U L L   R E F E R E N C E S   a p p _ u s e r s ( i d )   O N   D E L E T E   C A S C A D E , 
+         t i t l e   t e x t   N O T   N U L L , 
+         c r e a t e d _ a t   t i m e s t a m p t z   N O T   N U L L   D E F A U L T   n o w ( ) , 
+         u p d a t e d _ a t   t i m e s t a m p t z   N O T   N U L L   D E F A U L T   n o w ( ) 
+ ) ; 
+ 
+ C R E A T E   T A B L E   I F   N O T   E X I S T S   c h a t _ m e s s a g e s   ( 
+         i d   u u i d   P R I M A R Y   K E Y   D E F A U L T   g e n _ r a n d o m _ u u i d ( ) , 
+         c h a t _ i d   u u i d   N O T   N U L L   R E F E R E N C E S   c h a t _ s e s s i o n s ( i d )   O N   D E L E T E   C A S C A D E , 
+         s e n d e r   t e x t   N O T   N U L L , 
+         m e s s a g e   t e x t   N O T   N U L L , 
+         t i m e s t a m p   t i m e s t a m p t z   N O T   N U L L   D E F A U L T   n o w ( ) 
+ ) ;  
+ 

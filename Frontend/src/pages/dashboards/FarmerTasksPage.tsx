@@ -28,8 +28,8 @@ export default function FarmerTasksPage() {
       const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
       
       const [tasksRes, notifRes] = await Promise.all([
-        fetch('http://localhost:5000/api/tasks/farmer', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('http://localhost:5000/api/notifications', { headers: { Authorization: `Bearer ${token}` } })
+        fetch('/api/tasks/farmer', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/notifications', { headers: { Authorization: `Bearer ${token}` } })
       ]);
 
       if (tasksRes.ok) {
@@ -53,7 +53,7 @@ export default function FarmerTasksPage() {
     try {
       const tokenRaw = localStorage.getItem('token');
       const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
-      await fetch(`http://localhost:5000/api/notifications/${id}/read`, {
+      await fetch(`/api/notifications/${id}/read`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -72,7 +72,7 @@ export default function FarmerTasksPage() {
       const tokenRaw = localStorage.getItem('token');
       const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
       
-      const res = await fetch(`http://localhost:5000/api/tasks/${taskId}/status`, {
+      const res = await fetch(`/api/tasks/${taskId}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -104,7 +104,7 @@ export default function FarmerTasksPage() {
       const tokenRaw = localStorage.getItem('token');
       const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
       
-      const res = await fetch('http://localhost:5000/api/crop-observations', {
+      const res = await fetch('/api/crop-observations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -21,6 +21,11 @@ export default defineConfig({
                 target: 'http://127.0.0.1:5000',
                 changeOrigin: true,
             },
+            // Proxy /uploads/* → NodeJS on port 5000
+            '/uploads': {
+                target: 'http://127.0.0.1:5000',
+                changeOrigin: true,
+            },
         },
     },
 });

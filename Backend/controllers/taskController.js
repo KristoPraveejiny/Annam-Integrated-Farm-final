@@ -27,7 +27,8 @@ export async function createTask(req, res) {
       assignedToUserId,
       priority,
       dueDate,
-      livestockGroupId
+      livestockGroupId,
+      session
     } = req.body;
 
     if (!title || !assignedToUserId) {
@@ -37,8 +38,8 @@ export async function createTask(req, res) {
     // Insert task
     const result = await pool.query(`
       INSERT INTO tasks 
-      (farm_id, title, description, crop_cycle_id, livestock_group_id, assigned_to_user_id, created_by_user_id, priority, due_date, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'todo')
+      (farm_id, title, description, crop_cycle_id, livestock_group_id, assigned_to_user_id, created_by_user_id, priority, due_date, status, session)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'todo', $10)
       RETURNING *
     `, [
       farmId,
@@ -49,7 +50,8 @@ export async function createTask(req, res) {
       assignedToUserId,
       userId,
       priority || 'medium',
-      dueDate || null
+      dueDate || null,
+      session || 'morning'
     ]);
 
     const task = result.rows[0];
@@ -171,34 +173,60 @@ export async function updateTaskStatus(req, res) {
 
     const task = result.rows[0];
 
-    // If done, notify manager
-    if (status === 'done') {
-      // Get manager and crop details
-      const managerRes = await pool.query('SELECT email FROM app_users WHERE id = $1', [task.created_by_user_id]);
-      const farmerRes = await pool.query('SELECT full_name FROM app_users WHERE id = $1', [userId]);
-      
-      let cropName = 'N/A';
-      if (task.crop_cycle_id) {
-        const cropRes = await pool.query('SELECT crop_name FROM crop_cycles WHERE id = $1', [task.crop_cycle_id]);
-        if (cropRes.rows.length > 0) cropName = cropRes.rows[0].crop_name;
+    // Auto-generate attendance when in progress, update when done
+    if (status === 'in_progress' || status === 'done') {
+      if (task.session && task.assigned_to_user_id) {
+        let paymentAmount = 2000;
+        
+        try {
+          if (status === 'in_progress') {
+            await pool.query(`
+              INSERT INTO task_attendances (farm_id, worker_id, task_id, date, session, status, payment_amount, attendance_status, task_status)
+              VALUES ($1, $2, $3, CURRENT_DATE, $4, 'pending', $5, 'Present', 'In Progress')
+              ON CONFLICT ON CONSTRAINT task_attendances_unique DO UPDATE
+              SET attendance_status = 'Present', task_status = 'In Progress'
+            `, [farmId, task.assigned_to_user_id, task.id, task.session, paymentAmount]);
+          } else if (status === 'done') {
+            await pool.query(`
+              INSERT INTO task_attendances (farm_id, worker_id, task_id, date, session, status, payment_amount, attendance_status, task_status)
+              VALUES ($1, $2, $3, CURRENT_DATE, $4, 'pending', $5, 'Completed', 'Completed')
+              ON CONFLICT ON CONSTRAINT task_attendances_unique DO UPDATE
+              SET attendance_status = 'Completed', task_status = 'Completed'
+            `, [farmId, task.assigned_to_user_id, task.id, task.session, paymentAmount]);
+          }
+        } catch (attendErr) {
+          console.error('Error handling task attendance:', attendErr);
+        }
       }
 
-      const farmerName = farmerRes.rows[0]?.full_name || 'Unknown Farmer';
+      if (status === 'done') {
+        // Get manager and crop details
+        const managerRes = await pool.query('SELECT email FROM app_users WHERE id = $1', [task.created_by_user_id]);
+        const farmerRes = await pool.query('SELECT full_name FROM app_users WHERE id = $1', [userId]);
+        
+        let cropName = 'N/A';
+        if (task.crop_cycle_id) {
+          const cropRes = await pool.query('SELECT crop_name FROM crop_cycles WHERE id = $1', [task.crop_cycle_id]);
+          if (cropRes.rows.length > 0) cropName = cropRes.rows[0].crop_name;
+        }
 
-      if (managerRes.rows.length > 0) {
-        const managerEmail = managerRes.rows[0].email;
-        await sendTaskCompletedEmail(managerEmail, {
-          title: task.title,
-          relatedEntity: cropName,
-          completedBy: farmerName,
-          completedAt: task.completed_at
-        });
+        const farmerName = farmerRes.rows[0]?.full_name || 'Unknown Farmer';
 
-        // Add db notification
-        await pool.query(`
-          INSERT INTO notifications (user_id, farm_id, type, title, message, priority)
-          VALUES ($1, $2, 'TASK_COMPLETED', 'Task Completed', $3, 'normal')
-        `, [task.created_by_user_id, farmId, `Task "${task.title}" was completed by ${farmerName}.`]);
+        if (managerRes.rows.length > 0) {
+          const managerEmail = managerRes.rows[0].email;
+          await sendTaskCompletedEmail(managerEmail, {
+            title: task.title,
+            relatedEntity: cropName,
+            completedBy: farmerName,
+            completedAt: task.completed_at
+          });
+
+          // Add db notification
+          await pool.query(`
+            INSERT INTO notifications (user_id, farm_id, type, title, message, priority)
+            VALUES ($1, $2, 'TASK_COMPLETED', 'Task Completed', $3, 'normal')
+          `, [task.created_by_user_id, farmId, `Task "${task.title}" was completed by ${farmerName}. Pending your approval.`]);
+        }
       }
     }
 

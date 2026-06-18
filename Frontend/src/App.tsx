@@ -28,6 +28,33 @@ import FarmerLivestockUpdatesPage from './pages/dashboards/FarmerLivestockUpdate
 import FarmerAttendancePage from './pages/dashboards/FarmerAttendancePage';
 import FarmerProfilePage from './pages/dashboards/FarmerProfilePage';
 import RecentFarmerUpdatesPage from './pages/dashboards/RecentFarmerUpdatesPage';
+import SalaryApprovalPage from './pages/SalaryApprovalPage';
+import SalaryReportPage from './pages/SalaryReportPage';
+import MyEarningsPage from './pages/MyEarningsPage';
+import AIChatPage from './pages/dashboards/AIChatPage';
+
+// Super Admin Pages
+import SuperAdminDashboard from './pages/dashboards/SuperAdminDashboard';
+import UserManagementPage from './pages/dashboards/superadmin/UserManagementPage';
+import FarmManagementPage from './pages/dashboards/superadmin/FarmManagementPage';
+import FarmManagerManagementPage from './pages/dashboards/superadmin/FarmManagerManagementPage';
+import FarmerManagementPage from './pages/dashboards/superadmin/FarmerManagementPage';
+import CropMonitoringPage from './pages/dashboards/superadmin/CropMonitoringPage';
+import LivestockMonitoringPage from './pages/dashboards/superadmin/LivestockMonitoringPage';
+import AIAdvisoryMonitoringPage from './pages/dashboards/superadmin/AIAdvisoryMonitoringPage';
+import DiseaseDetectionMonitoringPage from './pages/dashboards/superadmin/DiseaseDetectionMonitoringPage';
+import TaskAttendanceMonitoringPage from './pages/dashboards/superadmin/TaskAttendanceMonitoringPage';
+import SalaryPaymentMonitoringPage from './pages/dashboards/superadmin/SalaryPaymentMonitoringPage';
+import MarketplaceManagementPage from './pages/dashboards/superadmin/MarketplaceManagementPage';
+import NotificationManagementPage from './pages/dashboards/superadmin/NotificationManagementPage';
+import SystemSettingsPage from './pages/dashboards/superadmin/SystemSettingsPage';
+import AuditLogsPage from './pages/dashboards/superadmin/AuditLogsPage';
+
+import FarmerProductsPage from './pages/marketplace/FarmerProductsPage';
+import ProductApprovalPage from './pages/marketplace/ProductApprovalPage';
+import CustomerMarketplacePage from './pages/marketplace/CustomerMarketplacePage';
+import CartPage from './pages/marketplace/CartPage';
+import OrdersPage from './pages/marketplace/OrdersPage';
 
 export default function App() {
   return (
@@ -45,10 +72,101 @@ export default function App() {
       <Route path="/workforce" element={<WorkforceManagementPage />} />
       <Route path="/notifications" element={<NotificationsPage />} />
       <Route path="/reports" element={<ReportsAnalyticsPage />} />
+      {/* Super Admin subpages */}
+      <Route path="/dashboard/super-admin" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <SuperAdminDashboard />
+        </AppShell>
+      } />
+      <Route path="/dashboard/super-admin/users" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <UserManagementPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/super-admin/farms" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <FarmManagementPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/super-admin/farm-managers" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <FarmManagerManagementPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/super-admin/farmers" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <FarmerManagementPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/super-admin/crops" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <CropMonitoringPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/super-admin/livestock" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <LivestockMonitoringPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/super-admin/ai-advisory" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <AIAdvisoryMonitoringPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/super-admin/disease-detection" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <DiseaseDetectionMonitoringPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/super-admin/tasks-attendance" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <TaskAttendanceMonitoringPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/super-admin/salary-payment" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <SalaryPaymentMonitoringPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/super-admin/marketplace" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <MarketplaceManagementPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/super-admin/reports" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <ReportsAnalyticsPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/super-admin/notifications" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <NotificationManagementPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/super-admin/settings" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <SystemSettingsPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/super-admin/audit-logs" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <AuditLogsPage />
+        </AppShell>
+      } />
       {/* Farm Manager subpages */}
       <Route path="/dashboard/farm-manager/crops" element={
         <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
           <FarmManagerCropsPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/farm-manager/marketplace-approvals" element={
+        <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
+          <ProductApprovalPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/farm-manager/orders" element={
+        <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
+          <OrdersPage role="farm-manager" />
         </AppShell>
       } />
       <Route path="/dashboard/farm-manager/livestock" element={
@@ -86,10 +204,30 @@ export default function App() {
           <RecentFarmerUpdatesPage />
         </AppShell>
       } />
+      <Route path="/dashboard/farm-manager/salary-approval" element={
+        <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
+          <SalaryApprovalPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/farm-manager/salary-report" element={
+        <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
+          <SalaryReportPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/farm-manager/ai-chat" element={
+        <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
+          <AIChatPage />
+        </AppShell>
+      } />
       {/* Farmer Worker subpages */}
       <Route path="/dashboard/farmer-worker/tasks" element={
         <AppShell role="farmer-worker" items={publicNavItems['farmer-worker']}>
           <FarmerTasksPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/farmer-worker/marketplace" element={
+        <AppShell role="farmer-worker" items={publicNavItems['farmer-worker']}>
+          <FarmerProductsPage />
         </AppShell>
       } />
       <Route path="/dashboard/farmer-worker/crop-updates" element={
@@ -117,6 +255,33 @@ export default function App() {
           <FarmerProfilePage />
         </AppShell>
       } />
+      <Route path="/dashboard/farmer-worker/earnings" element={
+        <AppShell role="farmer-worker" items={publicNavItems['farmer-worker']}>
+          <MyEarningsPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/farmer-worker/ai-chat" element={
+        <AppShell role="farmer-worker" items={publicNavItems['farmer-worker']}>
+          <AIChatPage />
+        </AppShell>
+      } />
+      
+      <Route path="/dashboard/customer/marketplace" element={
+        <AppShell role="customer" items={publicNavItems['customer']}>
+          <CustomerMarketplacePage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/customer/cart" element={
+        <AppShell role="customer" items={publicNavItems['customer']}>
+          <CartPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/customer/orders" element={
+        <AppShell role="customer" items={publicNavItems['customer']}>
+          <OrdersPage role="customer" />
+        </AppShell>
+      } />
+
       {roleDashboards.map((dashboard) => (
         <Route
           key={dashboard.slug}

@@ -239,7 +239,7 @@ function WorkerBlocks() {
   // Fetch livestock data
   const fetchLivestock = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/livestock');
+      const response = await fetch('/api/livestock');
       if (!response.ok) {
         throw new Error('Failed to fetch livestock');
       }
@@ -253,7 +253,7 @@ function WorkerBlocks() {
   // Fetch groups for pen information
   const fetchGroups = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/groups');
+      const response = await fetch('/api/groups');
       if (!response.ok) {
         throw new Error('Failed to fetch groups');
       }

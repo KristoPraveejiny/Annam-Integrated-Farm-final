@@ -10,4 +10,5 @@ urlpatterns = [
     path('verify-signup-otp/', auth_views.verify_signup_otp, name='verify_signup_otp'),
     path('send-login-otp/', auth_views.send_login_otp, name='send_login_otp'),
     path('verify-login-otp/', auth_views.verify_login_otp, name='verify_login_otp'),
+    path('chat/', views.ChatAPIView.as_view(), name='chat'),
 ]

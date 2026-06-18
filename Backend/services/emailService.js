@@ -141,3 +141,69 @@ export async function sendTaskUpdateEmail(managerEmail, updateDetails) {
 
   return sendEmail({ to: managerEmail, subject, text: html.replace(/<[^>]+>/g, ''), html });
 }
+
+export async function sendSalaryPaymentEmail(farmerEmail, paymentDetails) {
+  const subject = 'Monthly Salary Payment Processed';
+  const html = `
+    <h2>Monthly Salary Payment Processed</h2>
+    <p>Dear ${paymentDetails.farmerName},</p>
+    <p>Your monthly salary payment for <strong>${paymentDetails.paymentMonth}</strong> has been processed.</p>
+    <ul>
+      <li><strong>Amount Paid:</strong> Rs. ${paymentDetails.amount}</li>
+      <li><strong>Payment Date:</strong> ${new Date(paymentDetails.paymentDate).toLocaleString()}</li>
+    </ul>
+    <p>Please check your dashboard for full payment details and history.</p>
+  `;
+
+  return sendEmail({ to: farmerEmail, subject, text: html.replace(/<[^>]+>/g, ''), html });
+}
+
+// Marketplace Email Functions
+export async function sendProductApprovedEmail(farmerEmail, productDetails) {
+  const subject = 'Your Product is Approved';
+  const html = `
+    <h2>Product Approved</h2>
+    <p>Your product <strong>${productDetails.productName}</strong> has been approved for the marketplace.</p>
+    <ul>
+      <li><strong>Selling Price:</strong> Rs. ${productDetails.price}</li>
+      <li><strong>Quantity:</strong> ${productDetails.quantity} ${productDetails.unit}</li>
+    </ul>
+    <p>It is now visible to customers.</p>
+  `;
+  return sendEmail({ to: farmerEmail, subject, text: html.replace(/<[^>]+>/g, ''), html });
+}
+
+export async function sendProductRejectedEmail(farmerEmail, productDetails) {
+  const subject = 'Your Product was Rejected';
+  const html = `
+    <h2>Product Rejected</h2>
+    <p>Your product submission for <strong>${productDetails.productName}</strong> was rejected.</p>
+    <p><strong>Reason:</strong> ${productDetails.remarks || 'No reason provided.'}</p>
+    <p>Please contact the farm manager for details.</p>
+  `;
+  return sendEmail({ to: farmerEmail, subject, text: html.replace(/<[^>]+>/g, ''), html });
+}
+
+export async function sendNewOrderEmail(customerEmail, orderDetails) {
+  const subject = 'Your Order has been Placed';
+  const html = `
+    <h2>Order Placed Successfully</h2>
+    <p>Thank you for your order!</p>
+    <ul>
+      <li><strong>Order ID:</strong> ${orderDetails.orderNumber}</li>
+      <li><strong>Total Amount:</strong> Rs. ${orderDetails.totalAmount}</li>
+      <li><strong>Status:</strong> ${orderDetails.status}</li>
+    </ul>
+    <p>We will notify you when it ships.</p>
+  `;
+  return sendEmail({ to: customerEmail, subject, text: html.replace(/<[^>]+>/g, ''), html });
+}
+
+export async function sendOrderStatusEmail(customerEmail, orderDetails) {
+  const subject = 'Order Status Updated';
+  const html = `
+    <h2>Order Status Update</h2>
+    <p>Your order <strong>${orderDetails.orderNumber}</strong> status has been updated to: <strong>${orderDetails.status}</strong>.</p>
+  `;
+  return sendEmail({ to: customerEmail, subject, text: html.replace(/<[^>]+>/g, ''), html });
+}

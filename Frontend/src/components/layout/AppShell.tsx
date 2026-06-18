@@ -32,7 +32,7 @@ export function AppShell({ role, items, children }: AppShellProps) {
         const tokenRaw = localStorage.getItem('token');
         const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
         if (!token) return;
-        const response = await fetch('http://localhost:5000/api/notifications', {
+        const response = await fetch('/api/notifications', {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (response.ok) {
@@ -53,7 +53,7 @@ export function AppShell({ role, items, children }: AppShellProps) {
       const tokenRaw = localStorage.getItem('token');
       const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
       if (!token) return;
-      await fetch(`http://localhost:5000/api/notifications/${id}/read`, {
+      await fetch(`/api/notifications/${id}/read`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -84,7 +84,7 @@ export function AppShell({ role, items, children }: AppShellProps) {
   }, []);
 
   return (
-    <div className="glass-bg min-h-screen text-white">
+    <div className="min-h-screen bg-gradient-to-br from-emerald-900 to-slate-800 text-white">
       <div className="flex min-h-screen">
         <aside className={`fixed inset-y-0 left-0 z-40 w-72 transform border-r border-white/15 bg-slate-950/35 backdrop-blur-2xl transition-transform duration-300 lg:static lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
           <div className="flex h-full flex-col px-5 py-6">

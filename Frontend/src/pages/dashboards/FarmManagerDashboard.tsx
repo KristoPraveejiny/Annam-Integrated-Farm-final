@@ -1,4 +1,6 @@
 // Farm Manager Dashboard – extracted from DashboardPage.tsx
+import { useNavigate } from 'react-router-dom';
+import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { SectionHeading } from '../../components/ui/SectionHeading';
@@ -9,6 +11,7 @@ import { chartSeries, alerts } from '../../data/mock';
 import { useState, useEffect } from 'react';
 
 export default function FarmManagerDashboard() {
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState<any[]>([]);
   const [recentUpdates, setRecentUpdates] = useState<any[]>([]);
 
@@ -20,8 +23,8 @@ export default function FarmManagerDashboard() {
         const headers = { Authorization: `Bearer ${token}` };
 
         const [tasksRes, obsRes] = await Promise.all([
-          fetch('http://localhost:5000/api/tasks/manager', { headers }),
-          fetch('http://localhost:5000/api/crop-observations/recent', { headers })
+          fetch('/api/tasks/manager', { headers }),
+          fetch('/api/crop-observations/recent', { headers })
         ]);
 
         if (tasksRes.ok) setTasks(await tasksRes.json());

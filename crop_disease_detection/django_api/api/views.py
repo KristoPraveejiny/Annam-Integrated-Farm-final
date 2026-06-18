@@ -8,6 +8,14 @@ from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
+import jwt
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .models import ChatSession, ChatMessage
+from .serializers import ChatSessionSerializer
+from .openrouter_service import generate_chat_response
+
 try:
     import tensorflow as tf
     TF_AVAILABLE = True
@@ -131,3 +139,65 @@ def predict_disease_view(request):
             {"error": f"Internal server error: {str(e)}"}, 
             status=500
         )
+
+class ChatAPIView(APIView):
+    def get_user_id(self, request):
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return None
+        token = auth_header.split(' ')[1]
+        try:
+            payload = jwt.decode(token, os.getenv('JWT_SECRET', getattr(settings, 'JWT_SECRET', 'defaultsecret')), algorithms=['HS256'])
+            return payload.get('userId')
+        except Exception:
+            return None
+
+    def get(self, request):
+        user_id = self.get_user_id(request)
+        if not user_id:
+            return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        sessions = ChatSession.objects.filter(user_id=user_id).order_by('-updated_at')
+        serializer = ChatSessionSerializer(sessions, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        user_id = self.get_user_id(request)
+        if not user_id:
+            return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        chat_id = request.data.get('chat_id')
+        message = request.data.get('message')
+        
+        if not message:
+            return Response({'error': 'Message is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            if chat_id:
+                try:
+                    session = ChatSession.objects.get(id=chat_id, user_id=user_id)
+                except ChatSession.DoesNotExist:
+                    return Response({'error': 'Chat not found'}, status=status.HTTP_404_NOT_FOUND)
+            else:
+                title = message[:30] + '...' if len(message) > 30 else message
+                session = ChatSession.objects.create(user_id=user_id, title=title)
+                
+            user_msg = ChatMessage.objects.create(chat=session, sender='USER', message=message)
+            
+            history = ChatMessage.objects.filter(chat=session).order_by('timestamp')
+            
+            ai_response_text = generate_chat_response(user_id, message, history)
+            
+            ai_msg = ChatMessage.objects.create(chat=session, sender='AI', message=ai_response_text)
+            
+            session.save()
+            
+            return Response({
+                'chat_id': session.id,
+                'reply': ai_response_text
+            })
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return Response({'error': f"Internal Server Error: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+

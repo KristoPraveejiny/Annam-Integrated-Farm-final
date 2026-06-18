@@ -21,7 +21,7 @@ export default function FarmerLivestockUpdatesPage() {
       try {
         const tokenRaw = localStorage.getItem('token');
         const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
-        const res = await fetch('http://localhost:5000/api/tasks/farmer', {
+        const res = await fetch('/api/tasks/farmer', {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {
@@ -64,7 +64,7 @@ export default function FarmerLivestockUpdatesPage() {
     formData.append('notes', activityNotes);
     if (activityImage) formData.append('image', activityImage);
     try {
-      const res = await fetch(`http://localhost:5000/api/tasks/${selectedTaskId}/updates`, {
+      const res = await fetch(`/api/tasks/${selectedTaskId}/updates`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData,

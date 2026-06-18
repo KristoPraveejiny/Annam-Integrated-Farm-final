@@ -35,13 +35,18 @@ export function verifyToken(req, res, next) {
     next();
   } catch (err) {
     console.error('JWT verification failed – token prefix:', token?.slice(0, 20) + '…', 'error:', err.message);
-    // Attempt a decoded payload without verification for debugging purposes
-    try {
-      const decoded = jwt.decode(token, { json: true });
-      console.warn('Decoded token payload (unverified):', decoded);
-    } catch (decodeErr) {
-      console.error('Token decode also failed:', decodeErr.message);
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token expired. Please login again.' });
     }
     return res.status(401).json({ error: 'Invalid token' });
   }
+}
+
+export function authorizeRole(roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ error: 'Access denied: insufficient permissions' });
+    }
+    next();
+  };
 }
