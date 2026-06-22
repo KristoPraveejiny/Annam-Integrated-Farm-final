@@ -74,6 +74,7 @@ export const publicNavItems = {
   ],
   'farm-manager': [
     { label: 'Dashboard', href: '/dashboard/farm-manager', icon: FiHome },
+    { label: 'Field Management', href: '/dashboard/farm-manager/fields', icon: FiMapPin },
     { label: 'Crops', href: '/dashboard/farm-manager/crops', icon: FiLayers },
     { label: 'Tasks', href: '/dashboard/farm-manager/tasks', icon: FiCheckCircle },
     { label: 'Livestock', href: '/dashboard/farm-manager/livestock', icon: FiUser },
@@ -96,10 +97,10 @@ export const publicNavItems = {
     { label: 'Crop Updates', href: '/dashboard/farmer-worker/crop-updates', icon: FiLayers },
     { label: 'Livestock Updates', href: '/dashboard/farmer-worker/livestock-updates', icon: FiHeart },
     { label: 'Livestock Management', href: '/dashboard/farmer-worker/livestock', icon: FiHeart },
-    { label: 'Weather Updates', href: '/ai-advisory', icon: FiCloud },
+    { label: 'Weather Updates', href: '/dashboard/farmer-worker/ai-advisory', icon: FiCloud },
     { label: 'Attendance', href: '/dashboard/farmer-worker/attendance', icon: FiActivity },
     { label: 'My Earnings', href: '/dashboard/farmer-worker/earnings', icon: FiDollarSign },
-    { label: 'Notifications', href: '/notifications', icon: FiBell },
+    { label: 'Notifications', href: '/dashboard/farmer-worker/notifications', icon: FiBell },
     { label: 'AI Chatbot', href: '/dashboard/farmer-worker/ai-chat', icon: FiMessageCircle },
     { label: 'Profile', href: '/dashboard/farmer-worker/profile', icon: FiUser },
     { label: 'Logout', href: '/', icon: FiMessageCircle },
@@ -110,7 +111,6 @@ export const publicNavItems = {
     { label: 'Cart', href: '/dashboard/customer/cart', icon: FiShoppingBag },
     { label: 'Orders & Payments', href: '/dashboard/customer/orders', icon: FiBox },
     { label: 'QR Verify', href: '/dashboard/customer#qr', icon: FiShield },
-    { label: 'Payments', href: '/dashboard/customer#payment', icon: FiDollarSign },
     { label: 'Logout', href: '/', icon: FiMessageCircle },
   ],
   'guest': [

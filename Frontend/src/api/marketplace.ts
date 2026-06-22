@@ -49,6 +49,11 @@ export const getManagerOrders = async (): Promise<any[]> => {
   return response.data as any[];
 };
 
+export const markOrderReceived = async (id: string): Promise<any> => {
+  const response = await axios.patch(`${API_BASE_URL}/manager/orders/${id}/received`, {}, getAuthHeaders());
+  return response.data;
+};
+
 // ==========================================
 // CUSTOMER FUNCTIONS
 // ==========================================
@@ -92,4 +97,9 @@ export const getOrderHistory = async (): Promise<any[]> => {
 export const getMarketplaceStats = async (): Promise<any> => {
   const response = await axios.get(`${API_BASE_URL}/admin/stats`, getAuthHeaders());
   return response.data;
+};
+
+export const getAdminOrders = async (): Promise<any[]> => {
+  const response = await axios.get(`${API_BASE_URL}/admin/orders`, getAuthHeaders());
+  return response.data as any[];
 };

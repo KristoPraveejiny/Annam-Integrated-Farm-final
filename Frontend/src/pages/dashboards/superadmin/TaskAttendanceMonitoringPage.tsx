@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card } from '../../../components/ui/Card';
 import { getAdminTasks } from '../../../api/admin';
 
@@ -17,6 +18,7 @@ interface Task {
 }
 
 export default function TaskAttendanceMonitoringPage() {
+  const { t } = useTranslation();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -39,7 +41,7 @@ export default function TaskAttendanceMonitoringPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Task & Attendance Monitoring</h1>
+      <h1 className="text-2xl font-bold text-gray-900">{t("Task & Attendance Monitoring")}</h1>
       <Card>
         {loading ? (
           <p className="text-gray-500 p-4">Loading tasks...</p>

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Card } from '../../../components/ui/Card';
 import { getUsers, updateUserStatus } from '../../../api/admin';
+import { useTranslation } from 'react-i18next';
 
 export default function UserManagementPage() {
+  const { t } = useTranslation();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -34,7 +36,7 @@ export default function UserManagementPage() {
   };
 
   return (
-    <Card title="User Management" subtitle="Manage all system users, roles, and access status">
+    <Card title={t("User Management")} subtitle={t("Manage all system users, roles, and access status")}>
       {loading ? (
         <div className="p-4 text-slate-500">Loading users...</div>
       ) : (
@@ -42,12 +44,12 @@ export default function UserManagementPage() {
           <table className="min-w-full divide-y divide-slate-100 text-left text-sm">
             <thead className="bg-slate-50 text-slate-500">
               <tr>
-                <th className="px-4 py-3 font-semibold">Name</th>
-                <th className="px-4 py-3 font-semibold">Email</th>
-                <th className="px-4 py-3 font-semibold">Role</th>
-                <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="px-4 py-3 font-semibold">Joined Date</th>
-                <th className="px-4 py-3 font-semibold text-right">Actions</th>
+                <th className="px-4 py-3 font-semibold">{t("Name")}</th>
+                <th className="px-4 py-3 font-semibold">{t("Email")}</th>
+                <th className="px-4 py-3 font-semibold">{t("Role")}</th>
+                <th className="px-4 py-3 font-semibold">{t("Status")}</th>
+                <th className="px-4 py-3 font-semibold">{t("Joined Date")}</th>
+                <th className="px-4 py-3 font-semibold text-right">{t("Actions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">

@@ -6,6 +6,7 @@ import {
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { SectionHeading } from '../components/ui/SectionHeading';
+import { useTranslation } from 'react-i18next';
 
 interface AnalysisResult {
   disease: string;
@@ -22,6 +23,7 @@ const SUPPORTED_CROPS = [
 ];
 
 export default function DiseaseDetectionPage() {
+  const { t } = useTranslation();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -135,9 +137,9 @@ Generated on ${new Date().toLocaleString()}`;
   return (
     <div className="section-shell py-10">
       <SectionHeading
-        eyebrow="Disease Detection"
-        title="Crop Disease Detection"
-        description="Upload a crop leaf image to receive AI-powered disease diagnosis and treatment recommendations."
+        eyebrow={t("Disease Detection")}
+        title={t("Crop Disease Detection")}
+        description={t("Upload a crop leaf image to receive AI-powered disease diagnosis and treatment recommendations.")}
         tone="light"
       />
 
@@ -146,10 +148,9 @@ Generated on ${new Date().toLocaleString()}`;
         <div className="flex items-start gap-3">
           <FiInfo className="mt-0.5 shrink-0 text-lg text-blue-600" />
           <div>
-            <p className="font-semibold text-blue-800">Supported Crop Types</p>
+            <p className="font-semibold text-blue-800">{t("Supported Crop Types")}</p>
             <p className="mt-0.5 text-sm text-blue-700">
-              This AI model is trained on the PlantVillage dataset and can only detect diseases
-              for the following crops. Uploading a leaf from a different plant may give incorrect results.
+              {t("This AI model is trained on the PlantVillage dataset and can only detect diseases for the following crops. Uploading a leaf from a different plant may give incorrect results.")}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {SUPPORTED_CROPS.map((crop) => (
@@ -167,7 +168,7 @@ Generated on ${new Date().toLocaleString()}`;
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         {/* ── Left: Upload Area ─────────────────────────────────────────── */}
-        <Card title="Image Upload" subtitle="Drag and drop area">
+        <Card title={t("Image Upload")} subtitle={t("Drag and drop area")}>
           <input
             type="file"
             ref={fileInputRef}
@@ -189,12 +190,12 @@ Generated on ${new Date().toLocaleString()}`;
             <FiUploadCloud
               className={`text-6xl transition duration-300 ${isDragging ? 'text-emerald-700 animate-bounce' : 'text-emerald-600'}`}
             />
-            <p className="mt-4 text-lg font-bold text-slate-900">Drag and drop crop leaf image here</p>
+            <p className="mt-4 text-lg font-bold text-slate-900">{t("Drag and drop crop leaf image here")}</p>
             <p className="mt-2 text-sm text-slate-600">
-              Supported: JPG, PNG, high-resolution field photos.
+              {t("Supported: JPG, PNG, high-resolution field photos.")}
             </p>
             <p className="mt-1 text-xs text-amber-600 font-medium">
-              ⚠ Only upload leaves from the supported crop types listed above.
+              ⚠ {t("Only upload leaves from the supported crop types listed above.")}
             </p>
             <Button
               theme="light"
@@ -202,7 +203,7 @@ Generated on ${new Date().toLocaleString()}`;
               className="mt-5"
               onClick={(e) => { e.stopPropagation(); handleBoxClick(); }}
             >
-              Choose File
+              {t("Choose File")}
             </Button>
           </div>
         </Card>
@@ -210,7 +211,7 @@ Generated on ${new Date().toLocaleString()}`;
         {/* ── Right: Preview + Results ──────────────────────────────────── */}
         <div className="space-y-6">
           {/* Preview */}
-          <Card title="Preview Image" subtitle="Selected file preview">
+          <Card title={t("Preview Image")} subtitle={t("Selected file preview")}>
             <div className="relative flex h-56 w-full items-center justify-center overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-100 via-lime-50 to-white border border-emerald-100">
               {previewUrl ? (
                 <>
@@ -224,13 +225,13 @@ Generated on ${new Date().toLocaleString()}`;
                   </button>
                 </>
               ) : (
-                <p className="text-sm text-slate-500">No image selected. Upload a crop leaf photo to start.</p>
+                <p className="text-sm text-slate-500">{t("No image selected. Upload a crop leaf photo to start.")}</p>
               )}
             </div>
           </Card>
 
           {/* AI Analysis */}
-          <Card title="AI Analysis" subtitle="Disease detection result">
+          <Card title={t("AI Analysis")} subtitle={t("Disease detection result")}>
             <div className="space-y-4">
 
               {/* Loading */}

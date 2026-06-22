@@ -711,6 +711,18 @@ CREATE TABLE IF NOT EXISTS monthly_salary_payments (
     updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS contact_messages (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    full_name text NOT NULL,
+    email text NOT NULL,
+    phone text,
+    subject text NOT NULL,
+    message text NOT NULL,
+    status text NOT NULL DEFAULT 'new',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -753,7 +765,8 @@ BEGIN
         'auth_verification_codes',
         'auth_refresh_tokens',
         'system_settings',
-        'monthly_salary_payments'
+        'monthly_salary_payments',
+        'contact_messages'
     ] LOOP
         EXECUTE format('DROP TRIGGER IF EXISTS trg_%I_updated_at ON %I', table_name, table_name);
         EXECUTE format(
@@ -790,6 +803,9 @@ CREATE INDEX IF NOT EXISTS idx_marketplace_reviews_product_id ON marketplace_rev
 CREATE INDEX IF NOT EXISTS idx_auth_verification_codes_user_id ON auth_verification_codes(user_id);
 CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_user_id ON auth_refresh_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_actor_user_id ON audit_logs(actor_user_id);
+CREATE INDEX IF NOT EXISTS idx_contact_messages_email ON contact_messages(email);
+CREATE INDEX IF NOT EXISTS idx_contact_messages_status ON contact_messages(status);
+CREATE INDEX IF NOT EXISTS idx_contact_messages_created_at ON contact_messages(created_at);
 C R E A T E   T A B L E   I F   N O T   E X I S T S   c h a t _ s e s s i o n s   ( 
          i d   u u i d   P R I M A R Y   K E Y   D E F A U L T   g e n _ r a n d o m _ u u i d ( ) , 
          u s e r _ i d   u u i d   N O T   N U L L   R E F E R E N C E S   a p p _ u s e r s ( i d )   O N   D E L E T E   C A S C A D E , 

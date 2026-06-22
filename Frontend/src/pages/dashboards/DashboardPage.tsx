@@ -6,6 +6,7 @@ import { Card } from '../../components/ui/Card';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { alerts, chartSeries, marketplaceProducts, metrics, tasks } from '../../data/mock';
+import { useTranslation } from 'react-i18next';
 
 type DashboardInfo = {
   title: string;
@@ -27,36 +28,37 @@ const pieData = [
 const colors = ['#059669', '#22c55e', '#84cc16', '#16a34a'];
 
 export default function DashboardPage({ dashboard }: DashboardPageProps) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-8">
       <SectionHeading
-        eyebrow="Dashboard"
-        title={dashboard.title}
-        description={dashboard.description}
+        eyebrow={t("Dashboard")}
+        title={t(dashboard.title)}
+        description={t(dashboard.description)}
         tone="light"
       />
 
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
         {metrics.map((metric) => (
-          <StatTile key={metric.label} label={metric.label} value={metric.value} delta={metric.delta} />
+          <StatTile key={metric.label} label={t(metric.label)} value={metric.value} delta={t(metric.delta)} />
         ))}
       </div>
 
       {dashboard.role === 'super-admin' ? <SuperAdminBlocks /> : null}
       {dashboard.role === 'farm-manager' ? <FarmManagerBlocks /> : null}
       {dashboard.role === 'farmer-worker' ? <WorkerBlocks /> : null}
-      {dashboard.role === 'customer' ? <CustomerBlocks /> : null}
       {dashboard.role === 'guest' ? <GuestBlocks /> : null}
     </div>
   );
 }
 
 function StatTile({ label, value, delta }: { label: string; value: string; delta: string }) {
+  const { t } = useTranslation();
   return (
     <Card>
-      <p className="text-sm font-medium text-slate-500">{label}</p>
+      <p className="text-sm font-medium text-slate-500">{t(label)}</p>
       <p className="mt-3 text-3xl font-black text-slate-900">{value}</p>
-      <p className="mt-2 text-sm font-semibold text-emerald-600">{delta}</p>
+      <p className="mt-2 text-sm font-semibold text-emerald-600">{t(delta)}</p>
     </Card>
   );
 }
@@ -70,9 +72,10 @@ function ChartPanel({ title, children }: { title: string; children: ReactNode })
 }
 
 function SuperAdminBlocks() {
+  const { t } = useTranslation();
   return (
     <div className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
-      <ChartPanel title="System Analytics">
+      <ChartPanel title={t("System Analytics")}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartSeries}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -86,7 +89,7 @@ function SuperAdminBlocks() {
         </ResponsiveContainer>
       </ChartPanel>
 
-      <Card title="Security Logs" subtitle="Recent events and configuration status">
+      <Card title={t("Security Logs")} subtitle={t("Recent events and configuration status")}>
         <div className="space-y-4">
           {[
             ['2FA enabled for 32 users', 'System'],
@@ -105,7 +108,7 @@ function SuperAdminBlocks() {
         </div>
       </Card>
 
-      <Card title="User Management" subtitle="Admins, managers, workers, and customers">
+      <Card title={t("User Management")} subtitle={t("Admins, managers, workers, and customers")}>
         <div className="overflow-hidden rounded-2xl border border-slate-100">
           <table className="min-w-full divide-y divide-slate-100 text-left text-sm">
             <thead className="bg-slate-50 text-slate-500">
@@ -133,7 +136,7 @@ function SuperAdminBlocks() {
         </div>
       </Card>
 
-      <Card title="AI & Weather Configuration" subtitle="API settings, thresholds, and smart alerts">
+      <Card title={t("AI & Weather Configuration")} subtitle={t("API settings, thresholds, and smart alerts")}>
         <div className="grid gap-4 sm:grid-cols-2">
           <ConfigCard title="Weather API" icon={<FiCloud />} value="Enabled" />
           <ConfigCard title="AI Models" icon={<FiCpu />} value="Live" />
@@ -142,7 +145,7 @@ function SuperAdminBlocks() {
         </div>
       </Card>
 
-      <ChartPanel title="Role Distribution">
+      <ChartPanel title={t("Role Distribution")}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie data={pieData} dataKey="value" nameKey="name" innerRadius={62} outerRadius={90} paddingAngle={4}>
@@ -160,74 +163,23 @@ function SuperAdminBlocks() {
 }
 
 function FarmManagerBlocks() {
+  const { t } = useTranslation();
   return (
-    <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-      <div className="grid gap-6">
-        <Card title="Crop Overview" subtitle="Field health and growth progress">
-          <div className="space-y-5">
-            <ProgressBar value={82} label="Rice block" />
-            <ProgressBar value={68} label="Vegetable block" />
-            <ProgressBar value={91} label="Fruit orchard" />
-          </div>
-        </Card>
-        <Card title="Livestock Overview" subtitle="Health, feed, and production tracking">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <MiniMetric label="Healthy" value="126" />
-            <MiniMetric label="Feeding due" value="18" />
-            <MiniMetric label="Milk yield" value="1,240L" />
-          </div>
-        </Card>
-        <Card title="Task Progress Cards" subtitle="Work allocation across teams">
-          <div className="grid gap-4 md:grid-cols-2">
-            {tasks.map((task) => (
-              <div key={task.title} className="rounded-3xl border border-slate-100 p-4">
-                <div className="flex items-center justify-between">
-                  <p className="font-semibold text-slate-900">{task.title}</p>
-                  <span className="text-xs text-slate-500">{task.assignee}</span>
-                </div>
-                <div className="mt-3"><ProgressBar value={task.progress} /></div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      <div className="grid gap-6">
-        <Card title="Calendar View" subtitle="Upcoming field events">
-          <div className="grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-500">
-            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day) => <span key={day}>{day}</span>)}
-            {Array.from({ length: 28 }, (_, index) => index + 1).map((date) => (
-              <div key={date} className={`rounded-2xl p-2 ${date === 18 ? 'bg-emerald-600 text-white' : 'bg-slate-50 text-slate-700'}`}>{date}</div>
-            ))}
-          </div>
-        </Card>
-        <Card title="Farm Activity Timeline" subtitle="Latest operational updates">
-          <div className="space-y-4">
-            {[
-              ['08:00', 'Irrigation started in Block A'],
-              ['10:15', 'Disease alert reviewed by manager'],
-              ['12:30', 'Harvest batch packed for marketplace'],
-              ['15:20', 'Salary approvals completed'],
-            ].map(([time, text]) => (
-              <div key={time} className="flex gap-4 rounded-2xl border border-slate-100 p-4">
-                <span className="min-w-16 text-sm font-semibold text-emerald-700">{time}</span>
-                <p className="text-sm text-slate-600">{text}</p>
-              </div>
-            ))}
-          </div>
-        </Card>
-        <ChartPanel title="Productivity Chart">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartSeries}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="month" stroke="#64748b" />
-              <YAxis stroke="#64748b" />
-              <Tooltip />
-              <Bar dataKey="productivity" fill="#16a34a" radius={[10, 10, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartPanel>
-      </div>
+    <div className="grid gap-6 xl:grid-cols-2">
+      <Card title={t("Crop Overview")} subtitle={t("Field health and growth progress")}>
+        <div className="space-y-5">
+          <ProgressBar value={82} label="Rice block" />
+          <ProgressBar value={68} label="Vegetable block" />
+          <ProgressBar value={91} label="Fruit orchard" />
+        </div>
+      </Card>
+      <Card title={t("Livestock Overview")} subtitle={t("Health, feed, and production tracking")}>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <MiniMetric label="Healthy" value="126" />
+          <MiniMetric label="Feeding due" value="18" />
+          <MiniMetric label="Milk yield" value="1,240L" />
+        </div>
+      </Card>
     </div>
   );
 }
@@ -341,42 +293,6 @@ function WorkerBlocks() {
 }
 
 
-function CustomerBlocks() {
-  return (
-    <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-      <Card title="Product Browsing" subtitle="Premium ecommerce-style product discovery">
-        <div className="grid gap-4 md:grid-cols-2">
-          {marketplaceProducts.slice(0, 4).map((product) => (
-            <div key={product.name} className="rounded-3xl border border-slate-100 p-4">
-              <div className="h-36 rounded-2xl bg-gradient-to-br from-emerald-100 via-lime-50 to-white" />
-              <p className="mt-3 font-semibold text-slate-900">{product.name}</p>
-              <p className="text-sm text-slate-500">{product.category}</p>
-              <div className="mt-3 flex items-center justify-between">
-                <span className="text-emerald-700">{product.price}</span>
-                <span className="text-sm text-slate-500">{product.rating} ★</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-      <div className="grid gap-6">
-        <Card title="Order Tracking" subtitle="Live order status">
-          <div className="space-y-4">
-            <ProgressBar value={78} label="Order packed" />
-            <ProgressBar value={54} label="Out for delivery" />
-            <ProgressBar value={96} label="Payment verified" />
-          </div>
-        </Card>
-        <Card title="QR Verification" subtitle="Traceability and authenticity">
-          <div className="grid place-items-center rounded-3xl border-2 border-dashed border-emerald-200 bg-emerald-50 p-8">
-            <FiGrid className="text-5xl text-emerald-600" />
-            <p className="mt-3 text-center text-sm text-slate-600">Scan product QR to confirm source, batch, and freshness.</p>
-          </div>
-        </Card>
-      </div>
-    </div>
-  );
-}
 
 function GuestBlocks() {
   return (

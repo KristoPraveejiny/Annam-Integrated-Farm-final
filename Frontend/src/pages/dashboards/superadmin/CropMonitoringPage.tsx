@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card } from '../../../components/ui/Card';
 import { getAdminCrops } from '../../../api/admin';
 
@@ -19,6 +20,7 @@ interface Crop {
 }
 
 export default function CropMonitoringPage() {
+  const { t } = useTranslation();
   const [crops, setCrops] = useState<Crop[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -41,7 +43,7 @@ export default function CropMonitoringPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Crop Monitoring</h1>
+      <h1 className="text-2xl font-bold text-gray-900">{t("Crop Monitoring")}</h1>
       <Card>
         {loading ? (
           <p className="text-gray-500 p-4">Loading crops...</p>
@@ -54,11 +56,11 @@ export default function CropMonitoringPage() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Crop</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dates</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stage & Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expected Yield</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Crop")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Location")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Dates")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Stage & Status")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Expected Yield")}</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">

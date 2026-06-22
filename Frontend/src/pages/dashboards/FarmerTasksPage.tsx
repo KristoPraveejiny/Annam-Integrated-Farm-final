@@ -3,8 +3,10 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { FiCheckCircle, FiClock, FiMessageSquare } from 'react-icons/fi';
+import { useTranslation } from 'react-i18next';
 
 export default function FarmerTasksPage() {
+  const { t } = useTranslation();
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -133,54 +135,54 @@ export default function FarmerTasksPage() {
 
   return (
     <div className="space-y-6 pb-20">
-      <SectionHeading eyebrow="My Tasks" title="Assigned Tasks" description="View and update your daily farm operations." tone="light" />
+      <SectionHeading eyebrow={t("My Tasks")} title={t("Assigned Tasks")} description={t("View and update your daily farm operations.")} tone="light" />
 
 
 
-      <Card title="Task List" subtitle="Manage your ongoing tasks">
+      <Card title={t("Task List")} subtitle={t("Manage your ongoing tasks")}>
         <div className="overflow-x-auto rounded-2xl border border-white/10 shadow-xl mt-4">
           <table className="min-w-full text-left text-sm text-slate-300">
             <thead className="bg-slate-900/90 text-white font-semibold">
               <tr>
-                <th className="px-6 py-4">Task Name</th>
-                <th className="px-6 py-4">Crop</th>
-                <th className="px-6 py-4">Priority</th>
-                <th className="px-6 py-4">Due Date</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4 text-right">Actions</th>
+                <th className="px-6 py-4">{t("Task Name")}</th>
+                <th className="px-6 py-4">{t("Crop")}</th>
+                <th className="px-6 py-4">{t("Priority")}</th>
+                <th className="px-6 py-4">{t("Due Date")}</th>
+                <th className="px-6 py-4">{t("Status")}</th>
+                <th className="px-6 py-4 text-right">{t("Actions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 bg-slate-950/60">
               {loading ? (
-                <tr><td colSpan={6} className="px-6 py-4 text-center">Loading tasks...</td></tr>
+                <tr><td colSpan={6} className="px-6 py-4 text-center">{t("Loading tasks...")}</td></tr>
               ) : tasks.length === 0 ? (
-                <tr><td colSpan={6} className="px-6 py-4 text-center">No tasks assigned.</td></tr>
+                <tr><td colSpan={6} className="px-6 py-4 text-center">{t("No tasks assigned.")}</td></tr>
               ) : (
-                tasks.map(t => (
-                  <tr key={t.id} className="hover:bg-white/5 transition-colors">
+                tasks.map(task => (
+                  <tr key={task.id} className="hover:bg-white/5 transition-colors">
                     <td className="px-6 py-4 font-bold text-white">
-                      {t.title}
-                      {t.description && <p className="text-xs text-slate-400 font-normal mt-1">{t.description}</p>}
+                      {t(task.title)}
+                      {task.description && <p className="text-xs text-slate-400 font-normal mt-1">{task.description}</p>}
                     </td>
-                    <td className="px-6 py-4">{t.crop_name || 'N/A'}</td>
-                    <td className="px-6 py-4 capitalize">{t.priority}</td>
-                    <td className="px-6 py-4">{t.due_date ? new Date(t.due_date).toLocaleDateString() : 'N/A'}</td>
+                    <td className="px-6 py-4">{task.crop_name || t('N/A')}</td>
+                    <td className="px-6 py-4 capitalize">{t(task.priority)}</td>
+                    <td className="px-6 py-4">{task.due_date ? new Date(task.due_date).toLocaleDateString() : t('N/A')}</td>
                     <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
-                        t.status === 'done' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 
-                        t.status === 'in_progress' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 
+                        task.status === 'done' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 
+                        task.status === 'in_progress' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 
                         'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                      }`}>{t.status.replace('_', ' ')}</span>
+                      }`}>{task.status.replace('_', ' ')}</span>
                     </td>
                     <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
-                      {t.status === 'todo' && (
-                        <Button variant="ghost" onClick={() => updateTaskStatus(t.id, 'in_progress')} className="!p-2 text-blue-400 hover:text-blue-300" title="Start Task">
-                          <FiClock className="mr-1 inline" /> Start
+                      {task.status === 'todo' && (
+                        <Button variant="ghost" onClick={() => updateTaskStatus(task.id, 'in_progress')} className="!p-2 text-blue-400 hover:text-blue-300" title="Start Task">
+                          <FiClock className="mr-1 inline" /> {t("Start")}
                         </Button>
                       )}
-                      {(t.status === 'todo' || t.status === 'in_progress') && (
-                        <Button variant="ghost" onClick={() => updateTaskStatus(t.id, 'done', t.crop_cycle_id)} className="!p-2 text-emerald-400 hover:text-emerald-300" title="Mark Complete">
-                          <FiCheckCircle className="mr-1 inline" /> Complete
+                      {(task.status === 'todo' || task.status === 'in_progress') && (
+                        <Button variant="ghost" onClick={() => updateTaskStatus(task.id, 'done', task.crop_cycle_id)} className="!p-2 text-emerald-400 hover:text-emerald-300" title="Mark Complete">
+                          <FiCheckCircle className="mr-1 inline" /> {t("Complete")}
                         </Button>
                       )}
                     </td>
@@ -196,11 +198,11 @@ export default function FarmerTasksPage() {
       {showCropModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-slate-900 border border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]">
-            <h3 className="text-2xl font-bold text-white mb-6">Task Completed! Update Crop Status?</h3>
-            <p className="text-slate-300 mb-4 text-sm">Since this task is related to a crop, you can log an observation now.</p>
+            <h3 className="text-2xl font-bold text-white mb-6">{t("Task Completed! Update Crop Status?")}</h3>
+            <p className="text-slate-300 mb-4 text-sm">{t("Since this task is related to a crop, you can log an observation now.")}</p>
             <form onSubmit={handleCropSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Growth Stage</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">{t("Growth Stage")}</label>
                 <input
                   type="text"
                   value={cropFormData.growthStage}
@@ -212,7 +214,7 @@ export default function FarmerTasksPage() {
 
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Health (1-10)</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">{t("Health (1-10)")}</label>
                   <input
                     type="number"
                     min="1" max="10"
@@ -222,7 +224,7 @@ export default function FarmerTasksPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Moisture (1-10)</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">{t("Moisture (1-10)")}</label>
                   <input
                     type="number"
                     min="1" max="10"
@@ -232,7 +234,7 @@ export default function FarmerTasksPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Pest Risk (1-10)</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">{t("Pest Risk (1-10)")}</label>
                   <input
                     type="number"
                     min="1" max="10"
@@ -244,13 +246,13 @@ export default function FarmerTasksPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Notes</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">{t("Notes")}</label>
                 <textarea
                   rows={3}
                   value={cropFormData.notes}
                   onChange={e => setCropFormData({...cropFormData, notes: e.target.value})}
                   className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
-                  placeholder="Any signs of disease, pests, or issues?"
+                  placeholder={t("Any signs of disease, pests, or issues?")}
                 />
               </div>
 
@@ -258,8 +260,8 @@ export default function FarmerTasksPage() {
                 <Button variant="ghost" type="button" onClick={() => {
                   setShowCropModal(false);
                   fetchTasks(); // refresh to show as completed
-                }}>Skip</Button>
-                <Button type="submit">Save Observation</Button>
+                }}>{t("Skip")}</Button>
+                <Button type="submit">{t("Save Observation")}</Button>
               </div>
             </form>
           </div>

@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Card } from '../../components/ui/Card';
 import { SectionHeading } from '../../components/ui/SectionHeading';
+import { useTranslation } from 'react-i18next';
 
 export default function RecentFarmerUpdatesPage() {
+  const { t } = useTranslation();
   const [recentUpdates, setRecentUpdates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -31,17 +33,17 @@ export default function RecentFarmerUpdatesPage() {
   return (
     <div className="space-y-6 pb-20">
       <SectionHeading
-        eyebrow="Farm Monitoring"
-        title="Farmer Updates"
-        description="View latest completed task notes and images from the field."
+        eyebrow={t("Farm Monitoring")}
+        title={t("Farmer Updates")}
+        description={t("View latest completed task notes and images from the field.")}
         tone="light"
       />
 
-      <Card title="Recent Farmer Updates" subtitle="Latest completed task notes and images from the field">
+      <Card title={t("Recent Farmer Updates")} subtitle={t("Latest completed task notes and images from the field")}>
         {loading ? (
-          <div className="text-center text-slate-500 py-8">Loading updates...</div>
+          <div className="text-center text-slate-500 py-8">{t("Loading updates...")}</div>
         ) : recentUpdates.length === 0 ? (
-          <div className="text-center text-slate-500 py-8">No recent updates.</div>
+          <div className="text-center text-slate-500 py-8">{t("No recent updates.")}</div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {recentUpdates.map((update: any) => (
@@ -51,8 +53,8 @@ export default function RecentFarmerUpdatesPage() {
                     <h4 className="text-emerald-400 font-bold truncate pr-2" title={update.task_title}>{update.task_title}</h4>
                     <span className="text-xs text-slate-500 whitespace-nowrap">{new Date(update.created_at).toLocaleDateString()}</span>
                   </div>
-                  <p className="text-sm text-slate-300 font-medium mb-1"><span className="text-slate-500">Farmer:</span> {update.farmer_name}</p>
-                  <p className="text-sm text-white/80 line-clamp-3 mb-4">{update.notes || 'No additional notes provided.'}</p>
+                  <p className="text-sm text-slate-300 font-medium mb-1"><span className="text-slate-500">{t("Farmer:")}</span> {update.farmer_name}</p>
+                  <p className="text-sm text-white/80 line-clamp-3 mb-4">{update.notes || t("No additional notes provided.")}</p>
                 </div>
                 {update.image_url && (
                   <div className="mt-2 h-32 rounded-xl overflow-hidden border border-white/10 relative group">

@@ -3,25 +3,27 @@ import { FiBell, FiCloud, FiClock, FiShoppingBag } from 'react-icons/fi';
 import { Card } from '../components/ui/Card';
 import { SectionHeading } from '../components/ui/SectionHeading';
 import { alerts } from '../data/mock';
+import { useTranslation } from 'react-i18next';
 
 export default function NotificationsPage() {
+  const { t } = useTranslation();
   return (
     <div className="section-shell py-10">
-      <SectionHeading eyebrow="Notifications" title="Notification center" description="Weather alerts, task reminders, disease alerts, and order notifications in one streamlined inbox." tone="light" />
+      <SectionHeading eyebrow={t("Notifications")} title={t("Notification center")} description={t("Weather alerts, task reminders, disease alerts, and order notifications in one streamlined inbox.")} tone="light" />
 
       <div className="grid gap-6 lg:grid-cols-2">
         {alerts.map((alert) => (
-          <Card key={alert.title} title={alert.title} subtitle="Alert card">
-            <p className="text-sm text-slate-600">{alert.description}</p>
+          <Card key={alert.title} title={t(alert.title)} subtitle={t("Alert card")}>
+            <p className="text-sm text-slate-600">{t(alert.description)}</p>
           </Card>
         ))}
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-4">
-        <MiniAlert icon={<FiCloud />} title="Weather alerts" />
-        <MiniAlert icon={<FiClock />} title="Task reminders" />
-        <MiniAlert icon={<FiBell />} title="Disease alerts" />
-        <MiniAlert icon={<FiShoppingBag />} title="Order notifications" />
+        <MiniAlert icon={<FiCloud />} title={t("Weather alerts")} />
+        <MiniAlert icon={<FiClock />} title={t("Task reminders")} />
+        <MiniAlert icon={<FiBell />} title={t("Disease alerts")} />
+        <MiniAlert icon={<FiShoppingBag />} title={t("Order notifications")} />
       </div>
     </div>
   );

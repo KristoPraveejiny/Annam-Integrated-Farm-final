@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { getMarketplaceProducts, addToCart } from '../../api/marketplace';
+import { useTranslation } from 'react-i18next';
 
 export default function CustomerMarketplacePage() {
+  const { t } = useTranslation();
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -51,24 +53,24 @@ export default function CustomerMarketplacePage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
-        <h1 className="text-2xl font-bold text-gray-900">Farm Marketplace</h1>
+        <h1 className="text-2xl font-bold text-gray-900">{t("Farm Marketplace")}</h1>
         <div className="flex space-x-4 w-full md:w-auto">
           <select value={category} onChange={(e) => setCategory(e.target.value)} className="rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 text-slate-900 bg-white">
-            <option value="">All Categories</option>
-            <option value="Vegetable">Vegetables</option>
-            <option value="Fruit">Fruits</option>
-            <option value="Dairy">Dairy</option>
-            <option value="Meat">Meat</option>
+            <option value="">{t("All Categories")}</option>
+            <option value="Vegetable">{t("Vegetable")}</option>
+            <option value="Fruit">{t("Fruit")}</option>
+            <option value="Dairy">{t("Dairy")}</option>
+            <option value="Meat">{t("Meat")}</option>
           </select>
           <form onSubmit={handleSearch} className="flex flex-1 md:w-64">
             <input 
               type="text" 
-              placeholder="Search products..." 
+              placeholder={t("Search products...")} 
               value={search} 
               onChange={(e) => setSearch(e.target.value)}
               className="rounded-l-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 flex-1 text-slate-900 bg-white placeholder-gray-500"
             />
-            <Button type="submit" className="rounded-l-none inline-flex items-center justify-center px-5 py-3 text-sm font-semibold tracking-wide transition duration-300 border border-emerald-500/20 bg-emerald-600 text-white shadow-[0_12px_30px_rgba(16,185,129,0.22)] hover:bg-emerald-700">Search</Button>
+            <Button type="submit" className="rounded-l-none inline-flex items-center justify-center px-5 py-3 text-sm font-semibold tracking-wide transition duration-300 border border-emerald-500/20 bg-emerald-600 text-white shadow-[0_12px_30px_rgba(16,185,129,0.22)] hover:bg-emerald-700">{t("Search")}</Button>
           </form>
         </div>
       </div>
@@ -101,7 +103,7 @@ export default function CustomerMarketplacePage() {
                 <p className="text-sm text-gray-500 mt-1">{p.farm_name}</p>
                 <p className="text-xs text-gray-500 mt-2 mb-4 flex-1 line-clamp-2">{p.description}</p>
                 <div className="flex justify-between items-center mt-auto pt-4 border-t border-gray-100">
-                  <span className="text-sm text-gray-600 font-medium">{p.available_quantity} {p.unit} available</span>
+                  <span className="text-sm text-gray-600 font-medium">{p.available_quantity} {p.unit} {t("available")}</span>
                   <div className="flex items-center gap-2">
                     <input 
                       type="number" 
@@ -111,7 +113,7 @@ export default function CustomerMarketplacePage() {
                       onChange={(e) => handleQuantityChange(p.id, e.target.value)} 
                       className="w-16 h-10 px-2 text-sm rounded-md border border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 text-slate-900 bg-white"
                     />
-                    <Button onClick={() => handleAddToCart(p.id)} theme="light">Add</Button>
+                    <Button onClick={() => handleAddToCart(p.id)} theme="light">{t("Add")}</Button>
                   </div>
                 </div>
               </div>

@@ -4,10 +4,12 @@ import { ChartPanel } from '../../components/ui/ChartPanel';
 import { FiUsers, FiLayers, FiAlertTriangle, FiCheckCircle, FiCloud, FiHeart } from 'react-icons/fi';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recharts';
 import { getDashboardOverview } from '../../api/admin';
+import { useTranslation } from 'react-i18next';
 
 const colors = ['#059669', '#10b981', '#34d399', '#6ee7b7'];
 
 export default function SuperAdminDashboard() {
+  const { t } = useTranslation();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -27,81 +29,81 @@ export default function SuperAdminDashboard() {
   };
 
   if (loading) {
-    return <div className="p-8 text-center text-slate-500">Loading dashboard...</div>;
+    return <div className="p-8 text-center text-slate-500">{t("Loading dashboard...")}</div>;
   }
 
   if (!data) {
-    return <div className="p-8 text-center text-red-500">Failed to load dashboard data.</div>;
+    return <div className="p-8 text-center text-red-500">{t("Failed to load dashboard data.")}</div>;
   }
 
   const userPieData = [
-    { name: 'Farmers', value: data.users.farmers },
-    { name: 'Managers', value: data.users.managers },
-    { name: 'Customers', value: data.users.customers },
-    { name: 'Admins', value: data.users.admins },
+    { name: t('Farmers'), value: data.users.farmers },
+    { name: t('Managers'), value: data.users.managers },
+    { name: t('Customers'), value: data.users.customers },
+    { name: t('Admins'), value: data.users.admins },
   ];
 
   return (
     <div className="space-y-6">
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
         <StatTile 
-          title="Users Overview" 
+          title={t("Users Overview")} 
           icon={<FiUsers className="text-emerald-600" />}
           items={[
-            { label: 'Total Users', value: data.users.total },
-            { label: 'Farmers', value: data.users.farmers },
-            { label: 'Managers', value: data.users.managers },
+            { label: t('Total Users'), value: data.users.total },
+            { label: t('Farmers'), value: data.users.farmers },
+            { label: t('Managers'), value: data.users.managers },
           ]}
         />
         <StatTile 
-          title="Farms Overview" 
+          title={t("Farms Overview")} 
           icon={<FiLayers className="text-emerald-600" />}
           items={[
-            { label: 'Total Farms', value: data.farms.total },
-            { label: 'Active Farms', value: data.farms.active },
-            { label: 'Total Area (Acres)', value: data.farms.total_area },
+            { label: t('Total Farms'), value: data.farms.total },
+            { label: t('Active Farms'), value: data.farms.active },
+            { label: t('Total Area (Acres)'), value: data.farms.total_area },
           ]}
         />
         <StatTile 
-          title="Crops Overview" 
+          title={t("Crops Overview")} 
           icon={<FiLayers className="text-emerald-600" />}
           items={[
-            { label: 'Total Crops', value: data.crops.total },
-            { label: 'Growing Crops', value: data.crops.growing },
-            { label: 'Harvest Ready', value: data.crops.harvest_ready },
+            { label: t('Total Crops'), value: data.crops.total },
+            { label: t('Growing Crops'), value: data.crops.growing },
+            { label: t('Harvest Ready'), value: data.crops.harvest_ready },
           ]}
         />
         <StatTile 
-          title="Livestock Overview" 
+          title={t("Livestock Overview")} 
           icon={<FiHeart className="text-emerald-600" />}
           items={[
-            { label: 'Total Animals', value: data.livestock.total },
-            { label: 'Healthy Animals', value: data.livestock.healthy },
-            { label: 'Require Attention', value: data.livestock.attention },
+            { label: t('Total Animals'), value: data.livestock.total },
+            { label: t('Healthy Animals'), value: data.livestock.healthy },
+            { label: t('Require Attention'), value: data.livestock.attention },
           ]}
         />
         <StatTile 
-          title="Tasks Overview" 
+          title={t("Tasks Overview")} 
           icon={<FiCheckCircle className="text-emerald-600" />}
           items={[
-            { label: 'Total Tasks', value: data.tasks.total },
-            { label: 'Completed', value: data.tasks.completed },
-            { label: 'Pending', value: data.tasks.pending },
+            { label: t('Total Tasks'), value: data.tasks.total },
+            { label: t('Completed'), value: data.tasks.completed },
+            { label: t('Pending'), value: data.tasks.pending },
           ]}
         />
         <StatTile 
-          title="AI & Advisories" 
+          title={t("AI & Advisories")} 
           icon={<FiCloud className="text-emerald-600" />}
           items={[
-            { label: 'Total Queries', value: data.ai.total },
-            { label: 'Disease Detections', value: data.ai.disease },
-            { label: 'Advisories', value: data.ai.advisory },
+            { label: t('Total Queries'), value: data.ai.total },
+            { label: t('Disease Detections'), value: data.ai.disease },
+            { label: t('Advisories'), value: data.ai.advisory },
           ]}
         />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <ChartPanel title="User Distribution by Role">
+        <ChartPanel title={t("User Distribution by Role")}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie data={userPieData} dataKey="value" nameKey="name" innerRadius={60} outerRadius={90} paddingAngle={4}>
@@ -116,12 +118,12 @@ export default function SuperAdminDashboard() {
         </ChartPanel>
 
         {/* You can add more charts here like Farm Growth Chart, Task Completion Chart, etc */}
-        <Card title="Quick Security Logs" subtitle="Recent actions">
+        <Card title={t("Quick Security Logs")} subtitle={t("Recent actions")}>
            <div className="flex items-center gap-3 rounded-2xl border border-slate-100 p-4">
               <FiAlertTriangle className="text-amber-500" />
               <div>
-                <p className="text-sm font-semibold">Audit logs are active</p>
-                <p className="text-xs text-slate-500">Tracking system events across {data.users.total} users.</p>
+                <p className="text-sm font-semibold">{t("Audit logs are active")}</p>
+                <p className="text-xs text-slate-500">{t("Tracking system events across")} {data.users.total} {t("users")}.</p>
               </div>
            </div>
         </Card>

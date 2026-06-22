@@ -14,6 +14,8 @@ import notificationRoutes from './routes/notificationRoutes.js';
 import salaryRoutes from './routes/salaryRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import marketplaceRoutes from './routes/marketplaceRoutes.js';
+import contactRoutes from './routes/contactRoutes.js';
+import fieldRoutes from './routes/fieldRoutes.js';
 import { verifyToken } from './authMiddleware.js';
 
 import path from 'path';
@@ -42,6 +44,8 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/salary', salaryRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/marketplace', marketplaceRoutes);
+app.use('/api/contact', contactRoutes);
+app.use('/api/fields', fieldRoutes);
 
 const PORT = process.env.PORT || 5000;
 

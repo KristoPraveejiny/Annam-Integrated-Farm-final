@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Card } from '../../../components/ui/Card';
 import { getAdminFarms } from '../../../api/admin';
-
+import { useTranslation } from 'react-i18next';
 interface Farm {
   id: string;
   farm_code: string;
@@ -14,6 +14,7 @@ interface Farm {
 }
 
 export default function FarmManagementPage() {
+  const { t } = useTranslation();
   const [farms, setFarms] = useState<Farm[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -36,7 +37,7 @@ export default function FarmManagementPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Farm Management (Monitoring)</h1>
+      <h1 className="text-2xl font-bold text-gray-900">{t("Farm Management (Monitoring)")}</h1>
       <Card>
         {loading ? (
           <p className="text-gray-500 p-4">Loading farms...</p>
@@ -49,12 +50,12 @@ export default function FarmManagementPage() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Farm Code</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Area (Acres)</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Registered</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Farm Code")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Name")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Owner")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Area (Acres)")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Status")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Registered")}</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">

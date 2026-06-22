@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card } from '../../../components/ui/Card';
 import { getAdminLivestock } from '../../../api/admin';
 
@@ -17,6 +18,7 @@ interface Livestock {
 }
 
 export default function LivestockMonitoringPage() {
+  const { t } = useTranslation();
   const [livestock, setLivestock] = useState<Livestock[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -39,7 +41,7 @@ export default function LivestockMonitoringPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Livestock Monitoring</h1>
+      <h1 className="text-2xl font-bold text-gray-900">{t("Livestock Monitoring")}</h1>
       <Card>
         {loading ? (
           <p className="text-gray-500 p-4">Loading livestock...</p>
@@ -52,11 +54,11 @@ export default function LivestockMonitoringPage() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tag / Group</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Health Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Weight</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Tag / Group")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Details")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Location")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Health Status")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Weight")}</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">

@@ -3,8 +3,10 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { FiDroplet, FiMapPin, FiEdit2, FiTrash2, FiSearch, FiPlus, FiCheckCircle } from 'react-icons/fi';
+import { useTranslation } from 'react-i18next';
 
 export default function FarmManagerCropsPage() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [crops, setCrops] = useState<any[]>([]);
   const [fields, setFields] = useState<any[]>([]);
@@ -17,7 +19,7 @@ export default function FarmManagerCropsPage() {
   const [editingCropId, setEditingCropId] = useState<string | null>(null);
 
   const filteredCrops = crops.filter(c => {
-    const fieldName = fields.find(f => String(f.id) === String(c.block_id))?.name || '';
+    const fieldName = fields.find(f => String(f.id) === String(c.field_id))?.field_name || '';
     return c.crop_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
            fieldName.toLowerCase().includes(searchQuery.toLowerCase());
   });
@@ -35,7 +37,7 @@ export default function FarmManagerCropsPage() {
         const cropsData = await cropsRes.json();
         setCrops(cropsData);
         
-        const blocksRes = await fetch('/api/blocks', { headers });
+        const blocksRes = await fetch('/api/fields/farm/default', { headers });
         if (!blocksRes.ok) throw new Error('API failed');
         const blocksData = await blocksRes.json();
         setFields(blocksData);
@@ -43,9 +45,9 @@ export default function FarmManagerCropsPage() {
         console.warn('API not available, using mock data for crops and fields');
         // Mock data for UI testing
         setFields([
-          { id: '1', name: 'North Field A', area: '5 Acres', soil: 'Loam', irrigation: 'Drip', location: 'Sector 1' },
-          { id: '2', name: 'South Field B', area: '12 Acres', soil: 'Clay', irrigation: 'Sprinkler', location: 'Sector 2' },
-          { id: '3', name: 'East Greenhouse', area: '2 Acres', soil: 'Potting Mix', irrigation: 'Automated', location: 'Sector 3' }
+          { id: '1', field_name: 'North Field A', area: '5 Acres', soil: 'Loam', irrigation: 'Drip', location: 'Sector 1' },
+          { id: '2', field_name: 'South Field B', area: '12 Acres', soil: 'Clay', irrigation: 'Sprinkler', location: 'Sector 2' },
+          { id: '3', field_name: 'East Greenhouse', area: '2 Acres', soil: 'Potting Mix', irrigation: 'Automated', location: 'Sector 3' }
         ]);
         setCrops([
           { id: 'CRP-101', crop_name: 'Tomato', variety: 'Roma', block_id: '1', planting_date: '2023-04-15', status: 'Growing' },
@@ -66,7 +68,7 @@ export default function FarmManagerCropsPage() {
     setNewCrop({
       crop_name: crop.crop_name || '',
       variety: crop.variety || '',
-      block_id: crop.block_id || '',
+      field_id: crop.field_id || '',
       planting_date: crop.planting_date ? crop.planting_date.split('T')[0] : '',
       expected_harvest_date: crop.expected_harvest_date ? crop.expected_harvest_date.split('T')[0] : '',
       season: crop.season || '',
@@ -102,7 +104,7 @@ export default function FarmManagerCropsPage() {
         setCrops((prev) => [...prev, created]);
       }
       setShowCropModal(false);
-      setNewCrop({ crop_name: '', variety: '', block_id: '', planting_date: '', expected_harvest_date: '', season: '', expected_yield: '', yield_unit: 'kg', notes: '' });
+      setNewCrop({ crop_name: '', variety: '', field_id: '', planting_date: '', expected_harvest_date: '', season: '', expected_yield: '', yield_unit: 'kg', notes: '' });
       setEditingCropId(null);
     };
 
@@ -126,7 +128,7 @@ export default function FarmManagerCropsPage() {
           setCrops((prev) => [...prev, saved]);
         }
         setShowCropModal(false);
-        setNewCrop({ crop_name: '', variety: '', block_id: '', planting_date: '', expected_harvest_date: '', season: '', expected_yield: '', yield_unit: 'kg', notes: '' });
+        setNewCrop({ crop_name: '', variety: '', field_id: '', planting_date: '', expected_harvest_date: '', season: '', expected_yield: '', yield_unit: 'kg', notes: '' });
         setEditingCropId(null);
       } else {
         console.error('Failed to save crop via API, using mockup.');
@@ -140,10 +142,10 @@ export default function FarmManagerCropsPage() {
 
   return (
     <div className="space-y-6 pb-20">
-      <SectionHeading eyebrow="Crop Management" title="Crops & Fields" description="Manage your crop lifecycle, fields, and growth monitoring." tone="light" />
+      <SectionHeading eyebrow={t("Crop Management")} title={t("Crops & Fields")} description={t("Manage your crop lifecycle, fields, and growth monitoring.")} tone="light" />
       {/* Tabs */}
       <div className="flex space-x-3 border-b border-white/10 pb-4 overflow-x-auto">
-        {['dashboard', 'crops', 'fields', 'growth'].map((tab) => (
+        {['dashboard', 'crops', 'growth'].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -153,7 +155,7 @@ export default function FarmManagerCropsPage() {
                 : 'bg-slate-900/50 text-slate-300 hover:bg-slate-800 border border-white/5'
             }`}
           >
-            {tab === 'dashboard' ? 'Overview' : tab}
+            {tab === 'dashboard' ? t('Overview') : t(tab)}
           </button>
         ))}
       </div>
@@ -161,46 +163,46 @@ export default function FarmManagerCropsPage() {
       {/* Tab Content */}
       {activeTab === 'dashboard' && (
         <div className="grid gap-6 xl:grid-cols-3">
-          <Card title="Total Crops" subtitle="All registered crops">
+          <Card title={t("Total Crops")} subtitle={t("All registered crops")}>
             <p className="text-5xl font-black text-emerald-400 mt-2">{crops.length}</p>
           </Card>
-          <Card title="Active Fields" subtitle="Currently in use">
+          <Card title={t("Active Fields")} subtitle={t("Currently in use")}>
             <p className="text-5xl font-black text-lime-400 mt-2">{fields.length}</p>
           </Card>
-          <Card title="Disease Alerts" subtitle="Requires attention">
+          <Card title={t("Disease Alerts")} subtitle={t("Requires attention")}>
             <p className="text-5xl font-black text-amber-500 mt-2">2</p>
           </Card>
         </div>
       )}
 
       {activeTab === 'crops' && (
-        <Card title="Crop List" subtitle="Manage all crops across fields">
+        <Card title={t("Crop List")} subtitle={t("Manage all crops across fields")}>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
             <div className="relative w-full sm:w-80">
               <FiSearch className="absolute left-4 top-3.5 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search crops by name or field..."
+                placeholder={t("Search crops by name or field...")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full bg-slate-900/50 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-white text-sm font-medium focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none transition-all"
               />
             </div>
             <Button onClick={() => setShowCropModal(true)} className="flex items-center gap-2 whitespace-nowrap">
-              <FiPlus className="text-lg" /> Register Crop
+              <FiPlus className="text-lg" /> {t("Register Crop")}
             </Button>
           </div>
           <div className="overflow-x-auto rounded-2xl border border-white/10 shadow-xl">
             <table className="min-w-full text-left text-sm text-slate-300">
               <thead className="bg-slate-900/90 text-white font-semibold">
                 <tr>
-                  <th className="px-6 py-4">ID</th>
-                  <th className="px-6 py-4">Crop Name</th>
-                  <th className="px-6 py-4">Variety</th>
-                  <th className="px-6 py-4">Field</th>
-                  <th className="px-6 py-4">Planting Date</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
+                  <th className="px-6 py-4">{t("ID")}</th>
+                  <th className="px-6 py-4">{t("Crop Name")}</th>
+                  <th className="px-6 py-4">{t("Variety")}</th>
+                  <th className="px-6 py-4">{t("Field")}</th>
+                  <th className="px-6 py-4">{t("Planting Date")}</th>
+                  <th className="px-6 py-4">{t("Status")}</th>
+                  <th className="px-6 py-4 text-right">{t("Actions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5 bg-slate-950/60">
@@ -211,7 +213,7 @@ export default function FarmManagerCropsPage() {
                     <td className="px-6 py-4">{c.variety}</td>
                     <td className="px-6 py-4 font-medium">
                       <span className="flex items-center gap-2">
-                        <FiMapPin className="text-slate-400" /> {fields.find(f => String(f.id) === String(c.block_id))?.name || c.block_id}
+                        <FiMapPin className="text-slate-400" /> {fields.find(f => String(f.id) === String(c.field_id))?.field_name || ''}
                       </span>
                     </td>
                     <td className="px-6 py-4">{c.planting_date ? new Date(c.planting_date).toLocaleDateString() : ''}</td>
@@ -242,46 +244,16 @@ export default function FarmManagerCropsPage() {
         </Card>
       )}
 
-      {activeTab === 'fields' && (
-        <Card title="Field Management" subtitle="Manage your land parcels and resources">
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mt-2">
-            {fields.map((f) => (
-              <div
-                key={f.id}
-                className="border border-white/10 bg-slate-900/40 rounded-3xl p-6 hover:bg-slate-800/60 hover:border-emerald-500/30 transition-all group shadow-lg"
-              >
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <h3 className="text-xl font-black text-white group-hover:text-emerald-300 transition-colors">
-                      {f.name}
-                    </h3>
-                    <p className="text-sm font-bold text-emerald-500 mt-1">{f.area}</p>
-                  </div>
-                  <button className="text-slate-500 hover:text-blue-400 transition-colors bg-white/5 p-2 rounded-xl">
-                    <FiEdit2 size={16} />
-                  </button>
-                </div>
-                <div className="space-y-4 text-sm font-medium text-slate-300 bg-black/20 p-4 rounded-2xl border border-white/5">
-                  <p className="flex justify-between"><span className="text-slate-500">Soil Type</span> <span className="text-white">{f.soil}</span></p>
-                  <p className="flex justify-between"><span className="text-slate-500">Irrigation</span> <span className="text-white">{f.irrigation}</span></p>
-                  <p className="flex justify-between"><span className="text-slate-500">Sector</span> <span className="text-white">{f.location}</span></p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
       {activeTab === 'growth' && (
-        <Card title="Crop Growth Monitoring" subtitle="Track lifecycle stages across your fields in real-time">
+        <Card title={t("Crop Growth Monitoring")} subtitle={t("Track lifecycle stages across your fields in real-time")}>
           <div className="space-y-8 mt-6">
             {crops.filter((c) => c.status === 'Growing').map((c) => (
               <div key={c.id} className="border border-white/10 bg-slate-900/40 rounded-3xl p-6 shadow-xl">
                 <div className="flex justify-between items-center mb-10">
                   <h4 className="text-xl font-black text-white">
-                    {c.crop_name} <span className="text-slate-500 font-medium text-lg ml-2">({fields.find(f => String(f.id) === String(c.block_id))?.name || c.block_id})</span>
+                    {c.crop_name} {c.field_id && <span className="text-slate-500 font-medium text-lg ml-2">({fields.find(f => String(f.id) === String(c.field_id))?.field_name || ''})</span>}
                   </h4>
-                  <span className="text-sm font-bold text-emerald-400 bg-emerald-400/10 px-3 py-1 rounded-full border border-emerald-400/20">On Track</span>
+                  <span className="text-sm font-bold text-emerald-400 bg-emerald-400/10 px-3 py-1 rounded-full border border-emerald-400/20">{t("On Track")}</span>
                 </div>
                 <div className="relative flex justify-between items-center w-full px-2 sm:px-6">
                   <div className="absolute top-1/2 left-6 right-6 h-1.5 bg-slate-800 -z-10 transform -translate-y-1/2 rounded-full" />
@@ -307,7 +279,7 @@ export default function FarmManagerCropsPage() {
                             isCompleted ? 'text-emerald-400' : isCurrent ? 'text-lime-400' : 'text-slate-600'
                           }`}
                         >
-                          {stage}
+                          {t(stage)}
                         </span>
                       </div>
                     );
@@ -323,13 +295,13 @@ export default function FarmManagerCropsPage() {
       {showCropModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-slate-900 border border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl">
-            <h3 className="text-2xl font-bold text-white mb-6">{editingCropId ? 'Edit Crop' : 'Register New Crop'}</h3>
+            <h3 className="text-2xl font-bold text-white mb-6">{editingCropId ? t('Edit Crop') : t('Register New Crop')}</h3>
             <div className="grid grid-cols-2 gap-4 max-h-[65vh] overflow-y-auto p-1">
               <input
                 name="crop_name"
                 value={newCrop.crop_name}
                 onChange={handleInputChange}
-                placeholder="Crop name"
+                placeholder={t("Crop name")}
                 className="w-full bg-slate-800 text-white p-2 rounded col-span-2"
               />
               <input
@@ -340,14 +312,14 @@ export default function FarmManagerCropsPage() {
                 className="w-full bg-slate-800 text-white p-2 rounded"
               />
               <select
-                name="block_id"
-                value={newCrop.block_id}
+                name="field_id"
+                value={newCrop.field_id || ''}
                 onChange={handleInputChange}
                 className="w-full bg-slate-800 text-white p-2 rounded"
               >
-                <option value="" disabled hidden>Select Field</option>
+                <option value="" disabled hidden>{t("Select Field")}</option>
                 {fields.map(f => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
+                  <option key={f.id} value={f.id}>{f.field_name}</option>
                 ))}
               </select>
               <input
@@ -364,13 +336,13 @@ export default function FarmManagerCropsPage() {
                 value={newCrop.expected_harvest_date}
                 onChange={handleInputChange}
                 className="w-full bg-slate-800 text-white p-2 rounded"
-                title="Expected Harvest Date"
+                title={t("Expected Harvest Date")}
               />
               <input
                 name="season"
                 value={newCrop.season}
                 onChange={handleInputChange}
-                placeholder="Season (e.g. Summer)"
+                placeholder={t("Season (e.g. Summer)")}
                 className="w-full bg-slate-800 text-white p-2 rounded"
               />
               <div className="flex gap-2">
@@ -379,7 +351,7 @@ export default function FarmManagerCropsPage() {
                   type="number"
                   value={newCrop.expected_yield}
                   onChange={handleInputChange}
-                  placeholder="Expected Yield"
+                  placeholder={t("Expected Yield")}
                   className="w-full bg-slate-800 text-white p-2 rounded"
                 />
                 <select
@@ -397,16 +369,16 @@ export default function FarmManagerCropsPage() {
                 name="notes"
                 value={newCrop.notes}
                 onChange={handleInputChange}
-                placeholder="Notes"
+                placeholder={t("Notes")}
                 className="w-full bg-slate-800 text-white p-2 rounded col-span-2"
                 rows={3}
               />
             </div>
             <div className="flex justify-end gap-3 mt-8">
-              <Button variant="ghost" onClick={() => { setShowCropModal(false); setEditingCropId(null); setNewCrop({ crop_name: '', variety: '', block_id: '', planting_date: '', expected_harvest_date: '', season: '', expected_yield: '', yield_unit: 'kg', notes: '' }); }}>
-                Cancel
+              <Button variant="ghost" onClick={() => { setShowCropModal(false); setEditingCropId(null); setNewCrop({ crop_name: '', variety: '', field_id: '', planting_date: '', expected_harvest_date: '', season: '', expected_yield: '', yield_unit: 'kg', notes: '' }); }}>
+                {t("Cancel")}
               </Button>
-              <Button onClick={handleSaveCrop}>{editingCropId ? 'Update Crop' : 'Save Crop'}</Button>
+              <Button onClick={handleSaveCrop}>{editingCropId ? t('Update Crop') : t('Save Crop')}</Button>
             </div>
           </div>
         </div>

@@ -1,5 +1,6 @@
 // Farm Manager Dashboard – extracted from DashboardPage.tsx
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { ProgressBar } from '../../components/ui/ProgressBar';
@@ -11,6 +12,7 @@ import { chartSeries, alerts } from '../../data/mock';
 import { useState, useEffect } from 'react';
 
 export default function FarmManagerDashboard() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [tasks, setTasks] = useState<any[]>([]);
   const [recentUpdates, setRecentUpdates] = useState<any[]>([]);
@@ -38,38 +40,38 @@ export default function FarmManagerDashboard() {
 
   return (
     <>
-      <SectionHeading eyebrow="Dashboard" title="Farm Manager Overview" description="Operations, workforce, and analytics for your farm." tone="light" />
+      <SectionHeading eyebrow={t("Dashboard")} title={t("Farm Manager Overview")} description={t("Operations, workforce, and analytics for your farm.")} tone="light" />
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         {/* Crop Overview */}
-        <Card title="Crop Overview" subtitle="Field health and growth progress">
+        <Card title={t("Crop Overview")} subtitle={t("Field health and growth progress")}>
           <div className="space-y-5">
-            <ProgressBar value={82} label="Rice block" />
-            <ProgressBar value={68} label="Vegetable block" />
-            <ProgressBar value={91} label="Fruit orchard" />
+            <ProgressBar value={82} label={t("Rice block")} />
+            <ProgressBar value={68} label={t("Vegetable block")} />
+            <ProgressBar value={91} label={t("Fruit orchard")} />
           </div>
         </Card>
         {/* Livestock Overview */}
-        <Card title="Livestock Overview" subtitle="Health, feed, and production tracking">
+        <Card title={t("Livestock Overview")} subtitle={t("Health, feed, and production tracking")}>
           <div className="grid gap-4 sm:grid-cols-3">
-            <MiniMetric label="Healthy" value="126" />
-            <MiniMetric label="Feeding due" value="18" />
-            <MiniMetric label="Milk yield" value="1,240L" />
+            <MiniMetric label={t("Healthy")} value="126" />
+            <MiniMetric label={t("Feeding due")} value="18" />
+            <MiniMetric label={t("Milk yield")} value="1,240L" />
           </div>
         </Card>
         {/* Task Progress Cards */}
-        <Card title="Task Progress Cards" subtitle="Work allocation across teams">
+        <Card title={t("Task Progress Cards")} subtitle={t("Work allocation across teams")}>
           <div className="grid gap-4 md:grid-cols-2">
-            {tasks.length === 0 ? <p className="text-sm text-slate-500">No tasks assigned.</p> : tasks.map((task) => (
+            {tasks.length === 0 ? <p className="text-sm text-slate-500">{t("No tasks assigned.")}</p> : tasks.map((task) => (
               <div key={task.id} className="rounded-3xl border border-white/10 p-4 bg-slate-900/50">
                 <div className="flex items-center justify-between">
                   <p className="font-semibold text-slate-200">{task.title}</p>
-                  <span className="text-xs text-slate-400">{task.assigned_to_name || 'Unassigned'}</span>
+                  <span className="text-xs text-slate-400">{task.assigned_to_name || t('Unassigned')}</span>
                 </div>
                 <div className="mt-3 flex items-center justify-between">
                   <span className={`text-xs px-2 py-1 rounded-full ${task.status === 'done' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-blue-500/20 text-blue-400'}`}>
                     {task.status.replace('_', ' ')}
                   </span>
-                  <span className="text-xs text-slate-500">{task.due_date ? new Date(task.due_date).toLocaleDateString() : 'No due date'}</span>
+                  <span className="text-xs text-slate-500">{task.due_date ? new Date(task.due_date).toLocaleDateString() : t('No due date')}</span>
                 </div>
               </div>
             ))}
@@ -81,11 +83,11 @@ export default function FarmManagerDashboard() {
             onClick={() => navigate('/dashboard/farm-manager/recent-updates')}
             className="flex items-center gap-2"
           >
-            View Recent Farmer Updates
+            {t("View Recent Farmer Updates")}
           </Button>
         </div>
         {/* Calendar View */}
-        <Card title="Calendar View" subtitle="Upcoming field events">
+        <Card title={t("Calendar View")} subtitle={t("Upcoming field events")}>
           <div className="grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-500">
             {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day) => (
               <span key={day}>{day}</span>
@@ -101,7 +103,7 @@ export default function FarmManagerDashboard() {
           </div>
         </Card>
         {/* Farm Activity Timeline */}
-        <Card title="Farm Activity Timeline" subtitle="Latest operational updates">
+        <Card title={t("Farm Activity Timeline")} subtitle={t("Latest operational updates")}>
           <div className="space-y-4">
             {[
               ['08:00', 'Irrigation started in Block A'],
@@ -117,7 +119,7 @@ export default function FarmManagerDashboard() {
           </div>
         </Card>
         {/* Productivity Chart */}
-        <ChartPanel title="Productivity Chart">
+        <ChartPanel title={t("Productivity Chart")}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartSeries}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />

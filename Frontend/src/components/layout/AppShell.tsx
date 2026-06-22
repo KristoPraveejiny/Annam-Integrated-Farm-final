@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import type { ComponentType, ReactNode } from 'react';
-import { FiBell, FiMenu, FiSearch } from 'react-icons/fi';
+import { FiBell, FiMenu, FiSearch, FiGlobe, FiChevronDown } from 'react-icons/fi';
 import UserProfile from './UserProfile';
 import { NavLink } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { dashboardBadges } from '../../data/mock';
 import { Button } from '../ui/Button';
 
@@ -19,6 +20,7 @@ type AppShellProps = {
 };
 
 export function AppShell({ role, items, children }: AppShellProps) {
+  const { t, i18n } = useTranslation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [temp, setTemp] = useState<string>('29.5°C');
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -83,14 +85,18 @@ export function AppShell({ role, items, children }: AppShellProps) {
     return () => clearInterval(interval);
   }, []);
 
+  const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    i18n.changeLanguage(e.target.value);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-900 to-slate-800 text-white">
       <div className="flex min-h-screen">
         <aside className={`fixed inset-y-0 left-0 z-40 w-72 transform border-r border-white/15 bg-slate-950/35 backdrop-blur-2xl transition-transform duration-300 lg:static lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
           <div className="flex h-full flex-col px-5 py-6">
             <div className="mb-8 flex items-center gap-3">
-              <div className="grid h-12 w-12 place-items-center rounded-2xl border border-white/15 bg-white/10 text-white backdrop-blur-2xl shadow-[0_16px_35px_rgba(16,185,129,0.2)]">
-                <span className="text-lg font-black">S</span>
+              <div className="grid h-16 w-24 place-items-center overflow-hidden rounded-2xl border border-white/20 bg-white p-1 shadow-[0_16px_35px_rgba(16,185,129,0.2)]">
+                <img src="/annam-logo.jpeg" alt="Annam Integrated Farm logo" className="h-full w-full scale-125 object-contain" />
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.26em] text-emerald-200">Smart Farm</p>
@@ -111,16 +117,16 @@ export function AppShell({ role, items, children }: AppShellProps) {
                     }
                   >
                     <Icon className="text-lg text-emerald-200" />
-                    {item.label}
+                    {t(item.label)}
                   </NavLink>
                 );
               })}
             </nav>
 
             <div className="mt-6 rounded-3xl border border-white/15 bg-white/10 p-5 text-white backdrop-blur-2xl shadow-[0_20px_50px_rgba(2,6,23,0.2)]">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/80">System Status</p>
-              <p className="mt-2 text-lg font-bold">{dashboardBadges.online}</p>
-              <p className="mt-3 text-sm text-white/90">{dashboardBadges.ai} and {dashboardBadges.qr}.</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/80">{t("System Status")}</p>
+              <p className="mt-2 text-lg font-bold">{t(dashboardBadges.online)}</p>
+              <p className="mt-3 text-sm text-white/90">{t(dashboardBadges.ai)} {t("and")} {t(dashboardBadges.qr)}.</p>
             </div>
           </div>
         </aside>
@@ -134,7 +140,7 @@ export function AppShell({ role, items, children }: AppShellProps) {
 
               <div className="relative flex flex-1 items-center">
                 <FiSearch className="pointer-events-none absolute left-4 text-white/45" />
-                <input className="farm-input pl-11" placeholder="Search farms, tasks, orders, crops..." />
+                <input className="farm-input pl-11" placeholder={t("Search")} />
               </div>
 
               <div className="relative">
@@ -152,14 +158,14 @@ export function AppShell({ role, items, children }: AppShellProps) {
                     <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
                     <div className="absolute right-0 top-full mt-2 w-80 rounded-2xl border border-white/10 bg-slate-900/95 p-4 shadow-[0_20px_50px_rgba(0,0,0,0.5)] backdrop-blur-xl z-50">
                       <div className="mb-3 flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-white">Notifications</h3>
+                        <h3 className="text-sm font-semibold text-white">{t("Notifications")}</h3>
                         {unreadCount > 0 && (
-                          <span className="text-xs text-emerald-400">{unreadCount} unread</span>
+                          <span className="text-xs text-emerald-400">{unreadCount} {t("unread")}</span>
                         )}
                       </div>
                       <div className="flex max-h-[350px] flex-col gap-2 overflow-y-auto pr-1">
                         {notifications.length === 0 ? (
-                          <p className="text-center text-sm text-white/50 py-6">No notifications yet</p>
+                          <p className="text-center text-sm text-white/50 py-6">{t("No notifications yet")}</p>
                         ) : (
                           notifications.map(n => (
                             <div 
@@ -183,9 +189,30 @@ export function AppShell({ role, items, children }: AppShellProps) {
                   </>
                 )}
               </div>
+
               <UserProfile />
               <div className="hidden rounded-2xl border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur-2xl md:block">
-                Temp: {temp}
+                {t("Temp")}: {temp}
+              </div>
+
+              <div className="hidden sm:flex items-center gap-2">
+                <div className="relative group">
+                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-emerald-400 group-hover:text-emerald-300 transition-colors">
+                    <FiGlobe className="h-4 w-4" />
+                  </div>
+                  <select 
+                    value={i18n.language} 
+                    onChange={handleLanguageChange}
+                    className="appearance-none bg-white/10 border border-white/20 text-white text-sm font-medium rounded-full pl-9 pr-10 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 hover:bg-white/15 transition-all cursor-pointer backdrop-blur-md"
+                  >
+                    <option value="en" className="bg-slate-800">English</option>
+                    <option value="ta" className="bg-slate-800">தமிழ்</option>
+                    <option value="si" className="bg-slate-800">සිංහල</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-white/50 group-hover:text-white/80 transition-colors">
+                    <FiChevronDown className="h-4 w-4" />
+                  </div>
+                </div>
               </div>
             </div>
           </header>

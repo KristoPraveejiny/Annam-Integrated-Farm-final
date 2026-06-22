@@ -3,9 +3,12 @@ import type { InputHTMLAttributes } from 'react';
 import { AuthLayout } from './AuthLayout';
 import { Button } from '../../components/ui/Button';
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+
 import { sendSignupOtp, verifySignupOtp } from '../../api/auth';
 
 export default function RegisterPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -51,20 +54,20 @@ export default function RegisterPage() {
     // Validate inputs
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      alert('Please enter a valid email address');
+      alert(t('Please enter a valid email address'));
       return;
     }
     const phoneDigits = phone.replace(/\D/g, '');
     if (phoneDigits.length !== 10) {
-      alert('Phone number must contain exactly 10 digits');
+      alert(t('Phone number must contain exactly 10 digits'));
       return;
     }
     if (password.length > 12) {
-      alert('Password must be at most 12 characters');
+      alert(t('Password must be at most 12 characters'));
       return;
     }
     if (password !== confirmPassword) {
-      alert('Passwords do not match');
+      alert(t('Passwords do not match'));
       return;
     }
     setIsLoading(true);
@@ -78,7 +81,7 @@ export default function RegisterPage() {
       }
     } catch (err) {
       console.error(err);
-      alert('Failed to send OTP. Please try again.');
+      alert(t('Failed to send OTP. Please try again.'));
     } finally {
       setIsLoading(false);
     }
@@ -107,70 +110,70 @@ export default function RegisterPage() {
       });
       
       if (response.error) {
-        alert(response.error);
+        alert(t(response.error));
       } else {
-        alert('Account created successfully!');
+        alert(t('Account created successfully!'));
         navigate('/login');
       }
     } catch (err) {
       console.error(err);
-      alert('Failed to verify OTP. Please try again.');
+      alert(t('Failed to verify OTP. Please try again.'));
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <AuthLayout title="Create your farm account" subtitle="Join the platform to manage role-specific dashboards, AI insights, and marketplace operations.">
+    <AuthLayout title={t("Create your farm account")} subtitle={t("Join the platform to manage role-specific dashboards, AI insights, and marketplace operations.")}>
       {!isOtpSent ? (
         <form className="grid gap-4 rounded-[1.5rem] border border-white/15 bg-white/8 p-6 backdrop-blur-2xl sm:grid-cols-2" onSubmit={handleSendOtp}>
-          <AuthField label="Name" placeholder="Full name" value={name} onChange={e => setName(e.target.value)} required />
-          <AuthField label="Email" type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} required />
-          <AuthField label="Phone" type="tel" placeholder="+91 98765 43210" value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0,10))} maxLength={10} required />
+          <AuthField label={t("Name")} placeholder={t("Full name")} value={name} onChange={e => setName(e.target.value)} required />
+          <AuthField label={t("Email")} type="email" placeholder={t("you@example.com")} value={email} onChange={e => setEmail(e.target.value)} required />
+          <AuthField label={t("Phone")} type="tel" placeholder={t("+94 98765 43210")} value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0,10))} maxLength={10} required />
           <label className="block">
-            <span className="mb-2 block text-sm font-semibold text-white/80">User Role</span>
+            <span className="mb-2 block text-sm font-semibold text-white/80">{t("User Role")}</span>
             <select name="role" value={role} onChange={e => setRole(e.target.value)} className="farm-input bg-white/6">
-              <option value="Super Admin">Super Admin</option>
-              <option value="Manager">Manager</option>
-              <option value="Farmer">Farmer</option>
-              <option value="Customer">Customer</option>
+              <option value="Super Admin">{t("Super Admin")}</option>
+              <option value="Manager">{t("Manager")}</option>
+              <option value="Farmer">{t("Farmer")}</option>
+              <option value="Customer">{t("Customer")}</option>
             </select>
           </label>
-          <AuthField label="Password" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} maxLength={12} required />
-          <AuthField label="Confirm Password" type="password" placeholder="••••••••" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} maxLength={12} required />
+          <AuthField label={t("Password")} type="password" placeholder={t("••••••••")} value={password} onChange={e => setPassword(e.target.value)} maxLength={12} required />
+          <AuthField label={t("Confirm Password")} type="password" placeholder={t("••••••••")} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} maxLength={12} required />
           <div className="sm:col-span-2">
             <Button className="w-full" type="submit" disabled={isLoading}>
-              {isLoading ? 'Sending OTP...' : 'Sign Up'}
+              {isLoading ? t('Sending OTP...') : t('Sign Up')}
             </Button>
           </div>
           <p className="text-center text-sm text-white/70 sm:col-span-2">
-            Already have an account? <Link to="/login" className="font-semibold text-emerald-200">Login</Link>
+            {t("Already have an account?")} <Link to="/login" className="font-semibold text-emerald-200">{t("Login")}</Link>
           </p>
         </form>
       ) : (
         <form className="space-y-4 rounded-[1.5rem] border border-white/15 bg-white/8 p-6 backdrop-blur-2xl" onSubmit={handleVerifyOtp}>
-          <h3 className="text-xl font-semibold text-white text-center">Verify Your Email</h3>
-          <p className="text-white/70 text-center text-sm">We've sent a 6-digit OTP to {email}</p>
+          <h3 className="text-xl font-semibold text-white text-center">{t("Verify Your Email")}</h3>
+          <p className="text-white/70 text-center text-sm">{t("We've sent a 6-digit OTP to")} {email}</p>
           <AuthField 
-            label="Enter OTP" 
+            label={t("Enter OTP")} 
             type="text" 
-            placeholder="XXXXXX" 
+            placeholder={t("XXXXXX")} 
             value={otp} 
             onChange={e => setOtp(e.target.value)} 
             maxLength={6}
             required           />
            {otpTimer > 0 && (
              <p className="text-center text-sm text-white/70">
-               Time remaining: {formatTimer(otpTimer)}
+               {t("Time remaining:")} {formatTimer(otpTimer)}
              </p>
            )}
            {otpExpired && (
              <p className="text-center text-sm text-red-500">
-               OTP has expired. Please request a new OTP.
+               {t("OTP has expired. Please request a new OTP.")}
              </p>
            )}
            <Button className="w-full" type="submit" disabled={isLoading || otpExpired}>
-             {isLoading ? 'Verifying...' : 'Verify OTP & Create Account'}
+             {isLoading ? t('Verifying...') : t('Verify OTP & Create Account')}
            </Button>
           <div className="text-center">
             <button 
@@ -179,7 +182,7 @@ export default function RegisterPage() {
               disabled={isLoading || otpTimer > 0}
               className="text-sm font-semibold text-emerald-200 hover:underline"
             >
-              Resend OTP
+              {t("Resend OTP")}
             </button>
           </div>
         </form>

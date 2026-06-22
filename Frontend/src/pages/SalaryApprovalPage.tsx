@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Card } from '../components/ui/Card';
 import { SectionHeading } from '../components/ui/SectionHeading';
+import { useTranslation } from 'react-i18next';
 
 interface Attendance {
   id: string;
@@ -13,6 +14,7 @@ interface Attendance {
 }
 
 export default function SalaryApprovalPage() {
+  const { t } = useTranslation();
   const [pending, setPending] = useState<Attendance[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -56,28 +58,28 @@ export default function SalaryApprovalPage() {
   return (
     <div className="section-shell py-10">
       <SectionHeading 
-        eyebrow="Manager" 
-        title="Salary Approval" 
-        description="Review and approve task sessions completed by workers." 
+        eyebrow={t("Manager")} 
+        title={t("Salary Approval")} 
+        description={t("Review and approve task sessions completed by workers.")} 
         tone="light" 
       />
 
-      <Card title="Pending Approvals" subtitle="Worker task sessions awaiting approval">
+      <Card title={t("Pending Approvals")} subtitle={t("Worker task sessions awaiting approval")}>
         {loading ? (
-          <p className="text-slate-500">Loading...</p>
+          <p className="text-slate-500">{t("Loading...")}</p>
         ) : pending.length === 0 ? (
-          <p className="text-slate-500">No pending sessions.</p>
+          <p className="text-slate-500">{t("No pending sessions.")}</p>
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-100">
             <table className="min-w-full text-left text-sm">
               <thead className="bg-slate-50 text-slate-500">
                 <tr>
-                  <th className="px-4 py-3">Worker</th>
-                  <th className="px-4 py-3">Task</th>
-                  <th className="px-4 py-3">Date</th>
-                  <th className="px-4 py-3">Session</th>
-                  <th className="px-4 py-3">Amount</th>
-                  <th className="px-4 py-3">Action</th>
+                  <th className="px-4 py-3">{t("Worker")}</th>
+                  <th className="px-4 py-3">{t("Task")}</th>
+                  <th className="px-4 py-3">{t("Date")}</th>
+                  <th className="px-4 py-3">{t("Session")}</th>
+                  <th className="px-4 py-3">{t("Amount")}</th>
+                  <th className="px-4 py-3">{t("Action")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
@@ -93,7 +95,7 @@ export default function SalaryApprovalPage() {
                         onClick={() => approveSession(item.id)}
                         className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
                       >
-                        Approve
+                        {t("Approve")}
                       </button>
                     </td>
                   </tr>

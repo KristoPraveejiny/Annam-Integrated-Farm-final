@@ -3,8 +3,10 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiMapPin, FiHeart, FiDroplet, FiCheckCircle } from 'react-icons/fi';
+import { useTranslation } from 'react-i18next';
 
 export default function FarmManagerLivestockPage() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('overview');
   const [livestock, setLivestock] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
@@ -195,9 +197,9 @@ export default function FarmManagerLivestockPage() {
   return (
     <div className="space-y-6 pb-20">
       <SectionHeading
-        eyebrow="Livestock Management"
-        title="Livestock"
-        description="Track animal health, feed schedules, and pen allocations."
+        eyebrow={t("Livestock Management")}
+        title={t("Livestock")}
+        description={t("Track animal health, feed schedules, and pen allocations.")}
         tone="light"
       />
 
@@ -213,7 +215,7 @@ export default function FarmManagerLivestockPage() {
                 : 'bg-slate-900/50 text-slate-300 hover:bg-slate-800 border border-white/5'
             }`}
           >
-            {tab === 'overview' ? 'Overview' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+            {tab === 'overview' ? t('Overview') : t(tab)}
           </button>
         ))}
       </div>
@@ -221,33 +223,33 @@ export default function FarmManagerLivestockPage() {
       {/* Tab Content */}
       {activeTab === 'overview' && (
         <div className="grid gap-6 xl:grid-cols-4">
-          <Card title="Total Animals" subtitle="All registered livestock">
+          <Card title={t("Total Animals")} subtitle={t("All registered livestock")}>
             <p className="text-5xl font-black text-emerald-400 mt-2">{livestock.length}</p>
           </Card>
-          <Card title="Sick Animals" subtitle="Needs attention">
+          <Card title={t("Sick Animals")} subtitle={t("Needs attention")}>
             <p className="text-5xl font-black text-rose-500 mt-2">
               {livestock.filter(l => l.health?.toLowerCase() === 'sick').length}
             </p>
           </Card>
-          <Card title="Under Treatment" subtitle="Currently receiving care">
+          <Card title={t("Under Treatment")} subtitle={t("Currently receiving care")}>
             <p className="text-5xl font-black text-amber-500 mt-2">
               {livestock.filter(l => l.health?.toLowerCase() === 'treatment').length}
             </p>
           </Card>
-          <Card title="Today's Feed Tasks" subtitle="Pending feed deliveries">
+          <Card title={t("Today's Feed Tasks")} subtitle={t("Pending feed deliveries")}>
             <p className="text-5xl font-black text-lime-400 mt-2">3</p>
           </Card>
         </div>
       )}
 
       {activeTab === 'list' && (
-        <Card title="Livestock List" subtitle="Manage all animals across pens">
+        <Card title={t("Livestock List")} subtitle={t("Manage all animals across pens")}>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
             <div className="relative w-full sm:w-80">
               <FiSearch className="absolute left-4 top-3.5 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search by species or pen..."
+                placeholder={t("Search by species or pen...")}
                 className="w-full bg-slate-900/50 border border-white/10 rounded-2xl pl-11 pr-4 py-3 text-white text-sm font-medium focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none transition-all"
               />
             </div>
@@ -257,22 +259,22 @@ export default function FarmManagerLivestockPage() {
               setFormData({ tagCode: '', groupId: '', dob: '', healthStatus: 'healthy', sex: '', weight: '', acquisitionDate: '', notes: '' });
               setShowModal(true);
             }} className="flex items-center gap-2 whitespace-nowrap">
-              <FiPlus className="text-lg" /> Add Animal
+              <FiPlus className="text-lg" /> {t("Add Animal")}
             </Button>
           </div>
           <div className="overflow-x-auto rounded-2xl border border-white/10 shadow-xl">
             <table className="min-w-full text-left text-sm text-slate-300">
               <thead className="bg-slate-900/90 text-white font-semibold">
                 <tr>
-                  <th className="px-6 py-4">ID (Tag)</th>
-                  <th className="px-6 py-4">Group/Pen</th>
-                  <th className="px-6 py-4">DOB</th>
-                  <th className="px-6 py-4">Sex</th>
-                  <th className="px-6 py-4">Weight</th>
-                  <th className="px-6 py-4">Acquisition Date</th>
-                  <th className="px-6 py-4">Notes</th>
-                  <th className="px-6 py-4">Health</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
+                  <th className="px-6 py-4">{t("ID (Tag)")}</th>
+                  <th className="px-6 py-4">{t("Group/Pen")}</th>
+                  <th className="px-6 py-4">{t("DOB")}</th>
+                  <th className="px-6 py-4">{t("Sex")}</th>
+                  <th className="px-6 py-4">{t("Weight")}</th>
+                  <th className="px-6 py-4">{t("Acquisition Date")}</th>
+                  <th className="px-6 py-4">{t("Notes")}</th>
+                  <th className="px-6 py-4">{t("Health")}</th>
+                  <th className="px-6 py-4 text-right">{t("Actions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5 bg-slate-950/60">
@@ -302,7 +304,7 @@ export default function FarmManagerLivestockPage() {
                               : 'bg-slate-500/10 text-slate-400 border-slate-500/20'
                           }`}
                         >
-                          {l.health}
+                          {t(l.health)}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right space-x-4">
@@ -335,12 +337,12 @@ export default function FarmManagerLivestockPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-slate-900 border border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]">
             <h3 className="text-2xl font-bold text-white mb-6">
-              {isEditing ? 'Edit Animal' : 'Add New Animal'}
+              {isEditing ? t('Edit Animal') : t('Add New Animal')}
             </h3>
             <form onSubmit={handleSubmit} className="space-y-4">
               
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Tag Code (ID) *</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">{t("Tag Code (ID)")} *</label>
                 <input
                   type="text"
                   required
@@ -352,7 +354,7 @@ export default function FarmManagerLivestockPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Livestock Group *</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">{t("Livestock Group")} *</label>
                 <select
                   required
                   value={formData.groupId}
@@ -367,7 +369,7 @@ export default function FarmManagerLivestockPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Date of Birth</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">{t("Date of Birth")}</label>
                 <input
                   type="date"
                   value={formData.dob}
@@ -377,20 +379,20 @@ export default function FarmManagerLivestockPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Health Status</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">{t("Health Status")}</label>
                 <select
                   value={formData.healthStatus}
                   onChange={e => setFormData({...formData, healthStatus: e.target.value})}
                   className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
                 >
-                  <option value="healthy">Healthy</option>
-                  <option value="treatment">Treatment</option>
-                  <option value="sick">Sick</option>
+                  <option value="healthy">{t("Healthy")}</option>
+                  <option value="treatment">{t("Under Treatment")}</option>
+                  <option value="sick">{t("Sick")}</option>
                 </select>
               </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Sex *</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">{t("Sex")} *</label>
                   <select
                     required
                     name="sex"
@@ -398,13 +400,13 @@ export default function FarmManagerLivestockPage() {
                     onChange={e => setFormData({ ...formData, sex: e.target.value })}
                     className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
                   >
-                    <option value="" disabled>Select sex...</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
+                    <option value="" disabled>{t("Select sex...")}</option>
+                    <option value="Male">{t("Male")}</option>
+                    <option value="Female">{t("Female")}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Current Weight (kg)</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">{t("Current Weight (kg)")}</label>
                   <input
                     type="number"
                     min="0"
@@ -417,7 +419,7 @@ export default function FarmManagerLivestockPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Acquisition Date</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">{t("Acquisition Date")}</label>
                   <input
                     type="date"
                     name="acquisitionDate"
@@ -427,7 +429,7 @@ export default function FarmManagerLivestockPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Notes</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">{t("Notes")}</label>
                   <textarea
                     rows={3}
                     name="notes"
@@ -439,8 +441,8 @@ export default function FarmManagerLivestockPage() {
                 </div>
 
               <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-white/10">
-                <Button variant="ghost" type="button" onClick={() => setShowModal(false)}>Cancel</Button>
-                <Button type="submit">Save Animal</Button>
+                <Button variant="ghost" type="button" onClick={() => setShowModal(false)}>{t("Cancel")}</Button>
+                <Button type="submit">{t("Save Animal")}</Button>
               </div>
             </form>
           </div>

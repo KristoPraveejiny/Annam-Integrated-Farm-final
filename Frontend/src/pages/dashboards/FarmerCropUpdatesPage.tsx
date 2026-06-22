@@ -3,11 +3,13 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { FiCheckCircle, FiUploadCloud, FiSearch, FiLayers, FiDroplet } from 'react-icons/fi';
+import { useTranslation } from 'react-i18next';
 
 const activitiesFallback = ['Irrigation', 'Fertilizer Application', 'Pesticide Application', 'Weeding', 'Pruning', 'Harvesting'];
 const stages = ['Seed Sowing', 'Germination', 'Vegetative', 'Flowering', 'Fruiting', 'Harvesting'];
 
 export default function FarmerCropUpdatesPage() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('activities');
   const [tasks, setTasks] = useState<any[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string>('');
@@ -92,7 +94,7 @@ export default function FarmerCropUpdatesPage() {
 
   return (
     <div className="space-y-6 pb-20">
-      <SectionHeading eyebrow="Crop Updates" title="Crop Management" description="Update crop stages, record daily activities, and report diseases." tone="light" />
+      <SectionHeading eyebrow={t("Crop Updates")} title={t("Crop Management")} description={t("Update crop stages, record daily activities, and report diseases.")} tone="light" />
 
       {/* Tabs */}
       <div className="flex space-x-3 border-b border-white/10 pb-4 overflow-x-auto">
@@ -102,23 +104,23 @@ export default function FarmerCropUpdatesPage() {
             onClick={() => setActiveTab(tab)}
             className={`px-5 py-2 rounded-xl text-sm font-semibold capitalize transition-all whitespace-nowrap ${activeTab === tab ? 'bg-emerald-600 text-white shadow-[0_4px_20px_rgba(16,185,129,0.3)]' : 'bg-slate-900/50 text-slate-300 hover:bg-slate-800 border border-white/5'}`}
           >
-            {tab === 'disease' ? 'Disease Reporting' : tab === 'stages' ? 'Crop Stages' : 'Daily Activities'}
+            {tab === 'disease' ? t('Disease Reporting') : tab === 'stages' ? t('Crop Stages') : t('Daily Activities')}
           </button>
         ))}
       </div>
 
       {activeTab === 'stages' && (
-        <Card title="Update Crop Stage" subtitle="Select crop and update current growth stage">
+        <Card title={t("Update Crop Stage")} subtitle={t("Select crop and update current growth stage")}>
           <form className="space-y-6 mt-4">
             <div className="grid gap-6 md:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-white/80">Select Crop</span>
+                <span className="mb-2 block text-sm font-semibold text-white/80">{t("Select Crop")}</span>
                 <select className="farm-input w-full appearance-none">
                   {cropsOptions.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </label>
               <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-white/80">Current Stage</span>
+                <span className="mb-2 block text-sm font-semibold text-white/80">{t("Current Stage")}</span>
                 <select className="farm-input w-full appearance-none">
                   {stages.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
@@ -126,29 +128,29 @@ export default function FarmerCropUpdatesPage() {
             </div>
             
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">Add Notes</span>
-              <textarea className="farm-input w-full min-h-32" placeholder="Describe the growth condition..." />
+              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Add Notes")}</span>
+              <textarea className="farm-input w-full min-h-32" placeholder={t("Describe the growth condition...")} />
             </label>
 
             <div>
-              <span className="mb-2 block text-sm font-semibold text-white/80">Upload Images</span>
+              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Upload Images")}</span>
               <div className="grid place-items-center rounded-2xl border-2 border-dashed border-white/20 bg-white/5 p-8 text-center hover:bg-white/10 transition-colors cursor-pointer">
                 <FiUploadCloud className="text-4xl text-emerald-400" />
-                <p className="mt-4 text-sm text-slate-300">Drag and drop images here</p>
+                <p className="mt-4 text-sm text-slate-300">{t("Drag and drop images here")}</p>
               </div>
             </div>
 
-            <Button type="button" className="w-full sm:w-auto">Update Progress</Button>
+            <Button type="button" className="w-full sm:w-auto">{t("Update Progress")}</Button>
           </form>
         </Card>
       )}
 
       {activeTab === 'activities' && (
-        <Card title="Record Daily Activity" subtitle="Log irrigation, fertilizing, and other field tasks">
+        <Card title={t("Record Daily Activity")} subtitle={t("Log irrigation, fertilizing, and other field tasks")}>
            <form className="space-y-6 mt-4" onSubmit={handleActivitySubmit}>
             <div className="grid gap-6 md:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-white/80">Activity Type (Today's Tasks)</span>
+                <span className="mb-2 block text-sm font-semibold text-white/80">{t("Activity Type (Today's Tasks)")}</span>
                 <select 
                   className="farm-input w-full appearance-none"
                   value={selectedTaskId}
@@ -164,19 +166,19 @@ export default function FarmerCropUpdatesPage() {
                 </select>
               </label>
               <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-white/80">Crop / Field</span>
+                <span className="mb-2 block text-sm font-semibold text-white/80">{t("Crop / Field")}</span>
                 <input 
                   type="text" 
                   readOnly 
-                  value={selectedTask?.crop_name || 'N/A'}
+                  value={selectedTask?.crop_name || t('N/A')}
                   className="farm-input w-full bg-white/5 cursor-not-allowed text-white/50" 
-                  placeholder="Crop will auto-fill from task"
+                  placeholder={t("Crop will auto-fill from task")}
                 />
               </label>
             </div>
             
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">Date</span>
+              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Date")}</span>
               <input 
                 type="date" 
                 className="farm-input w-full" 
@@ -186,27 +188,27 @@ export default function FarmerCropUpdatesPage() {
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">Manager's Instructions</span>
+              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Manager's Instructions")}</span>
               <textarea 
                 className="farm-input w-full min-h-24 bg-white/5 cursor-not-allowed text-white/50" 
-                placeholder="Details from manager..." 
+                placeholder={t("Details from manager...")} 
                 readOnly
-                value={selectedTask?.description || 'No specific instructions provided.'}
+                value={selectedTask?.description || t('No specific instructions provided.')}
               />
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">Farmer's Notes</span>
+              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Farmer's Notes")}</span>
               <textarea 
                 className="farm-input w-full min-h-24" 
-                placeholder="Describe what you actually did..." 
+                placeholder={t("Describe what you actually did...")} 
                 value={activityNotes}
                 onChange={e => setActivityNotes(e.target.value)}
               />
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">Upload Image of Work</span>
+              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Upload Image of Work")}</span>
               <input 
                 type="file" 
                 accept="image/*"
@@ -220,25 +222,25 @@ export default function FarmerCropUpdatesPage() {
               />
             </label>
 
-            <Button type="submit" className="w-full sm:w-auto" disabled={!selectedTaskId}>Save Activity</Button>
+            <Button type="submit" className="w-full sm:w-auto" disabled={!selectedTaskId}>{t("Save Activity")}</Button>
           </form>
         </Card>
       )}
 
       {activeTab === 'disease' && (
         <div className="grid gap-6 xl:grid-cols-2">
-          <Card title="Report Disease" subtitle="Upload leaf images for AI analysis">
+          <Card title={t("Report Disease")} subtitle={t("Upload leaf images for AI analysis")}>
             <div className="grid place-items-center rounded-2xl border-2 border-dashed border-emerald-500/50 bg-emerald-500/10 p-10 text-center cursor-pointer hover:bg-emerald-500/20 transition-colors">
               <FiUploadCloud className="text-6xl text-emerald-500" />
-              <p className="mt-4 text-lg font-bold text-white">Upload leaf photo</p>
-              <p className="mt-2 text-sm text-slate-400">Supported formats: JPG, PNG</p>
-              <Button className="mt-6">Choose File</Button>
+              <p className="mt-4 text-lg font-bold text-white">{t("Upload leaf photo")}</p>
+              <p className="mt-2 text-sm text-slate-400">{t("Supported formats: JPG, PNG")}</p>
+              <Button className="mt-6">{t("Choose File")}</Button>
             </div>
           </Card>
-          <Card title="Detection Results" subtitle="AI feedback and recommendations">
+          <Card title={t("Detection Results")} subtitle={t("AI feedback and recommendations")}>
             <div className="h-full flex flex-col justify-center items-center text-slate-400 p-6 text-center border-2 border-dashed border-white/10 rounded-2xl bg-white/5">
               <FiSearch className="text-4xl mb-3 text-slate-500"/>
-              <p>Upload an image to see disease confidence scores and suggested treatments.</p>
+              <p>{t("Upload an image to see disease confidence scores and suggested treatments.")}</p>
             </div>
           </Card>
         </div>

@@ -4,8 +4,10 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { FiUploadCloud, FiSearch } from 'react-icons/fi';
+import { useTranslation } from 'react-i18next';
 
 export default function FarmerLivestockUpdatesPage() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('activities');
   const [tasks, setTasks] = useState<any[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string>('');
@@ -84,7 +86,7 @@ export default function FarmerLivestockUpdatesPage() {
 
   return (
     <div className="space-y-6 pb-20">
-      <SectionHeading eyebrow="Livestock Updates" title="Livestock Management" description="Record daily livestock tasks, feedings, and health notes." tone="light" />
+      <SectionHeading eyebrow={t("Livestock Updates")} title={t("Livestock Management")} description={t("Record daily livestock tasks, feedings, and health notes.")} tone="light" />
 
       {/* Tabs – for now we only need the activities tab */}
       <div className="flex space-x-3 border-b border-white/10 pb-4 overflow-x-auto">
@@ -96,24 +98,24 @@ export default function FarmerLivestockUpdatesPage() {
               activeTab === tab ? 'bg-emerald-600 text-white shadow-[0_4px_20px_rgba(16,185,129,0.3)]' : 'bg-slate-900/50 text-slate-300 hover:bg-slate-800 border border-white/5'
             }`}
           >
-            {tab === 'activities' ? 'Daily Activities' : tab}
+            {tab === 'activities' ? t('Daily Activities') : t(tab)}
           </button>
         ))}
       </div>
 
       {activeTab === 'activities' && (
-        <Card title="Record Livestock Activity" subtitle="Log feeding, health checks, and other field work">
+        <Card title={t("Record Livestock Activity")} subtitle={t("Log feeding, health checks, and other field work")}>
           <form className="space-y-6 mt-4" onSubmit={handleActivitySubmit}>
             <div className="grid gap-6 md:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-white/80">Activity Type (Today's Tasks)</span>
+                <span className="mb-2 block text-sm font-semibold text-white/80">{t("Activity Type (Today's Tasks)")}</span>
                 <select
                   className="farm-input w-full appearance-none"
                   value={selectedTaskId}
                   onChange={(e) => setSelectedTaskId(e.target.value)}
                 >
                   {tasksForDate.length === 0 ? (
-                    <option value="">No livestock tasks for selected date</option>
+                    <option value="">{t("No livestock tasks for selected date")}</option>
                   ) : (
                     tasksForDate.map((t) => (
                       <option key={t.id} value={t.id}>{t.title}</option>
@@ -123,7 +125,7 @@ export default function FarmerLivestockUpdatesPage() {
               </label>
 
               <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-white/80">Livestock / Pen</span>
+                <span className="mb-2 block text-sm font-semibold text-white/80">{t("Livestock / Pen")}</span>
                 <input
                   type="text"
                   readOnly
@@ -134,32 +136,32 @@ export default function FarmerLivestockUpdatesPage() {
             </div>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">Date</span>
+              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Date")}</span>
               <input type="date" className="farm-input w-full" value={activityDate} onChange={(e) => setActivityDate(e.target.value)} />
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">Manager's Instructions</span>
+              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Manager's Instructions")}</span>
               <textarea
                 className="farm-input w-full min-h-24 bg-white/5 cursor-not-allowed text-white/50"
-                placeholder="Details from manager..."
+                placeholder={t("Details from manager...")}
                 readOnly
-                value={selectedTask?.description || 'No instructions provided.'}
+                value={selectedTask?.description || t('No instructions provided.')}
               />
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">Farmer's Notes</span>
+              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Farmer's Notes")}</span>
               <textarea
                 className="farm-input w-full min-h-24"
-                placeholder="Describe what you actually did..."
+                placeholder={t("Describe what you actually did...")}
                 value={activityNotes}
                 onChange={(e) => setActivityNotes(e.target.value)}
               />
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">Upload Image of Work</span>
+              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Upload Image of Work")}</span>
               <input
                 type="file"
                 accept="image/*"
@@ -168,7 +170,7 @@ export default function FarmerLivestockUpdatesPage() {
               />
             </label>
 
-            <Button type="submit" className="w-full sm:w-auto" disabled={!selectedTaskId}>Save Activity</Button>
+            <Button type="submit" className="w-full sm:w-auto" disabled={!selectedTaskId}>{t("Save Activity")}</Button>
           </form>
         </Card>
       )}

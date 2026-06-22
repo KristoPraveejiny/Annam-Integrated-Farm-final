@@ -6,6 +6,7 @@ import { PublicHeader } from '../components/layout/PublicHeader';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { SectionHeading } from '../components/ui/SectionHeading';
+import { useTranslation } from 'react-i18next';
 
 const principles = [
   {
@@ -33,6 +34,7 @@ const milestones = [
 ];
 
 export default function AboutPage() {
+  const { t } = useTranslation();
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const handleImageClick = (img: string) => setSelectedImage(img);
   const closeModal = () => setSelectedImage(null);
@@ -46,39 +48,39 @@ export default function AboutPage() {
           <div className="absolute inset-0 bg-black/30" aria-hidden="true"></div>
           <div className="section-shell relative z-10 glass-bg p-6 rounded-xl max-w-3xl mx-auto mt-12">
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="text-center">
-              <h1 className="text-4xl font-extrabold text-white">About Annam Integrated Farm</h1>
+              <h1 className="text-4xl font-extrabold text-white">{t("About Annam Integrated Farm")}</h1>
               <p className="mx-auto mt-4 max-w-2xl text-sm text-slate-200">
-                Annam Integrated Farm combines traditional knowledge with modern techniques to grow quality produce and manage healthy livestock.
+                {t("Annam Integrated Farm combines traditional knowledge with modern techniques to grow quality produce and manage healthy livestock.")}
               </p>
               <p className="mx-auto mt-2 max-w-2xl text-sm text-slate-200">
-                We prioritize sustainability, community engagement, and practical innovations that increase productivity while protecting natural resources.
+                {t("We prioritize sustainability, community engagement, and practical innovations that increase productivity while protecting natural resources.")}
               </p>
               <div className="mt-6">
-                <a href="/register"><Button theme="light" className="px-5 py-3">Get Started</Button></a>
+                <a href="/register"><Button theme="light" className="px-5 py-3">{t("Get Started")}</Button></a>
               </div>
             </motion.div>
           </div>
         </section>
 
-        {/* Short 2‑line summary */}
+        {/* Short 2-line summary */}
 
 
         {/* Live Stock Section */}
         <section className="section-shell py-12 bg-white/5 glass-bg">
-          <h3 className="text-center text-2xl font-extrabold text-white">Live Stock</h3>
-          <p className="mt-3 text-center text-sm text-slate-200">Scenes of our healthy animals.</p>
+          <h3 className="text-center text-2xl font-extrabold text-white">{t("Live Stock")}</h3>
+          <p className="mt-3 text-center text-sm text-slate-200">{t("Scenes of our healthy animals.")}</p>
           <ImageGrid folder="" images={['duck.png', 'cow.jpeg', 'hen.jpeg', 'hen2.png']} onImageClick={handleImageClick} />
         </section>
         {/* Crops Section */}
         <section className="section-shell py-12 bg-white/5 glass-bg">
-          <h3 className="text-center text-2xl font-extrabold text-white">Crops</h3>
-          <p className="mt-3 text-center text-sm text-slate-200">Diverse crops cultivated on our farm.</p>
+          <h3 className="text-center text-2xl font-extrabold text-white">{t("Crops")}</h3>
+          <p className="mt-3 text-center text-sm text-slate-200">{t("Diverse crops cultivated on our farm.")}</p>
           <ImageGrid folder="" images={['Banana plant.webp', 'Green-beans.webp', 'green-chilli-plant.webp', 'ladies finger image.jpg', 'paddy field.jpg', 'Papaya-crop.jpg', 'Peanut leaf.jpeg', 'Tomato leaf.jpg']} onImageClick={handleImageClick} />
         </section>
         {/* Our Products Section */}
         <section className="section-shell py-12 bg-white/5 glass-bg">
-          <h3 className="text-center text-2xl font-extrabold text-white">Our Products</h3>
-          <p className="mt-3 text-center text-sm text-slate-200">Fresh produce and products from our farm.</p>
+          <h3 className="text-center text-2xl font-extrabold text-white">{t("Our Products")}</h3>
+          <p className="mt-3 text-center text-sm text-slate-200">{t("Fresh produce and products from our farm.")}</p>
           <ImageGrid folder="" images={['banana image.jpg', 'beans.jpg', 'Brown-eggs.webp', 'green chilli.webp', 'ladies finger food.jpeg', 'papaw.png', 'tomato.jpg']} onImageClick={handleImageClick} />
         </section>
 
@@ -111,23 +113,12 @@ export default function AboutPage() {
             {milestones.map((item, index) => (
               <div key={item} className="group relative overflow-hidden rounded-3xl border border-white/20 bg-white/10 p-6 shadow-xl backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-emerald-400/30 hover:bg-white/15 hover:shadow-2xl">
                 <p className="text-sm font-bold uppercase tracking-[0.24em] text-emerald-400">0{index + 1}</p>
-                <p className="mt-3 text-sm leading-7 text-slate-200">{item}</p>
+                <p className="mt-3 text-sm leading-7 text-slate-200">{t(item)}</p>
               </div>
             ))}
           </div>
         </section>
 
-
-
-        {/* Call to action */}
-        <section className="section-shell pb-20 mt-12">
-          <Card variant="dark" className="bg-gradient-to-br from-slate-950 to-emerald-900 border-emerald-800 shadow-2xl" title="Built for teams that want a polished public face and a serious back office" subtitle="Use it to present the platform professionally while keeping the experience practical for day‑to‑day farm operations.">
-            <div className="flex flex-wrap gap-4 mt-6">
-              <a href="/register"><Button theme="light" variant="primary" className="px-6 py-3 font-semibold">Get Started</Button></a>
-              <a href="/"><Button theme="dark" variant="secondary" className="px-6 py-3 font-semibold text-white">Back to home</Button></a>
-            </div>
-          </Card>
-        </section>
       </main>
     </div>
   );

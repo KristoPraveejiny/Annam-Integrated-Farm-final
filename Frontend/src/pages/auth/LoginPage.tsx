@@ -3,10 +3,12 @@ import { useState, useEffect } from 'react';
 import type { InputHTMLAttributes } from 'react';
 import { AuthLayout } from './AuthLayout';
 import { Button } from '../../components/ui/Button';
+import { useTranslation } from 'react-i18next';
 
 import { sendLoginOtp, verifyLoginOtp } from '../../api/auth';
 
 export default function LoginPage() {
+  const { t } = useTranslation();
 // OTP timer state
   const [otpTimer, setOtpTimer] = useState<number>(0);
   const [otpExpired, setOtpExpired] = useState<boolean>(false);
@@ -55,14 +57,14 @@ useEffect(() => {
     try {
       const response = await sendLoginOtp(email, password);
       if (response.error) {
-        alert(response.error);
+        alert(t(response.error));
       } else {
         setIsOtpSent(true);
         startOtpTimer();
       }
     } catch (err) {
       console.error(err);
-      alert('Failed to send OTP. Please ensure the Django server is running and configured.');
+      alert(t('Failed to send OTP. Please ensure the Django server is running and configured.'));
     } finally {
       setIsLoading(false);
     }
@@ -82,39 +84,39 @@ useEffect(() => {
         const dashRole = role?.replace('_', '-') === 'worker' ? 'farmer-worker' : role?.replace('_', '-');
         navigate(`/dashboard/${dashRole || 'farmer'}`);
       } else {
-        alert(response.error || 'Login failed');
+        alert(t(response.error) || t('Login failed'));
       }
     } catch (err) {
       console.error(err);
-      alert('An error occurred during login');
+      alert(t('An error occurred during login'));
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <AuthLayout title="Welcome back" subtitle="Sign in to access your smart farm dashboard, alerts, analytics, and marketplace tools.">
+    <AuthLayout title={t("Welcome back")} subtitle={t("Sign in to access your smart farm dashboard, alerts, analytics, and marketplace tools.")}>
       {!isOtpSent ? (
         <form className="space-y-4 rounded-[1.5rem] border border-white/15 bg-white/8 p-6 backdrop-blur-2xl" onSubmit={handleSendOtp}>
-          <AuthField label="Email" type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} required />
-          <AuthField label="Password" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
+          <AuthField label={t("Email")} type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} required />
+          <AuthField label={t("Password")} type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
           <div className="flex items-center justify-between text-sm">
             <label className="flex items-center gap-2 text-white/70">
-              <input type="checkbox" className="rounded border-white/30 bg-white/10" /> Remember me
+              <input type="checkbox" className="rounded border-white/30 bg-white/10" /> {t("Remember me")}
             </label>
-            <Link to="/forgot-password" className="font-semibold text-emerald-200">Forgot password?</Link>
+            <Link to="/forgot-password" className="font-semibold text-emerald-200">{t("Forgot password?")}</Link>
           </div>
           <Button className="w-full" type="submit" disabled={isLoading}>
-            {isLoading ? 'Sending OTP...' : 'Login & Send OTP'}
+            {isLoading ? t('Sending OTP...') : t('Login & Send OTP')}
           </Button>
-          <p className="text-center text-sm text-white/70">New user? <Link to="/register" className="font-semibold text-emerald-200">Create account</Link></p>
+          <p className="text-center text-sm text-white/70">{t("New user?")} <Link to="/register" className="font-semibold text-emerald-200">{t("Create account")}</Link></p>
         </form>
       ) : (
         <form className="space-y-4 rounded-[1.5rem] border border-white/15 bg-white/8 p-6 backdrop-blur-2xl" onSubmit={handleVerifyOtp}>
-          <h3 className="text-xl font-semibold text-white text-center">Verify Your Email</h3>
-          <p className="text-white/70 text-center text-sm">We've sent a 6-digit OTP to {email}</p>
+          <h3 className="text-xl font-semibold text-white text-center">{t("Verify Your Email")}</h3>
+          <p className="text-white/70 text-center text-sm">{t("We've sent a 6-digit OTP to")} {email}</p>
           <AuthField 
-            label="Enter OTP" 
+            label={t("Enter OTP")} 
             type="text" 
             placeholder="XXXXXX" 
             value={otp} 
@@ -123,13 +125,13 @@ useEffect(() => {
             required 
           />
           {otpTimer > 0 && (
-            <p className="text-center text-sm text-white/70">Time remaining: {formatTimer(otpTimer)}</p>
+            <p className="text-center text-sm text-white/70">{t("Time remaining:")} {formatTimer(otpTimer)}</p>
           )}
           {otpExpired && (
-            <p className="text-center text-sm text-red-500">OTP has expired. Please request a new OTP.</p>
+            <p className="text-center text-sm text-red-500">{t("OTP has expired. Please request a new OTP.")}</p>
           )}
           <Button className="w-full" type="submit" disabled={isLoading || otpExpired}>
-            {isLoading ? 'Verifying...' : 'Verify OTP & Login'}
+            {isLoading ? t('Verifying...') : t('Verify OTP & Login')}
           </Button>
           <div className="text-center">
             <button 
@@ -138,7 +140,7 @@ useEffect(() => {
               disabled={isLoading || otpTimer > 0}
               className="text-sm font-semibold text-emerald-200 hover:underline"
             >
-              Resend OTP
+              {t("Resend OTP")}
             </button>
           </div>
         </form>

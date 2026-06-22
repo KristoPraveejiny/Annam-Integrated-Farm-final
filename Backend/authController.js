@@ -2,10 +2,31 @@ import { pool } from './db.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
+import crypto from 'crypto';
+import { sendEmail } from './services/emailService.js';
 
 dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'defaultsecret';
+const PASSWORD_RESET_OTP_TTL_MINUTES = 10;
+
+function generateOtp() {
+  return String(crypto.randomInt(100000, 999999));
+}
+
+function hashOtp(otp) {
+  return crypto.createHash('sha256').update(otp).digest('hex');
+}
+
+function isValidPassword(password) {
+  if (typeof password !== 'string') return false;
+  if (password.length < 8 || password.length > 12) return false;
+  return /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password) && /[^A-Za-z0-9]/.test(password);
+}
+
+function passwordValidationMessage() {
+  return 'Password must be 8-12 characters and include uppercase, lowercase, number, and special character.';
+}
 
 
 export async function register(req, res) {

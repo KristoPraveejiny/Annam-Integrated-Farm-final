@@ -2,7 +2,10 @@ import { pool } from '../db.js';
 import { 
   sendProductApprovedEmail, 
   sendProductRejectedEmail, 
-  sendNewOrderEmail 
+  sendNewOrderEmail,
+  sendOrderStatusEmail,
+  sendOrderCompletedEmail,
+  sendStockReductionEmail
 } from '../services/emailService.js';
 
 // ==========================================
@@ -292,6 +295,12 @@ export const placeOrder = async (req, res) => {
     await client.query('BEGIN');
     const customer_id = req.user.userId;
     const { advanceAmount } = req.body;
+    const customerInfoRes = await client.query(
+      'SELECT email, full_name FROM app_users WHERE id = $1 LIMIT 1',
+      [customer_id]
+    );
+    const customerEmail = customerInfoRes.rows[0]?.email || null;
+    const customerName = customerInfoRes.rows[0]?.full_name || 'Customer';
 
     // Get cart
     const cartRes = await client.query('SELECT id FROM carts WHERE customer_id = $1', [customer_id]);
@@ -299,7 +308,13 @@ export const placeOrder = async (req, res) => {
     const cart_id = cartRes.rows[0].id;
 
     // Get items
-    const itemsRes = await client.query('SELECT * FROM cart_items WHERE cart_id = $1', [cart_id]);
+    const itemsRes = await client.query(
+      `SELECT ci.*, p.name as product_name, p.unit, p.available_quantity
+       FROM cart_items ci
+       JOIN products p ON p.id = ci.product_id
+       WHERE ci.cart_id = $1`,
+      [cart_id]
+    );
     if (itemsRes.rows.length === 0) throw new Error('Cart is empty');
     const items = itemsRes.rows;
 
@@ -324,6 +339,7 @@ export const placeOrder = async (req, res) => {
     const order_id = orderRes.rows[0].id;
 
     // Insert order items and reduce stock
+    const stockReductionEvents = [];
     for (const item of items) {
       const lineTotal = Number(item.quantity) * Number(item.price);
       await client.query(
@@ -343,6 +359,14 @@ export const placeOrder = async (req, res) => {
         `UPDATE products SET status = 'out_of_stock' WHERE id = $1 AND available_quantity <= 0 AND status != 'out_of_stock'`,
         [item.product_id]
       );
+
+      stockReductionEvents.push({
+        productId: item.product_id,
+        productName: item.product_name,
+        remainingStock: Math.max(0, Number(item.available_quantity) - Number(item.quantity)),
+        reducedBy: Number(item.quantity),
+        unit: item.unit,
+      });
     }
 
     // Clear cart
@@ -366,18 +390,49 @@ export const placeOrder = async (req, res) => {
 
     await client.query('COMMIT');
 
-    // Send email
+    // Send order confirmation first so it is not delayed by stock alerts.
     try {
-      const userRes = await pool.query('SELECT email FROM app_users WHERE id = $1', [customer_id]);
-      if (userRes.rows.length > 0 && userRes.rows[0].email) {
-        await sendNewOrderEmail(userRes.rows[0].email, {
-          orderNumber: orderRes.rows[0].order_number,
-          totalAmount: subtotal,
-          status: 'pending'
-        });
+      if (customerEmail) {
+        await Promise.allSettled([
+          sendNewOrderEmail(customerEmail, {
+            orderNumber: orderRes.rows[0].order_number,
+            totalAmount: subtotal,
+            status: 'pending',
+            customerName,
+            advanceAmount: advanceAmount || 0,
+          }),
+          sendOrderStatusEmail(customerEmail, {
+            orderNumber: orderRes.rows[0].order_number,
+            status: 'Order confirmed and 25% advance recorded',
+          }),
+        ]);
       }
     } catch (e) {
       console.error('Failed to send order email:', e);
+    }
+
+    // Notify customers about relevant stock reductions after commit.
+    try {
+      const customerEmailsRes = await pool.query(
+        `SELECT email 
+         FROM app_users 
+         WHERE role = 'customer' AND email IS NOT NULL AND email <> ''`
+      );
+      const customerEmails = customerEmailsRes.rows.map((row) => row.email);
+
+      for (const event of stockReductionEvents) {
+        for (const email of customerEmails) {
+          await sendStockReductionEmail(email, {
+            productName: event.productName,
+            remainingStock: event.remainingStock,
+            reducedBy: event.reducedBy,
+            unit: event.unit,
+            farmName: 'Annam Integrated Farm',
+          });
+        }
+      }
+    } catch (emailErr) {
+      console.error('Failed to send stock reduction email:', emailErr);
     }
 
     res.status(201).json({ message: 'Order placed successfully', order_id, order_number: orderRes.rows[0].order_number });
@@ -486,6 +541,108 @@ export const getManagerOrders = async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error('Error in getManagerOrders:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const markOrderReceived = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const manager_id = req.user.userId;
+
+    const farmRes = await pool.query('SELECT farm_id FROM farm_memberships WHERE user_id = $1 LIMIT 1', [manager_id]);
+    const farm_id = farmRes.rows.length > 0 ? farmRes.rows[0].farm_id : null;
+
+    if (!farm_id) {
+      return res.status(400).json({ error: 'Manager does not belong to any farm.' });
+    }
+
+    const orderCheck = await pool.query(
+      'SELECT id, status, farm_id FROM orders WHERE id = $1 LIMIT 1',
+      [id]
+    );
+
+    if (orderCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Order not found.' });
+    }
+
+    if (orderCheck.rows[0].farm_id && orderCheck.rows[0].farm_id !== farm_id) {
+      return res.status(403).json({ error: 'This order does not belong to your farm.' });
+    }
+
+    const result = await pool.query(
+      `UPDATE orders 
+       SET status = 'completed',
+           payment_status = CASE WHEN payment_status = 'authorized' THEN 'paid' ELSE payment_status END,
+           delivered_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [id]
+    );
+
+    try {
+      const customerRes = await pool.query(
+        `SELECT email 
+         FROM app_users 
+         WHERE id = (SELECT customer_user_id FROM orders WHERE id = $1)`,
+        [id]
+      );
+
+      if (customerRes.rows.length > 0 && customerRes.rows[0].email) {
+        await sendOrderCompletedEmail(customerRes.rows[0].email, {
+          orderNumber: result.rows[0].order_number,
+          status: result.rows[0].status,
+          completedAt: result.rows[0].delivered_at || new Date().toISOString(),
+        });
+      }
+    } catch (emailErr) {
+      console.error('Failed to send order completed email:', emailErr);
+    }
+
+    res.json({ message: 'Order marked as received and completed.', order: result.rows[0] });
+  } catch (error) {
+    console.error('Error in markOrderReceived:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+export const getAdminOrders = async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT o.*, u.full_name as customer_name,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', p.id,
+              'provider', p.provider,
+              'amount', p.amount,
+              'status', p.status,
+              'paid_at', p.paid_at
+            )
+          ) FILTER (WHERE p.id IS NOT NULL),
+          '[]'
+        ) as payments
+       FROM orders o
+       JOIN app_users u ON u.id = o.customer_user_id
+       LEFT JOIN payments p ON p.order_id = o.id
+       GROUP BY o.id, u.full_name
+       ORDER BY o.created_at DESC`
+    );
+
+    // Fetch items for each order
+    for (let order of result.rows) {
+      const items = await pool.query(
+        `SELECT oi.quantity, oi.unit_price, p.name as product_name, p.image_url 
+         FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.order_id = $1`, 
+        [order.id]
+      );
+      order.items = items.rows;
+    }
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error in getAdminOrders:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };

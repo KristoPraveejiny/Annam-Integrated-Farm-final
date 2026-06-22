@@ -185,16 +185,17 @@ export async function sendProductRejectedEmail(farmerEmail, productDetails) {
 }
 
 export async function sendNewOrderEmail(customerEmail, orderDetails) {
-  const subject = 'Your Order has been Placed';
+  const subject = 'Order Confirmation from Annam Integrated Farm';
   const html = `
     <h2>Order Placed Successfully</h2>
-    <p>Thank you for your order!</p>
+    <p>Thank you${orderDetails.customerName ? `, ${orderDetails.customerName}` : ''}. We have received your order and recorded the advance payment.</p>
     <ul>
       <li><strong>Order ID:</strong> ${orderDetails.orderNumber}</li>
       <li><strong>Total Amount:</strong> Rs. ${orderDetails.totalAmount}</li>
       <li><strong>Status:</strong> ${orderDetails.status}</li>
+      ${orderDetails.advanceAmount ? `<li><strong>Advance Paid:</strong> Rs. ${orderDetails.advanceAmount}</li>` : ''}
     </ul>
-    <p>We will notify you when it ships.</p>
+    <p>Please keep this email for your records. We will notify you again when the order is ready for pickup or delivery.</p>
   `;
   return sendEmail({ to: customerEmail, subject, text: html.replace(/<[^>]+>/g, ''), html });
 }
@@ -204,6 +205,35 @@ export async function sendOrderStatusEmail(customerEmail, orderDetails) {
   const html = `
     <h2>Order Status Update</h2>
     <p>Your order <strong>${orderDetails.orderNumber}</strong> status has been updated to: <strong>${orderDetails.status}</strong>.</p>
+  `;
+  return sendEmail({ to: customerEmail, subject, text: html.replace(/<[^>]+>/g, ''), html });
+}
+
+export async function sendOrderCompletedEmail(customerEmail, orderDetails) {
+  const subject = 'Your Order is Ready for Pickup';
+  const html = `
+    <h2>Order Completed</h2>
+    <p>Your order <strong>${orderDetails.orderNumber}</strong> has been marked as completed by the farm manager.</p>
+    <ul>
+      <li><strong>Status:</strong> ${orderDetails.status}</li>
+      <li><strong>Completion Time:</strong> ${new Date(orderDetails.completedAt).toLocaleString()}</li>
+    </ul>
+    <p>You may now proceed with the remaining payment and pickup process as instructed by the farm.</p>
+  `;
+  return sendEmail({ to: customerEmail, subject, text: html.replace(/<[^>]+>/g, ''), html });
+}
+
+export async function sendStockReductionEmail(customerEmail, stockDetails) {
+  const subject = `Stock Update: ${stockDetails.productName}`;
+  const html = `
+    <h2>Product Stock Updated</h2>
+    <p>The stock level for <strong>${stockDetails.productName}</strong> has been reduced.</p>
+    <ul>
+      <li><strong>Remaining Stock:</strong> ${stockDetails.remainingStock} ${stockDetails.unit}</li>
+      <li><strong>Reduced By:</strong> ${stockDetails.reducedBy} ${stockDetails.unit}</li>
+      <li><strong>Farm:</strong> ${stockDetails.farmName}</li>
+    </ul>
+    <p>This update helps keep customers informed about current availability.</p>
   `;
   return sendEmail({ to: customerEmail, subject, text: html.replace(/<[^>]+>/g, ''), html });
 }

@@ -52,4 +52,24 @@ export async function verifyLoginOtp(email: string, otp: string) {
         body: JSON.stringify({ email, otp })
     });
     return _handleResponse(res);
-}
+}
+
+const NODE_BASE_URL = 'http://localhost:5000/api';
+
+export async function sendPasswordResetOtp(email: string) {
+    const res = await fetch(`${NODE_BASE_URL}/auth/password-reset/send-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ email }),
+    });
+    return _handleResponse(res);
+}
+
+export async function confirmPasswordReset(email: string, otp: string, newPassword: string, confirmPassword: string) {
+    const res = await fetch(`${NODE_BASE_URL}/auth/password-reset/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ email, otp, newPassword, confirmPassword }),
+    });
+    return _handleResponse(res);
+}

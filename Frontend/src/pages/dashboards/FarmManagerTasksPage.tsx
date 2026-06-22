@@ -3,8 +3,10 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { FiPlus, FiCheckCircle } from 'react-icons/fi';
+import { useTranslation } from 'react-i18next';
 
 export default function FarmManagerTasksPage() {
+  const { t } = useTranslation();
   const [tasks, setTasks] = useState<any[]>([]);
   const [farmers, setFarmers] = useState<any[]>([]);
   const [crops, setCrops] = useState<any[]>([]);
@@ -101,36 +103,36 @@ export default function FarmManagerTasksPage() {
   return (
     <div className="space-y-6 pb-20">
       <SectionHeading
-        eyebrow="Task Management"
-        title="Farm Tasks"
-        description="Assign tasks to farmers and track completion."
+        eyebrow={t("Task Management")}
+        title={t("Farm Tasks")}
+        description={t("Assign tasks to farmers and track completion")}
         tone="light"
       />
 
-      <Card title="Task List" subtitle="All tasks created for your farm">
+      <Card title={t("Task List")} subtitle={t("All tasks created for your farm")}>
         <div className="flex justify-end mb-6">
           <Button onClick={() => setShowModal(true)} className="flex items-center gap-2 whitespace-nowrap">
-            <FiPlus className="text-lg" /> Assign Task
+            <FiPlus className="text-lg" /> {t("Assign Task")}
           </Button>
         </div>
         <div className="overflow-x-auto rounded-2xl border border-white/10 shadow-xl">
           <table className="min-w-full text-left text-sm text-slate-300">
             <thead className="bg-slate-900/90 text-white font-semibold">
               <tr>
-                <th className="px-6 py-4">Task Name</th>
-                <th className="px-6 py-4">Assigned To</th>
-                <th className="px-6 py-4">Related Entity</th>
-                <th className="px-6 py-4">Priority</th>
-                <th className="px-6 py-4">Session</th>
-                <th className="px-6 py-4">Due Date</th>
-                <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4">{t("Task Name")}</th>
+                <th className="px-6 py-4">{t("Assigned To")}</th>
+                <th className="px-6 py-4">{t("Related Entity")}</th>
+                <th className="px-6 py-4">{t("Priority")}</th>
+                <th className="px-6 py-4">{t("Session")}</th>
+                <th className="px-6 py-4">{t("Due Date")}</th>
+                <th className="px-6 py-4">{t("Status")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 bg-slate-950/60">
                {loading ? (
-                 <tr><td colSpan={6} className="px-6 py-4 text-center text-slate-500">Loading tasks...</td></tr>
+                 <tr><td colSpan={7} className="px-6 py-4 text-center text-slate-500">Loading tasks...</td></tr>
                ) : tasks.length === 0 ? (
-                 <tr><td colSpan={6} className="px-6 py-4 text-center text-slate-500">No tasks found. Click 'Assign Task' to create one.</td></tr>
+                 <tr><td colSpan={7} className="px-6 py-4 text-center text-slate-500">{t("No tasks found")}</td></tr>
                ) : (
                 tasks.map(t => (
                   <tr key={t.id} className="hover:bg-white/5 transition-colors">
@@ -158,40 +160,40 @@ export default function FarmManagerTasksPage() {
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-slate-900 border border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]">
-            <h3 className="text-2xl font-bold text-white mb-6">Assign New Task</h3>
+            <h3 className="text-2xl font-bold text-white mb-6">{t("Assign New Task")}</h3>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Task Title *</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">{t("Task Title")}</label>
                 <input
                   type="text"
                   required
                   value={formData.title}
                   onChange={e => setFormData({...formData, title: e.target.value})}
                   className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
-                  placeholder="e.g. Inspect irrigation lines"
+                  placeholder={t("eg Inspect irrigation lines")}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Description</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">{t("Description")}</label>
                 <textarea
                   rows={3}
                   value={formData.description}
                   onChange={e => setFormData({...formData, description: e.target.value})}
                   className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
-                  placeholder="Details about the task..."
+                  placeholder={t("Details about the task")}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Assign to Farmer *</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">{t("Assign to Farmer")}</label>
                 <select
                   required
                   value={formData.assignedToUserId}
                   onChange={e => setFormData({...formData, assignedToUserId: e.target.value})}
                   className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
                 >
-                  <option value="" disabled>Select farmer...</option>
+                  <option value="" disabled>{t("Select farmer")}</option>
                   {farmers.map(f => (
                     <option key={f.id} value={f.id}>{f.name}</option>
                   ))}
@@ -200,28 +202,28 @@ export default function FarmManagerTasksPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Related Crop (Optional)</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">{t("Related Crop")}</label>
                   <select
                     value={formData.cropCycleId}
                     onChange={e => setFormData({...formData, cropCycleId: e.target.value, livestockGroupId: ''})}
                     className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
                     disabled={!!formData.livestockGroupId}
                   >
-                    <option value="">None</option>
+                    <option value="">{t("None")}</option>
                     {crops.map(c => (
                       <option key={c.id} value={c.id}>{c.crop_name} {c.variety ? `(${c.variety})` : ''}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Related Livestock (Optional)</label>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">{t("Related Livestock")}</label>
                   <select
                     value={formData.livestockGroupId}
                     onChange={e => setFormData({...formData, livestockGroupId: e.target.value, cropCycleId: ''})}
                     className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
                     disabled={!!formData.cropCycleId}
                   >
-                    <option value="">None</option>
+                    <option value="">{t("None")}</option>
                     {livestockGroups.map(lg => (
                       <option key={lg.id} value={lg.id}>{lg.group_code} - {lg.species}</option>
                     ))}
@@ -266,8 +268,8 @@ export default function FarmManagerTasksPage() {
               </div>
 
               <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-white/10">
-                <Button variant="ghost" type="button" onClick={() => setShowModal(false)}>Cancel</Button>
-                <Button type="submit">Create Task</Button>
+                <Button variant="ghost" type="button" onClick={() => setShowModal(false)}>{t("Cancel")}</Button>
+                <Button type="submit">{t("Create Task")}</Button>
               </div>
             </form>
           </div>

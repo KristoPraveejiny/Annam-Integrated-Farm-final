@@ -14,7 +14,8 @@ import {
   placeOrder,
   getOrderHistory,
   getMarketplaceStats,
-  getManagerOrders
+  getManagerOrders,
+  markOrderReceived
 } from '../controllers/marketplaceController.js';
 
 const router = express.Router();
@@ -39,6 +40,7 @@ router.get('/manager/pending-products', getPendingProducts);
 router.put('/manager/products/:id/approve', approveProduct);
 router.put('/manager/products/:id/reject', rejectProduct);
 router.get('/manager/orders', getManagerOrders);
+router.patch('/manager/orders/:id/received', markOrderReceived);
 
 // Cart Routes
 router.post('/cart/add', addToCart);
@@ -52,6 +54,9 @@ router.get('/orders/customer/history', getOrderHistory);
 // ==========================================
 // SUPERADMIN ROUTES
 // ==========================================
+import { getAdminOrders } from '../controllers/marketplaceController.js';
+
 router.get('/admin/stats', getMarketplaceStats);
+router.get('/admin/orders', getAdminOrders);
 
 export default router;

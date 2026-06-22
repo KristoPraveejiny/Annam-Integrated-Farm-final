@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card } from '../../../components/ui/Card';
 import { getAdminAIAdvisories } from '../../../api/admin';
 
@@ -13,6 +14,7 @@ interface DiseaseAdvisory {
 }
 
 export default function DiseaseDetectionMonitoringPage() {
+  const { t } = useTranslation();
   const [diseases, setDiseases] = useState<DiseaseAdvisory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -36,7 +38,7 @@ export default function DiseaseDetectionMonitoringPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Disease Detection Monitoring</h1>
+      <h1 className="text-2xl font-bold text-gray-900">{t("Disease Detection Monitoring")}</h1>
       <Card>
         {loading ? (
           <p className="text-gray-500 p-4">Loading disease detections...</p>
@@ -53,7 +55,7 @@ export default function DiseaseDetectionMonitoringPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Summary</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Farm</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Confidence</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Date")}</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
