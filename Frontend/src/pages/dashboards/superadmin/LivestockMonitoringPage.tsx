@@ -41,52 +41,52 @@ export default function LivestockMonitoringPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">{t("Livestock Monitoring")}</h1>
-      <Card>
+      <h1 className="text-2xl font-bold text-white">{t("Livestock Monitoring")}</h1>
+      <Card variant="dark" className="border-white/10 bg-white/[0.08] backdrop-blur-2xl">
         {loading ? (
-          <p className="text-gray-500 p-4">Loading livestock...</p>
+          <p className="p-4 text-slate-300">Loading livestock...</p>
         ) : error ? (
-          <p className="text-red-500 p-4">{error}</p>
+          <p className="p-4 text-rose-400">{error}</p>
         ) : livestock.length === 0 ? (
-          <p className="text-gray-500 p-4">No livestock found.</p>
+          <p className="p-4 text-slate-300">No livestock found.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-white/10">
+              <thead className="bg-slate-950/80">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Tag / Group")}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Details")}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Location")}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Health Status")}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Weight")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Tag / Group")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Details")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Location")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Health Status")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Weight")}</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="divide-y divide-white/10 bg-slate-950/30">
                 {livestock.map((animal) => (
-                  <tr key={animal.id}>
+                  <tr key={animal.id} className="hover:bg-white/5">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{animal.tag_code}</div>
-                      <div className="text-sm text-gray-500">Group: {animal.group_code || 'N/A'}</div>
+                      <div className="text-sm font-medium text-white">{animal.tag_code}</div>
+                      <div className="text-sm text-slate-300">Group: {animal.group_code || 'N/A'}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <div><span className="font-medium text-gray-900">{animal.species}</span> ({animal.breed || 'Unknown'})</div>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
+                      <div><span className="font-medium text-white">{animal.species}</span> ({animal.breed || 'Unknown'})</div>
                       <div className="text-xs">Sex: {animal.sex || 'Unknown'}, DOB: {animal.birth_date ? new Date(animal.birth_date).toLocaleDateString() : 'Unknown'}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
                       {animal.farm_name}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        animal.health_status === 'healthy' ? 'bg-green-100 text-green-800' :
-                        animal.health_status === 'watch' ? 'bg-yellow-100 text-yellow-800' :
-                        animal.health_status === 'treatment' ? 'bg-orange-100 text-orange-800' :
-                        animal.health_status === 'sold' ? 'bg-blue-100 text-blue-800' :
-                        'bg-gray-100 text-gray-800'
+                        animal.health_status === 'healthy' ? 'bg-emerald-500/15 text-emerald-300' :
+                        animal.health_status === 'watch' ? 'bg-amber-500/15 text-amber-300' :
+                        animal.health_status === 'treatment' ? 'bg-orange-500/15 text-orange-300' :
+                        animal.health_status === 'sold' ? 'bg-sky-500/15 text-sky-300' :
+                        'bg-white/10 text-slate-300'
                       }`}>
                         {animal.health_status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
                       {animal.current_weight_kg ? `${animal.current_weight_kg} kg` : 'N/A'}
                     </td>
                   </tr>

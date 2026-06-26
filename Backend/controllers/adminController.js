@@ -24,18 +24,48 @@ export const getDashboardOverview = async (req, res) => {
       else if (row.role === 'super_admin') users.admins = c;
     });
 
-    // 2. Farm Statistics
-    const farmsRes = await pool.query(`
+    // 2. Field Statistics
+    const fieldsRes = await pool.query(`
       SELECT 
-        COUNT(*) as total_farms,
-        SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_farms,
-        SUM(total_area_acres) as total_area
-      FROM farms
+        COUNT(*) as total_fields,
+        SUM(CASE WHEN LOWER(COALESCE(status, '')) IN ('active', 'open', 'available') THEN 1 ELSE 0 END) as active_fields,
+        COALESCE(SUM(COALESCE(area::numeric, 0)), 0) as total_area
+      FROM farm_fields
     `);
+
+    let fieldsWithCrops = 0;
+    try {
+      const cropFieldColumnRes = await pool.query(`
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'crop_cycles'
+          AND column_name = 'field_id'
+        LIMIT 1
+      `);
+
+      if (cropFieldColumnRes.rowCount > 0) {
+        const fieldsWithCropsRes = await pool.query(`
+          SELECT COUNT(DISTINCT field_id) AS count
+          FROM crop_cycles
+          WHERE field_id IS NOT NULL
+        `);
+        fieldsWithCrops = parseInt(fieldsWithCropsRes.rows[0].count || 0, 10);
+      }
+    } catch (fieldCropError) {
+      console.warn('Skipping fields-with-crops aggregation:', fieldCropError.message);
+    }
+
     const farms = {
-      total: parseInt(farmsRes.rows[0].total_farms || 0, 10),
-      active: parseInt(farmsRes.rows[0].active_farms || 0, 10),
-      total_area: parseFloat(farmsRes.rows[0].total_area || 0)
+      total: parseInt(fieldsRes.rows[0].total_fields || 0, 10),
+      active: parseInt(fieldsRes.rows[0].active_fields || 0, 10),
+      total_area: parseFloat(fieldsRes.rows[0].total_area || 0)
+    };
+    const fields = {
+      total: parseInt(fieldsRes.rows[0].total_fields || 0, 10),
+      active: parseInt(fieldsRes.rows[0].active_fields || 0, 10),
+      with_crops: fieldsWithCrops,
+      total_area: parseFloat(fieldsRes.rows[0].total_area || 0),
     };
 
     // 3. Crop Statistics
@@ -97,6 +127,7 @@ export const getDashboardOverview = async (req, res) => {
     res.json({
       users,
       farms,
+      fields,
       crops,
       livestock,
       tasks,
@@ -272,5 +303,79 @@ export const getAdminSalaries = async (req, res) => {
   } catch (error) {
     console.error('Error fetching admin salaries:', error);
     res.status(500).json({ error: 'Failed to fetch salaries.' });
+  }
+};
+
+export const getSystemSettings = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT setting_key, setting_value, scope, description, updated_at
+      FROM system_settings
+      WHERE scope = 'global'
+         OR scope = 'home'
+         OR scope = 'about'
+      ORDER BY setting_key ASC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching system settings:', error);
+    res.status(500).json({ error: 'Failed to fetch system settings.' });
+  }
+};
+
+export const updateSystemSetting = async (req, res) => {
+  try {
+    const { setting_key, setting_value, scope = 'global', description = null } = req.body;
+    if (!setting_key || setting_value === undefined) {
+      return res.status(400).json({ error: 'setting_key and setting_value are required.' });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO system_settings (setting_key, setting_value, scope, description, updated_by_user_id, updated_at)
+      VALUES ($1, $2, $3, $4, $5, now())
+      ON CONFLICT (setting_key, scope)
+      DO UPDATE SET setting_value = EXCLUDED.setting_value,
+                    description = EXCLUDED.description,
+                    updated_by_user_id = EXCLUDED.updated_by_user_id,
+                    updated_at = now()
+      RETURNING setting_key, setting_value, scope, description, updated_at
+    `, [setting_key, JSON.stringify(setting_value), scope, description, req.user.userId]);
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating system setting:', error);
+    res.status(500).json({ error: 'Failed to update system setting.' });
+  }
+};
+
+export const uploadSystemSettingImages = async (req, res) => {
+  try {
+    const files = req.files || [];
+    const grouped = files.reduce((acc, file) => {
+      if (!acc[file.fieldname]) acc[file.fieldname] = [];
+      acc[file.fieldname].push(`/uploads/system-settings/${file.filename}`);
+      return acc;
+    }, {});
+
+    res.json({ files: grouped });
+  } catch (error) {
+    console.error('Error uploading system setting images:', error);
+    res.status(500).json({ error: 'Failed to upload images.' });
+  }
+};
+
+export const getAdminNotifications = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT n.*, u.full_name as user_name, f.name as farm_name
+      FROM notifications n
+      LEFT JOIN app_users u ON n.user_id = u.id
+      LEFT JOIN farms f ON n.farm_id = f.id
+      ORDER BY n.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching admin notifications:', error);
+    res.status(500).json({ error: 'Failed to fetch notifications.' });
   }
 };

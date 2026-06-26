@@ -37,45 +37,45 @@ export default function AIAdvisoryMonitoringPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">{t("AI Advisory Monitoring")}</h1>
-      <Card>
+      <h1 className="text-2xl font-bold text-white">{t("AI Advisory Monitoring")}</h1>
+      <Card variant="dark" className="border-white/10 bg-white/[0.08] backdrop-blur-2xl">
         {loading ? (
-          <p className="text-gray-500 p-4">Loading AI advisories...</p>
+          <p className="p-4 text-slate-300">Loading AI advisories...</p>
         ) : error ? (
-          <p className="text-red-500 p-4">{error}</p>
+          <p className="p-4 text-rose-400">{error}</p>
         ) : advisories.length === 0 ? (
-          <p className="text-gray-500 p-4">No AI advisories found.</p>
+          <p className="p-4 text-slate-300">No AI advisories found.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-white/10">
+              <thead className="bg-slate-950/80">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title / Summary</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Farm</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Confidence</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Date")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">Type</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">Title / Summary</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">Farm</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">Confidence</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Date")}</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="divide-y divide-white/10 bg-slate-950/30">
                 {advisories.map((adv) => (
-                  <tr key={adv.id}>
+                  <tr key={adv.id} className="hover:bg-white/5">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800 capitalize">
+                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-emerald-500/15 text-emerald-300 capitalize">
                         {adv.advisory_kind}
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-gray-900">{adv.title}</div>
-                      <div className="text-sm text-gray-500 truncate max-w-xs">{adv.summary}</div>
+                      <div className="text-sm font-medium text-white">{adv.title}</div>
+                      <div className="text-sm text-slate-300 truncate max-w-xs">{adv.summary}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
                       {adv.farm_name || 'System-wide'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
                       {adv.confidence ? `${adv.confidence}%` : 'N/A'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
                       {new Date(adv.created_at).toLocaleDateString()}
                     </td>
                   </tr>

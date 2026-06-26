@@ -73,7 +73,7 @@ export default function MarketplaceManagementPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex space-x-4 border-b border-white/20 pb-2">
+      <div className="flex space-x-4 border-b border-white/10 pb-2">
         <button
           onClick={() => setActiveTab('products')}
           className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${
@@ -96,29 +96,29 @@ export default function MarketplaceManagementPage() {
         </button>
       </div>
 
-      <Card className="h-auto">
+      <Card variant="dark" className="h-auto border-white/10 bg-white/[0.08] backdrop-blur-2xl">
         {loading ? (
-          <p className="text-white p-4">{t("Loading...")}</p>
+          <p className="p-4 text-slate-300">{t("Loading...")}</p>
         ) : error ? (
-          <p className="text-red-500 p-4">{error}</p>
+          <p className="p-4 text-rose-400">{error}</p>
         ) : activeTab === 'products' ? (
           products.length === 0 ? (
-            <p className="text-white/80 p-4">{t("No products found in the marketplace.")}</p>
+            <p className="p-4 text-slate-300">{t("No products found in the marketplace.")}</p>
           ) : (
             <div className="overflow-x-auto rounded-lg">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-white/10">
+                <thead className="bg-slate-950/80">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Product")}</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Category")}</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Price")}</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Stock")}</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Status")}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Product")}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Category")}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Price")}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Stock")}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Status")}</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="divide-y divide-white/10 bg-slate-950/30">
                   {products.map((product) => (
-                    <tr key={product.id}>
+                    <tr key={product.id} className="hover:bg-white/5">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="h-10 w-10 flex-shrink-0 bg-gray-100 rounded-md overflow-hidden">
@@ -129,27 +129,27 @@ export default function MarketplaceManagementPage() {
                             )}
                           </div>
                           <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">{product.name}</div>
+                            <div className="text-sm font-medium text-white">{product.name}</div>
                             {product.farm_name && (
-                              <div className="text-xs text-gray-500">Farm: {product.farm_name}</div>
+                              <div className="text-xs text-slate-300">Farm: {product.farm_name}</div>
                             )}
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
                         {product.category || 'Uncategorized'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-emerald-600">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-emerald-300">
                         Rs {Number(product.price).toFixed(2)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
                         {product.available_quantity} units
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          product.status === 'approved' ? 'bg-green-100 text-green-800' : 
-                          product.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
+                          product.status === 'approved' ? 'bg-emerald-500/15 text-emerald-300' : 
+                          product.status === 'pending' ? 'bg-amber-500/15 text-amber-300' :
+                          'bg-rose-500/15 text-rose-300'
                         }`}>
                           {product.status || 'Active'}
                         </span>
@@ -162,30 +162,30 @@ export default function MarketplaceManagementPage() {
           )
         ) : (
           orders.length === 0 ? (
-            <p className="text-white/80 p-4">{t("No orders found.")}</p>
+            <p className="p-4 text-slate-300">{t("No orders found.")}</p>
           ) : (
             <div className="overflow-x-auto rounded-lg">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-white/10">
+                <thead className="bg-slate-950/80">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Order #")}</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Customer")}</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Items")}</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Total")}</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Status")}</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Date")}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Order #")}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Customer")}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Items")}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Total")}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Status")}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Date")}</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="divide-y divide-white/10 bg-slate-950/30">
                   {orders.map((order) => (
-                    <tr key={order.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <tr key={order.id} className="hover:bg-white/5">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
                         {order.order_number}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
                         {order.customer_name || 'N/A'}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
+                      <td className="px-6 py-4 text-sm text-slate-300">
                         <ul className="list-disc pl-4">
                           {order.items?.map((item: any, idx: number) => (
                             <li key={idx} className="whitespace-nowrap">
@@ -194,22 +194,22 @@ export default function MarketplaceManagementPage() {
                           ))}
                         </ul>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-emerald-600">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-emerald-300">
                         Rs {Number(order.total_amount).toFixed(2)}
-                        <div className="text-xs text-gray-400 font-normal">
+                        <div className="text-xs text-slate-400 font-normal">
                           {order.payment_status}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          order.status === 'completed' ? 'bg-green-100 text-green-800' : 
-                          order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-blue-100 text-blue-800'
+                          order.status === 'completed' ? 'bg-emerald-500/15 text-emerald-300' : 
+                          order.status === 'pending' ? 'bg-amber-500/15 text-amber-300' :
+                          'bg-sky-500/15 text-sky-300'
                         }`}>
                           {order.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
                         {new Date(order.created_at).toLocaleDateString()}
                       </td>
                     </tr>

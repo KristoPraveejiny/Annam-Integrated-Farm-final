@@ -1,6 +1,6 @@
 import express from 'express';
 import { verifyToken, authorizeRole } from '../authMiddleware.js';
-import { 
+import {
   getDashboardOverview, 
   getUsers, 
   updateUserStatus,
@@ -11,8 +11,13 @@ import {
   getAdminLivestock,
   getAdminAIAdvisories,
   getAdminTasks,
-  getAdminSalaries
+  getAdminSalaries,
+  getSystemSettings,
+  updateSystemSetting,
+  getAdminNotifications,
+  uploadSystemSettingImages
 } from '../controllers/adminController.js';
+import upload from '../systemSettingUploadMiddleware.js';
 
 const router = express.Router();
 
@@ -36,5 +41,9 @@ router.get('/livestock', getAdminLivestock);
 router.get('/ai-advisories', getAdminAIAdvisories);
 router.get('/tasks', getAdminTasks);
 router.get('/salaries', getAdminSalaries);
+router.get('/system-settings', getSystemSettings);
+router.post('/system-settings/upload', upload.any(), uploadSystemSettingImages);
+router.put('/system-settings', updateSystemSetting);
+router.get('/notifications', getAdminNotifications);
 
 export default router;

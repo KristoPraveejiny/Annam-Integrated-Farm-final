@@ -38,19 +38,34 @@ export async function addField(req, res) {
 export async function getFieldsByFarm(req, res) {
   try {
     const userId = req.user.userId;
-    // We will use resolvedFarmId to ensure the user has access to it
-    const resolvedFarmId = await getDefaultFarmId(userId);
-    
-    // Fetch fields and their current crop cycle if any
-    const query = `
-      SELECT f.*, 
-             c.crop_name, c.current_stage as growth_stage, c.status as crop_status
-      FROM farm_fields f
-      LEFT JOIN crop_cycles c ON c.field_id = f.id AND c.status IN ('planned', 'seeded', 'growing', 'harvesting')
-      WHERE f.farm_id = $1
-      ORDER BY f.created_at DESC
-    `;
-    const result = await pool.query(query, [resolvedFarmId]);
+    const userRole = req.user.role;
+    const isSuperAdmin = userRole === 'super_admin';
+    const resolvedFarmId = isSuperAdmin ? null : await getDefaultFarmId(userId);
+
+    const query = isSuperAdmin
+      ? `
+        SELECT f.*,
+               c.crop_name,
+               c.current_stage as growth_stage,
+               c.status as crop_status
+        FROM farm_fields f
+        LEFT JOIN crop_cycles c ON c.field_id = f.id AND c.status IN ('planned', 'seeded', 'growing', 'harvesting')
+        ORDER BY f.created_at DESC
+      `
+      : `
+        SELECT f.*,
+               c.crop_name,
+               c.current_stage as growth_stage,
+               c.status as crop_status
+        FROM farm_fields f
+        LEFT JOIN crop_cycles c ON c.field_id = f.id AND c.status IN ('planned', 'seeded', 'growing', 'harvesting')
+        WHERE f.farm_id = $1
+        ORDER BY f.created_at DESC
+      `;
+
+    const result = isSuperAdmin
+      ? await pool.query(query)
+      : await pool.query(query, [resolvedFarmId]);
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching fields:', err);

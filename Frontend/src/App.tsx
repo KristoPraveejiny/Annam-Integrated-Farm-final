@@ -35,6 +35,7 @@ import SalaryReportPage from './pages/SalaryReportPage';
 import MyEarningsPage from './pages/MyEarningsPage';
 import AIChatPage from './pages/dashboards/AIChatPage';
 import CustomerDashboard from './pages/dashboards/CustomerDashboard';
+import FeedbackPage from './pages/dashboards/FeedbackPage';
 
 // Super Admin Pages
 import SuperAdminDashboard from './pages/dashboards/SuperAdminDashboard';
@@ -50,6 +51,7 @@ import TaskAttendanceMonitoringPage from './pages/dashboards/superadmin/TaskAtte
 import SalaryPaymentMonitoringPage from './pages/dashboards/superadmin/SalaryPaymentMonitoringPage';
 import MarketplaceManagementPage from './pages/dashboards/superadmin/MarketplaceManagementPage';
 import NotificationManagementPage from './pages/dashboards/superadmin/NotificationManagementPage';
+import FeedbackManagementPage from './pages/dashboards/superadmin/FeedbackManagementPage';
 import SystemSettingsPage from './pages/dashboards/superadmin/SystemSettingsPage';
 import AuditLogsPage from './pages/dashboards/superadmin/AuditLogsPage';
 
@@ -146,6 +148,11 @@ export default function App() {
           <NotificationManagementPage />
         </AppShell>
       } />
+      <Route path="/dashboard/super-admin/feedback" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <FeedbackManagementPage />
+        </AppShell>
+      } />
       <Route path="/dashboard/super-admin/settings" element={
         <AppShell role="super-admin" items={publicNavItems['super-admin']}>
           <SystemSettingsPage />
@@ -232,6 +239,11 @@ export default function App() {
           <AIChatPage />
         </AppShell>
       } />
+      <Route path="/dashboard/farm-manager/feedback" element={
+        <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
+          <FeedbackManagementPage readOnly />
+        </AppShell>
+      } />
       {/* Farmer Worker subpages */}
       <Route path="/dashboard/farmer-worker/tasks" element={
         <AppShell role="farmer-worker" items={publicNavItems['farmer-worker']}>
@@ -288,10 +300,20 @@ export default function App() {
           <NotificationsPage />
         </AppShell>
       } />
+      <Route path="/dashboard/farmer-worker/feedback" element={
+        <AppShell role="farmer-worker" items={publicNavItems['farmer-worker']}>
+          <FeedbackPage role="farmer-worker" />
+        </AppShell>
+      } />
       
       <Route path="/dashboard/customer/marketplace" element={
         <AppShell role="customer" items={publicNavItems['customer']}>
           <CustomerMarketplacePage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/customer/feedback" element={
+        <AppShell role="customer" items={publicNavItems['customer']}>
+          <FeedbackPage role="customer" />
         </AppShell>
       } />
       <Route path="/dashboard/customer/cart" element={

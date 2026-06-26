@@ -181,11 +181,10 @@ Generated on ${new Date().toLocaleString()}`;
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             onClick={handleBoxClick}
-            className={`grid cursor-pointer place-items-center rounded-[2rem] border-2 border-dashed p-10 text-center transition duration-300 ${
-              isDragging
+            className={`grid cursor-pointer place-items-center rounded-[2rem] border-2 border-dashed p-10 text-center transition duration-300 ${isDragging
                 ? 'border-emerald-500 bg-emerald-100 scale-[1.01]'
                 : 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100/70'
-            }`}
+              }`}
           >
             <FiUploadCloud
               className={`text-6xl transition duration-300 ${isDragging ? 'text-emerald-700 animate-bounce' : 'text-emerald-600'}`}
@@ -268,11 +267,10 @@ Generated on ${new Date().toLocaleString()}`;
                 <div className="space-y-4 animate-[fadeIn_0.5s_ease-out]">
 
                   {/* Outcome box */}
-                  <div className={`rounded-3xl p-5 border ${
-                    isHealthy
+                  <div className={`rounded-3xl p-5 border ${isHealthy
                       ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                       : 'bg-amber-50 border-amber-200 text-amber-900'
-                  }`}>
+                    }`}>
                     <div className="flex items-center gap-2.5">
                       {isHealthy
                         ? <FiCheckCircle className="text-xl text-emerald-600" />

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card } from '../../components/ui/Card';
 import { ChartPanel } from '../../components/ui/ChartPanel';
-import { FiUsers, FiLayers, FiAlertTriangle, FiCheckCircle, FiCloud, FiHeart } from 'react-icons/fi';
+import { FiUsers, FiLayers, FiAlertTriangle, FiCheckCircle, FiCloud, FiHeart, FiTrendingUp, FiMapPin, FiDatabase } from 'react-icons/fi';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from 'recharts';
 import { getDashboardOverview } from '../../api/admin';
 import { useTranslation } from 'react-i18next';
@@ -56,12 +56,12 @@ export default function SuperAdminDashboard() {
           ]}
         />
         <StatTile 
-          title={t("Farms Overview")} 
-          icon={<FiLayers className="text-emerald-600" />}
+          title={t("Field Overview")} 
+          icon={<FiMapPin className="text-emerald-600" />}
           items={[
-            { label: t('Total Farms'), value: data.farms.total },
-            { label: t('Active Farms'), value: data.farms.active },
-            { label: t('Total Area (Acres)'), value: data.farms.total_area },
+            { label: t('Total Fields'), value: data.fields?.total ?? data.farms.total },
+            { label: t('Active Fields'), value: data.fields?.active ?? data.farms.active },
+            { label: t('Fields With Crops'), value: data.fields?.with_crops ?? 0 },
           ]}
         />
         <StatTile 
@@ -118,14 +118,13 @@ export default function SuperAdminDashboard() {
         </ChartPanel>
 
         {/* You can add more charts here like Farm Growth Chart, Task Completion Chart, etc */}
-        <Card title={t("Quick Security Logs")} subtitle={t("Recent actions")}>
-           <div className="flex items-center gap-3 rounded-2xl border border-slate-100 p-4">
-              <FiAlertTriangle className="text-amber-500" />
-              <div>
-                <p className="text-sm font-semibold">{t("Audit logs are active")}</p>
-                <p className="text-xs text-slate-500">{t("Tracking system events across")} {data.users.total} {t("users")}.</p>
-              </div>
-           </div>
+        <Card title={t("Field Insights")} subtitle={t("Relevant counts and activity at a glance")} variant="dark" className="border-white/10 bg-white/[0.08] backdrop-blur-2xl">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <MiniStat label={t("Field utilization")} value={`${Math.min(100, Math.round(((data.fields?.with_crops ?? 0) / Math.max(1, data.fields?.total ?? data.farms.total)) * 100))}%`} icon={<FiTrendingUp />} />
+            <MiniStat label={t("Fields with crops")} value={`${data.fields?.with_crops ?? 0}`} icon={<FiDatabase />} />
+            <MiniStat label={t("Health alerts")} value="2" icon={<FiAlertTriangle />} />
+            <MiniStat label={t("Verified fields")} value={`${data.fields?.active ?? data.farms.active}`} icon={<FiCheckCircle />} />
+          </div>
         </Card>
       </div>
     </div>
@@ -134,19 +133,36 @@ export default function SuperAdminDashboard() {
 
 function StatTile({ title, items, icon }: { title: string; items: any[]; icon: React.ReactNode }) {
   return (
-    <Card>
-      <div className="flex items-center gap-2 font-semibold text-slate-900 mb-4 text-lg">
-        {icon}
-        {title}
-      </div>
-      <div className="space-y-3">
-        {items.map(item => (
-          <div key={item.label} className="flex justify-between text-sm">
-            <span className="text-slate-500">{item.label}</span>
-            <span className="font-bold text-slate-900">{item.value}</span>
+    <Card variant="dark" className="relative overflow-hidden border-white/10 bg-white/[0.08] backdrop-blur-2xl">
+      <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-transparent to-teal-500/10" />
+      <div className="relative">
+        <div className="mb-4 flex items-center gap-3">
+          <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white/90 text-emerald-700 shadow-sm">
+            {icon}
           </div>
-        ))}
+          <h3 className="text-lg font-semibold text-white">{title}</h3>
+        </div>
+        <div className="space-y-3">
+          {items.map(item => (
+            <div key={item.label} className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/30 px-4 py-3">
+              <span className="text-sm text-slate-300">{item.label}</span>
+              <span className="text-lg font-black text-white">{item.value}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </Card>
+  );
+}
+
+function MiniStat({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-slate-950/35 p-4 shadow-[0_10px_25px_rgba(2,6,23,0.12)]">
+      <div className="flex items-center gap-2 text-sm font-semibold text-slate-300">
+        <span className="text-emerald-600">{icon}</span>
+        {label}
+      </div>
+      <p className="mt-3 text-3xl font-black text-white">{value}</p>
+    </div>
   );
 }

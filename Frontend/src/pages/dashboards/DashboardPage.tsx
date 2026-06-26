@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import { FiActivity, FiAlertTriangle, FiCalendar, FiCheckCircle, FiCloud, FiCpu, FiDatabase, FiDollarSign, FiGrid, FiShield, FiShoppingBag, FiUsers } from 'react-icons/fi';
+import { FiActivity, FiAlertTriangle, FiCalendar, FiCheckCircle, FiCloud, FiCpu, FiDatabase, FiDollarSign, FiGrid, FiShield, FiShoppingBag, FiUsers, FiLayers, FiMapPin, FiTrendingUp } from 'react-icons/fi';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Card } from '../../components/ui/Card';
 import { ProgressBar } from '../../components/ui/ProgressBar';
@@ -55,10 +55,16 @@ export default function DashboardPage({ dashboard }: DashboardPageProps) {
 function StatTile({ label, value, delta }: { label: string; value: string; delta: string }) {
   const { t } = useTranslation();
   return (
-    <Card>
-      <p className="text-sm font-medium text-slate-500">{t(label)}</p>
-      <p className="mt-3 text-3xl font-black text-slate-900">{value}</p>
-      <p className="mt-2 text-sm font-semibold text-emerald-600">{t(delta)}</p>
+    <Card className="relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/8 via-transparent to-teal-500/10" />
+      <div className="relative">
+        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">{t(label)}</p>
+        <p className="mt-3 text-4xl font-black text-slate-950">{value}</p>
+        <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700">
+          <FiTrendingUp className="text-xs" />
+          {t(delta)}
+        </p>
+      </div>
     </Card>
   );
 }
@@ -88,6 +94,27 @@ function SuperAdminBlocks() {
           </LineChart>
         </ResponsiveContainer>
       </ChartPanel>
+
+      <Card title={t("Field Overview")} subtitle={t("Relevant field counts and operational status")}>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <MetricPill label="Total Fields" value="48" icon={<FiLayers />} />
+          <MetricPill label="Active Fields" value="39" icon={<FiMapPin />} />
+          <MetricPill label="Under Review" value="9" icon={<FiDatabase />} />
+        </div>
+        <div className="mt-5 grid gap-3 rounded-3xl border border-white/10 bg-slate-950/35 p-4 sm:grid-cols-2">
+          {[
+            ['Field readiness', '82%'],
+            ['Average utilization', '74%'],
+            ['Pending inspections', '6'],
+            ['Alerts today', '2'],
+          ].map(([label, count]) => (
+            <div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</p>
+              <p className="mt-2 text-2xl font-black text-white">{count}</p>
+            </div>
+          ))}
+        </div>
+      </Card>
 
       <Card title={t("Security Logs")} subtitle={t("Recent events and configuration status")}>
         <div className="space-y-4">
@@ -309,6 +336,18 @@ function ConfigCard({ title, value, icon }: { title: string; value: string; icon
     <div className="rounded-3xl border border-slate-100 p-4">
       <div className="flex items-center gap-3 text-sm font-semibold text-slate-900">{icon}{title}</div>
       <p className="mt-3 text-2xl font-black text-emerald-700">{value}</p>
+    </div>
+  );
+}
+
+function MetricPill({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-4 shadow-[0_10px_30px_rgba(2,6,23,0.15)]">
+      <div className="flex items-center gap-2 text-sm font-semibold text-emerald-300">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <p className="mt-3 text-3xl font-black text-white">{value}</p>
     </div>
   );
 }

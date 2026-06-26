@@ -8,6 +8,7 @@ class AppUser(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     full_name = models.CharField(max_length=255)
     email = models.EmailField(unique=True)
+    phone = models.CharField(max_length=20, blank=True, null=True)
     password_hash = models.CharField(max_length=255)
     role = models.CharField(max_length=50)
     created_at = models.DateTimeField(auto_now_add=True)

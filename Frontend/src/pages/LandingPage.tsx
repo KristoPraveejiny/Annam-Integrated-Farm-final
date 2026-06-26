@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { FiArrowRight, FiCheckCircle, FiCpu, FiFeather, FiGrid, FiShield, FiShoppingBag, FiTrendingUp, FiUsers } from 'react-icons/fi';
 import { Button } from '../components/ui/Button';
@@ -10,11 +10,28 @@ import { PublicHeader } from '../components/layout/PublicHeader';
 import { features, landingStats, testimonials } from '../data/mock';
 import { FiMapPin, FiMail, FiPhone } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
+import { getPublicVisibleFeedback } from '../api/feedback';
 
 const featureIcons = [FiCpu, FiFeather, FiShield, FiShoppingBag];
 
 export default function LandingPage() {
   const { t } = useTranslation();
+  const [siteContent, setSiteContent] = useState<any>({});
+  const [reviews, setReviews] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch('/api/site-content')
+      .then((response) => response.json())
+      .then((data) => setSiteContent(data))
+      .catch(() => setSiteContent({}));
+
+    void getPublicVisibleFeedback()
+      .then((data) => setReviews(data))
+      .catch(() => setReviews([]));
+  }, []);
+
+  const homeHero = siteContent['home.home_hero'] || {};
+  const homeAbout = siteContent['home.home_about'] || {};
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.18),transparent_24%),linear-gradient(180deg,#eaf8ef_0%,#dff3e8_34%,#f6fbf7_100%)] text-slate-900">
       <PublicHeader active="home" />
@@ -27,9 +44,9 @@ export default function LandingPage() {
           <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
           <div className="section-shell relative grid min-h-[72vh] items-center gap-8 py-12 lg:grid-cols-1 lg:py-16">
             <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7 }} className="max-w-3xl mx-auto text-center">
-              <div className="inline-flex items-center gap-3 rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.28em] text-white/90 backdrop-blur-md shadow-sm">{t("Smart Farming Platform")}</div>
-              <h2 className="mt-4 text-4xl md:text-6xl font-extrabold tracking-tight leading-[1.02]">{t("Smart Farming for Better Productivity and Decision-Making")}</h2>
-              <p className="mt-4 max-w-2xl text-lg leading-7 text-emerald-50 md:text-lg">{t("Manage crops, livestock, workforce, marketplace, and AI-powered farming insights in one intelligent platform.")}</p>
+              <div className="inline-flex items-center gap-3 rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.28em] text-white/90 backdrop-blur-md shadow-sm">{homeHero.badge || t("Smart Farming Platform")}</div>
+              <h2 className="mt-4 text-4xl md:text-6xl font-extrabold tracking-tight leading-[1.02]">{homeHero.headline || t("Smart Farming for Better Productivity and Decision-Making")}</h2>
+              <p className="mt-4 max-w-2xl text-lg leading-7 text-emerald-50 md:text-lg">{homeHero.subheadline || t("Manage crops, livestock, workforce, marketplace, and AI-powered farming insights in one intelligent platform.")}</p>
 
               <div className="mt-6 flex justify-center flex-wrap gap-4 items-center">
                 <a href="/register"><Button theme="light" className="px-6 py-4 text-base">{t("Get Started")} <FiArrowRight className="ml-2" /></Button></a>
@@ -59,11 +76,10 @@ export default function LandingPage() {
               <div>
                 <p className="text-sm font-semibold text-emerald-700 uppercase tracking-wider">{t("About Us")}</p>
                 <h3 className="mt-4 text-3xl md:text-4xl font-extrabold text-slate-900">
-                  {t("About Annam Integrated Farm: Cultivating Sustainability and Growth")}
+                  {homeAbout.title || t("About Annam Integrated Farm: Cultivating Sustainability and Growth")}
                 </h3>
                 <p className="mt-4 text-lg leading-8 text-slate-700">
-                  {t("Annam Integrated Farm combines modern techniques with traditional knowledge to create a sustainable, productive farming environment.")}
-                  {t("We focus on crop and livestock integration, environmental stewardship, and community development.")}
+                  {homeAbout.content || t("Annam Integrated Farm combines modern techniques with traditional knowledge to create a sustainable, productive farming environment.")}
                 </p>
                 <div className="mt-6 grid w-full grid-cols-2 gap-4 sm:w-auto sm:grid-cols-4">
                   <FeaturePill icon={<FiFeather />} label={t("Pure Produce")} />
@@ -150,6 +166,16 @@ export default function LandingPage() {
           </div>
         </section>
 
+        <section id="reviews" className="bg-[linear-gradient(180deg,#f5fbf8_0%,#eef8f2_100%)] py-20">
+          <div className="section-shell">
+            <SectionHeading eyebrow={t("Reviews")} title={t("Customer Reviews & Farmer Experiences")} description={t("Only approved feedback is shown here.")} />
+            <div className="mt-8 grid gap-6 lg:grid-cols-2">
+              <FeedbackGroup title={t("Customer Reviews")} items={reviews.filter((item) => item.user_role === 'Customer')} />
+              <FeedbackGroup title={t("Farmer Experiences")} items={reviews.filter((item) => item.user_role === 'Farmer')} />
+            </div>
+          </div>
+        </section>
+
 
         {/* Icon / feature strip similar to the provided design image */}
 
@@ -161,19 +187,7 @@ export default function LandingPage() {
 
 
 
-        <section className="bg-[linear-gradient(180deg,#edf8ef_0%,#f7fbf8_100%)] py-20">
-          <div className="section-shell">
-            <SectionHeading eyebrow={t("Testimonials")} title={t("Built to feel trustworthy and premium")} />
-            <div className="grid gap-6 lg:grid-cols-3">
-              {testimonials.map((testimonial) => (
-                <Card variant="light" key={testimonial.name}>
-                  <p className="text-base leading-7 text-slate-700">“{testimonial.quote}”</p>
-                  <p className="mt-4 text-sm font-bold text-emerald-700">{testimonial.name}</p>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </section>
+       
 
         <section id="contact" className="bg-[linear-gradient(180deg,#eef8f1_0%,#f5fbf7_100%)] py-20">
           <div className="section-shell grid gap-6 lg:grid-cols-2">
@@ -279,6 +293,29 @@ function StatCard({ label, value }: { label: string; value: string }) {
       <p className="text-sm font-semibold text-slate-500">{label}</p>
       <p className="mt-3 text-3xl font-black text-emerald-700">{value}</p>
     </div>
+  );
+}
+
+function FeedbackGroup({ title, items }: { title: string; items: any[] }) {
+  return (
+    <Card title={title} subtitle="Approved feedback only" variant="light" className="h-full">
+      <div className="space-y-4">
+        {items.length === 0 ? (
+          <p className="text-sm text-slate-500">No approved feedback yet.</p>
+        ) : items.slice(0, 4).map((item) => (
+          <div key={item.id} className="rounded-2xl border border-slate-100 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-semibold text-slate-900">{item.user_name}</p>
+                <p className="text-xs text-slate-500">{item.user_role} • {item.feedback_type}</p>
+              </div>
+              <p className="text-amber-500 text-sm font-bold">{'★'.repeat(item.rating)}</p>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-slate-700">{item.message}</p>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 

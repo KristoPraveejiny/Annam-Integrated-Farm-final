@@ -108,21 +108,21 @@ def _create_user(name, email, password, role, phone=''):
     try:
         with connection.cursor() as cursor:
             cursor.execute(
-                """INSERT INTO app_users (full_name, email, password_hash, role) VALUES (%s, %s, %s, %s) RETURNING id""",
-                [name, email_norm, hashed, role]
+                """INSERT INTO app_users (full_name, email, phone, password_hash, role)
+                   VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+                [name, email_norm, phone.strip() if phone else None, hashed, role]
             )
             row = cursor.fetchone()
             user_id = row[0] if row else None
     except Exception as e:
         logger.error(f"Failed to create user {email_norm}: {e}")
         raise
-    # phone column does not exist in app_users; you may store it elsewhere if needed. Ignored for now.
     return user_id
 
 def _get_user_by_email(email):
     with connection.cursor() as cursor:
         cursor.execute(
-            """SELECT id, full_name, email, password_hash, role FROM app_users WHERE LOWER(TRIM(email)) = %s""",
+            """SELECT id, full_name, email, phone, password_hash, role FROM app_users WHERE LOWER(TRIM(email)) = %s""",
             [email]
         )
         row = cursor.fetchone()
@@ -131,8 +131,9 @@ def _get_user_by_email(email):
                 'id': str(row[0]),
                 'name': row[1],
                 'email': row[2],
-                'password_hash': row[3],
-                'role': row[4]
+                'phone': row[3],
+                'password_hash': row[4],
+                'role': row[5]
             }
         return None
 
@@ -226,6 +227,7 @@ def verify_login_otp(request):
                 'email': user['email'],
                 'id': user['id'],
                 'name': user['name'],
+                'phone': user['phone'],
                 'role': user['role']
             }
         })

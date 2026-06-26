@@ -36,13 +36,13 @@ export default function UserManagementPage() {
   };
 
   return (
-    <Card title={t("User Management")} subtitle={t("Manage all system users, roles, and access status")}>
+    <Card title={t("User Management")} subtitle={t("Manage all system users, roles, and access status")} variant="dark" className="border-white/10 bg-white/[0.08] backdrop-blur-2xl">
       {loading ? (
-        <div className="p-4 text-slate-500">Loading users...</div>
+        <div className="p-4 text-slate-300">Loading users...</div>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-slate-100">
-          <table className="min-w-full divide-y divide-slate-100 text-left text-sm">
-            <thead className="bg-slate-50 text-slate-500">
+        <div className="overflow-x-auto rounded-[1.35rem] border border-white/10">
+          <table className="min-w-full divide-y divide-white/10 text-left text-sm">
+            <thead className="bg-slate-950/80 text-slate-300">
               <tr>
                 <th className="px-4 py-3 font-semibold">{t("Name")}</th>
                 <th className="px-4 py-3 font-semibold">{t("Email")}</th>
@@ -52,12 +52,12 @@ export default function UserManagementPage() {
                 <th className="px-4 py-3 font-semibold text-right">{t("Actions")}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
+            <tbody className="divide-y divide-white/10 bg-slate-950/30">
               {users.map(user => (
-                <tr key={user.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-medium text-slate-900">{user.full_name}</td>
-                  <td className="px-4 py-3 text-slate-600">{user.email}</td>
-                  <td className="px-4 py-3 text-slate-600 capitalize">{user.role.replace('_', ' ')}</td>
+                <tr key={user.id} className="hover:bg-white/5">
+                  <td className="px-4 py-3 font-medium text-white">{user.full_name}</td>
+                  <td className="px-4 py-3 text-slate-300">{user.email}</td>
+                  <td className="px-4 py-3 text-slate-300 capitalize">{user.role.replace('_', ' ')}</td>
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-2 py-1 text-xs font-semibold ${
                       user.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 
@@ -73,7 +73,7 @@ export default function UserManagementPage() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <select 
-                      className="text-sm border-slate-200 rounded bg-white p-1 text-slate-900"
+                    className="text-sm rounded-xl border border-white/10 bg-slate-950/70 p-2 text-white"
                       value={user.status}
                       onChange={(e) => handleStatusChange(user.id, e.target.value)}
                     >

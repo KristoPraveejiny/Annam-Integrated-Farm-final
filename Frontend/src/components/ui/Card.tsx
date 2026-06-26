@@ -16,7 +16,7 @@ export function Card({ title, subtitle, action, children, className = '', varian
       : 'border-white/15 bg-white/12 text-white/90 shadow-[0_18px_55px_rgba(2,6,23,0.25)]';
 
   return (
-    <div className={`farm-card p-5 sm:p-6 border border-solid rounded-2xl ${toneClasses} ${className} aspect-square`}>
+    <div className={`farm-card p-5 sm:p-6 border border-solid rounded-2xl ${toneClasses} ${className}`}>
       {(title || subtitle || action) && (
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>

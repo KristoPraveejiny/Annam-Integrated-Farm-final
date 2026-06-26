@@ -5,7 +5,6 @@ import { getAdminSalaries } from '../../../api/admin';
 
 interface Salary {
   id: string;
-  farm_name: string;
   worker_name: string;
   payment_month: string;
   basic_salary: string;
@@ -41,52 +40,51 @@ export default function SalaryPaymentMonitoringPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">{t("Salary Payment Monitoring")}</h1>
-      <Card>
+      <h1 className="text-2xl font-bold text-white">{t("Salary Payment Monitoring")}</h1>
+      <Card variant="dark" className="border-white/10 bg-white/[0.08] backdrop-blur-2xl">
         {loading ? (
-          <p className="text-gray-500 p-4">Loading salaries...</p>
+          <p className="p-4 text-slate-300">Loading salaries...</p>
         ) : error ? (
-          <p className="text-red-500 p-4">{error}</p>
+          <p className="p-4 text-rose-400">{error}</p>
         ) : salaries.length === 0 ? (
-          <p className="text-gray-500 p-4">No salaries found.</p>
+          <p className="p-4 text-slate-300">No salaries found.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-white/10">
+              <thead className="bg-slate-950/80">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Worker & Farm")}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Month")}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Amount")}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Status")}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("Date")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Worker & Farm")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Month")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Amount")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Status")}</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">{t("Date")}</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="divide-y divide-white/10 bg-slate-950/30">
                 {salaries.map((salary) => (
-                  <tr key={salary.id}>
+                  <tr key={salary.id} className="hover:bg-white/5">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{salary.worker_name}</div>
-                      <div className="text-sm text-gray-500">{salary.farm_name}</div>
+                      <div className="text-sm font-medium text-white">{salary.worker_name}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
                       {salary.payment_month}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <div><span className="font-medium text-gray-900">${parseFloat(salary.final_payment_amount).toFixed(2)}</span></div>
-                      <div className="text-xs text-gray-400">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
+                      <div><span className="font-medium text-white">${parseFloat(salary.final_payment_amount).toFixed(2)}</span></div>
+                      <div className="text-xs text-slate-400">
                         (Base: ${parseFloat(salary.basic_salary).toFixed(2)}, Bonus: ${parseFloat(salary.bonus).toFixed(2)}, Ded: ${parseFloat(salary.deductions).toFixed(2)})
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full capitalize ${
-                        salary.payment_status.toLowerCase() === 'paid' ? 'bg-green-100 text-green-800' :
-                        salary.payment_status.toLowerCase() === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-gray-100 text-gray-800'
+                        salary.payment_status.toLowerCase() === 'paid' ? 'bg-emerald-500/15 text-emerald-300' :
+                        salary.payment_status.toLowerCase() === 'pending' ? 'bg-amber-500/15 text-amber-300' :
+                        'bg-white/10 text-slate-300'
                       }`}>
                         {salary.payment_status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
                       {salary.payment_date ? new Date(salary.payment_date).toLocaleDateString() : 'N/A'}
                     </td>
                   </tr>

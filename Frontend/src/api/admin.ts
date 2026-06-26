@@ -66,3 +66,34 @@ export const getAdminSalaries = async (): Promise<any> => {
   const response = await axios.get(`${API_BASE_URL}/salaries`, getAuthHeaders());
   return response.data;
 };
+
+export const getSystemSettings = async (): Promise<any> => {
+  const response = await axios.get(`${API_BASE_URL}/system-settings`, getAuthHeaders());
+  return response.data;
+};
+
+export const updateSystemSetting = async (payload: {
+  setting_key: string;
+  setting_value: any;
+  scope?: string;
+  description?: string | null;
+}): Promise<any> => {
+  const response = await axios.put(`${API_BASE_URL}/system-settings`, payload, getAuthHeaders());
+  return response.data;
+};
+
+export const uploadSystemSettingImages = async (formData: FormData): Promise<any> => {
+  const token = localStorage.getItem('token');
+  const response = await axios.post(`${API_BASE_URL}/system-settings/upload`, formData, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return response.data;
+};
+
+export const getAdminNotifications = async (): Promise<any> => {
+  const response = await axios.get(`${API_BASE_URL}/notifications`, getAuthHeaders());
+  return response.data;
+};
