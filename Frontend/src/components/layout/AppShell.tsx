@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import type { ComponentType, ReactNode } from 'react';
 import { FiBell, FiMenu, FiSearch, FiGlobe, FiChevronDown } from 'react-icons/fi';
 import UserProfile from './UserProfile';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { dashboardBadges } from '../../data/mock';
 import { Button } from '../ui/Button';
+import { apiFetch } from '../../utils/apiFetch';
 
 type NavItem = {
   label: string;
@@ -21,12 +22,23 @@ type AppShellProps = {
 
 export function AppShell({ role, items, children }: AppShellProps) {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [temp, setTemp] = useState<string>('29.5°C');
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
   const unreadCount = notifications.filter(n => !n.read_at).length;
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const searchResults = normalizedSearch
+    ? items.filter((item) => {
+        const label = t(item.label).toLowerCase();
+        const href = item.href.toLowerCase();
+        return label.includes(normalizedSearch) || href.includes(normalizedSearch);
+      })
+    : [];
 
   useEffect(() => {
     const fetchNotifications = async () => {
@@ -34,9 +46,7 @@ export function AppShell({ role, items, children }: AppShellProps) {
         const tokenRaw = localStorage.getItem('token');
         const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
         if (!token) return;
-        const response = await fetch('/api/notifications', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const response = await apiFetch('/api/notifications');
         if (response.ok) {
           const data = await response.json();
           setNotifications(data);
@@ -55,10 +65,7 @@ export function AppShell({ role, items, children }: AppShellProps) {
       const tokenRaw = localStorage.getItem('token');
       const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
       if (!token) return;
-      await fetch(`/api/notifications/${id}/read`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await apiFetch(`/api/notifications/${id}/read`, { method: 'PUT' });
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, read_at: new Date().toISOString() } : n));
     } catch (err) {
       console.error('Failed to mark as read', err);
@@ -87,6 +94,21 @@ export function AppShell({ role, items, children }: AppShellProps) {
 
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     i18n.changeLanguage(e.target.value);
+  };
+
+  const openSearchResult = (href: string) => {
+    navigate(href);
+    setSearchTerm('');
+    setShowSearchResults(false);
+  };
+
+  const handleSearchSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (searchResults.length > 0) {
+      openSearchResult(searchResults[0].href);
+    } else {
+      setShowSearchResults(true);
+    }
   };
 
   return (
@@ -138,10 +160,39 @@ export function AppShell({ role, items, children }: AppShellProps) {
                 <FiMenu />
               </Button>
 
-              <div className="relative flex flex-1 items-center">
+              <form className="relative flex flex-1 items-center" onSubmit={handleSearchSubmit}>
                 <FiSearch className="pointer-events-none absolute left-4 text-white/45" />
-                <input className="farm-input pl-11" placeholder={t("Search")} />
-              </div>
+                <input
+                  className="farm-input pl-11"
+                  placeholder={t("Search")}
+                  value={searchTerm}
+                  onChange={(event) => {
+                    setSearchTerm(event.target.value);
+                    setShowSearchResults(true);
+                  }}
+                  onFocus={() => setShowSearchResults(true)}
+                />
+
+                {showSearchResults && searchTerm.trim() ? (
+                  <div className="absolute left-0 top-full z-50 mt-2 w-full rounded-2xl border border-white/10 bg-slate-900/95 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+                    {searchResults.length > 0 ? (
+                      searchResults.map((item) => (
+                        <button
+                          key={item.href}
+                          type="button"
+                          onClick={() => openSearchResult(item.href)}
+                          className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium text-white/85 transition hover:bg-white/10 hover:text-white"
+                        >
+                          <FiSearch className="text-emerald-300" />
+                          <span>{t(item.label)}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="px-4 py-3 text-sm text-rose-300">{t('Not found')}</p>
+                    )}
+                  </div>
+                ) : null}
+              </form>
 
               <div className="relative">
                 <Button variant="ghost" className="relative" onClick={() => setShowNotifications(!showNotifications)}>
@@ -220,6 +271,15 @@ export function AppShell({ role, items, children }: AppShellProps) {
           <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
         </div>
       </div>
+
+      {showSearchResults && normalizedSearch ? (
+        <button
+          type="button"
+          aria-label="Close search"
+          className="fixed inset-0 z-20 bg-transparent lg:pointer-events-none"
+          onClick={() => setShowSearchResults(false)}
+        />
+      ) : null}
 
       {mobileOpen ? <button type="button" className="fixed inset-0 z-30 bg-slate-950/70 backdrop-blur-sm lg:hidden" aria-label="Close navigation" onClick={() => setMobileOpen(false)} /> : null}
     </div>

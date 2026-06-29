@@ -4,16 +4,23 @@ import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiMapPin, FiHeart, FiDroplet, FiCheckCircle } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
+import { deleteFeedRequirement, getFeedRequirements, upsertFeedRequirement, type FeedRequirement } from '../../api/livestock';
+import { createLivestockHealthEvent, getLivestockHealthEvents, type LivestockHealthEvent } from '../../api/livestockHealth';
 
 export default function FarmManagerLivestockPage() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('overview');
   const [livestock, setLivestock] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
+  const [feedConfigs, setFeedConfigs] = useState<FeedRequirement[]>([]);
+  const [healthEvents, setHealthEvents] = useState<LivestockHealthEvent[]>([]);
+  const [feedSchedules, setFeedSchedules] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [showFeedModal, setShowFeedModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingFeedId, setEditingFeedId] = useState<string | null>(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -25,6 +32,34 @@ export default function FarmManagerLivestockPage() {
     weight: '',
     acquisitionDate: '',
     notes: ''
+  });
+
+  const [feedForm, setFeedForm] = useState({
+    animalType: '',
+    breedOrVariety: '',
+    feedType: '',
+    dailyFeedAmount: '',
+    dailyWaterRequirement: '',
+    unit: 'kg/day',
+  });
+
+  const [healthForm, setHealthForm] = useState({
+    livestockId: '',
+    healthIssue: '',
+    symptoms: '',
+    diagnosis: '',
+    treatment: '',
+    vaccinationDetails: '',
+    eventDate: '',
+    status: 'Healthy',
+  });
+
+  const [scheduleForm, setScheduleForm] = useState({
+    animalId: '',
+    feedType: '',
+    amount: '',
+    water: '',
+    time: 'Morning',
   });
 
   const fetchLivestock = async () => {
@@ -91,11 +126,31 @@ export default function FarmManagerLivestockPage() {
     }
   };
 
+  const fetchFeedConfigs = async () => {
+    try {
+      const data = await getFeedRequirements();
+      setFeedConfigs(data);
+    } catch (error) {
+      console.error('Failed to fetch feed requirements:', error);
+    }
+  };
+
+  const fetchHealthEvents = async () => {
+    try {
+      const data = await getLivestockHealthEvents();
+      setHealthEvents(data);
+    } catch (error) {
+      console.error('Failed to fetch livestock health events:', error);
+    }
+  };
+
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       await fetchGroups();
       await fetchLivestock();
+      await fetchFeedConfigs();
+      await fetchHealthEvents();
       setLoading(false);
     };
     loadData();
@@ -192,6 +247,84 @@ export default function FarmManagerLivestockPage() {
       console.error('Delete error:', err);
       alert('An error occurred while deleting.');
     }
+  };
+
+  const handleFeedEdit = (config: FeedRequirement) => {
+    setEditingFeedId(config.id);
+    setFeedForm({
+      animalType: config.animalType,
+      breedOrVariety: config.breedOrVariety,
+      feedType: config.feedType,
+      dailyFeedAmount: config.dailyFeedAmount,
+      dailyWaterRequirement: config.dailyWaterRequirement,
+      unit: config.unit,
+    });
+    setShowFeedModal(true);
+  };
+
+  const handleFeedSave = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try {
+      const saved = await upsertFeedRequirement(editingFeedId, feedForm);
+      setFeedConfigs((prev) => {
+        const next = [...prev];
+        const index = next.findIndex((item) => item.id === saved.id);
+        if (index >= 0) {
+          next[index] = saved;
+          return next;
+        }
+        return [saved, ...next];
+      });
+      setShowFeedModal(false);
+      setEditingFeedId(null);
+    } catch (error) {
+      console.error('Failed to save feed requirement:', error);
+    }
+  };
+
+  const handleFeedDelete = async (id: string) => {
+    try {
+      await deleteFeedRequirement(id);
+      setFeedConfigs((prev) => prev.filter((item) => item.id !== id));
+    } catch (error) {
+      console.error('Failed to delete feed requirement:', error);
+    }
+  };
+
+  const handleHealthSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try {
+      const saved = await createLivestockHealthEvent(healthForm);
+      setHealthEvents((prev) => [saved, ...prev]);
+      setHealthForm({
+        livestockId: '',
+        healthIssue: '',
+        symptoms: '',
+        diagnosis: '',
+        treatment: '',
+        vaccinationDetails: '',
+        eventDate: '',
+        status: 'Healthy',
+      });
+    } catch (error) {
+      console.error('Failed to save livestock health event:', error);
+    }
+  };
+
+  const handleScheduleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    const animal = livestock.find((item) => (item.dbId || item.id) === scheduleForm.animalId);
+    const nextSchedule = {
+      id: `schedule-${Date.now()}`,
+      animalLabel: animal ? `${animal.id} • ${animal.pen}` : 'Unknown animal',
+      feedType: scheduleForm.feedType,
+      amount: scheduleForm.amount,
+      water: scheduleForm.water,
+      time: scheduleForm.time,
+      status: t('Planned'),
+    };
+    setFeedSchedules((prev) => [nextSchedule, ...prev]);
+    setScheduleForm({ animalId: '', feedType: '', amount: '', water: '', time: 'Morning' });
   };
 
   return (
@@ -330,6 +463,210 @@ export default function FarmManagerLivestockPage() {
             </table>
           </div>
         </Card>
+      )}
+
+      {activeTab === 'feed' && (
+        <div className="space-y-6">
+          <Card title={t("Feed Management")} subtitle={t("View feeding requirements and edit feed settings per animal type")}>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {feedConfigs.map((config) => (
+                <div key={config.id} className="rounded-3xl border border-white/10 bg-slate-950/40 p-5 shadow-lg">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-300">{config.animalType}</p>
+                      <h4 className="mt-2 text-xl font-bold text-white">{config.breedOrVariety}</h4>
+                    </div>
+                    <FiDroplet className="text-2xl text-emerald-300" />
+                  </div>
+                  <div className="mt-4 space-y-3 text-sm text-slate-300">
+                    <div className="rounded-2xl bg-white/5 px-4 py-3">Feed: <span className="font-semibold text-white">{config.dailyFeedAmount}</span></div>
+                    <div className="rounded-2xl bg-white/5 px-4 py-3">Water: <span className="font-semibold text-white">{config.dailyWaterRequirement}</span></div>
+                    <div className="rounded-2xl bg-white/5 px-4 py-3">Type: <span className="font-semibold text-white">{config.feedType}</span></div>
+                  </div>
+                  <div className="mt-4 flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleFeedEdit(config)}
+                      className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20"
+                    >
+                      <FiEdit2 /> Edit
+                    </button>
+                    {!config.isDefault ? (
+                      <button
+                        type="button"
+                        onClick={() => handleFeedDelete(config.id)}
+                        className="inline-flex items-center gap-2 rounded-full border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/20"
+                      >
+                        <FiTrash2 /> Delete
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card title={t("Feeding Schedule")} subtitle={t("Create and track planned feed delivery")}>
+            <form onSubmit={handleScheduleSubmit} className="space-y-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200/70">{t("Animal")}</label>
+                  <select
+                    className="farm-input"
+                    value={scheduleForm.animalId}
+                    onChange={(e) => setScheduleForm((prev) => ({ ...prev, animalId: e.target.value }))}
+                    required
+                  >
+                    <option value="">{t("Select animal")}</option>
+                    {livestock.map((animal) => (
+                      <option key={animal.dbId || animal.id} value={animal.dbId || animal.id}>
+                        {animal.id} • {animal.pen}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200/70">{t("Time")}</label>
+                  <select
+                    className="farm-input"
+                    value={scheduleForm.time}
+                    onChange={(e) => setScheduleForm((prev) => ({ ...prev, time: e.target.value }))}
+                  >
+                    <option>{t("Morning")}</option>
+                    <option>{t("Afternoon")}</option>
+                    <option>{t("Evening")}</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200/70">{t("Feed type")}</label>
+                  <input className="farm-input" value={scheduleForm.feedType} onChange={(e) => setScheduleForm((prev) => ({ ...prev, feedType: e.target.value }))} placeholder={t("Balanced feed")} />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200/70">{t("Feed amount")}</label>
+                  <input className="farm-input" value={scheduleForm.amount} onChange={(e) => setScheduleForm((prev) => ({ ...prev, amount: e.target.value }))} placeholder={t("e.g. 40 kg/day")} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200/70">{t("Water requirement")}</label>
+                <input className="farm-input" value={scheduleForm.water} onChange={(e) => setScheduleForm((prev) => ({ ...prev, water: e.target.value }))} placeholder={t("e.g. 15 liters/day")} />
+              </div>
+              <Button type="submit" className="w-full border-0 bg-gradient-to-r from-emerald-500 via-lime-400 to-emerald-600 text-white shadow-[0_16px_40px_rgba(16,185,129,0.28)] hover:from-emerald-400 hover:via-lime-300 hover:to-emerald-500">
+                {t("Save Schedule")}
+              </Button>
+            </form>
+          </Card>
+
+          <Card title={t("Feeding Schedule List")} subtitle={t("Planned feed deliveries and status")}>
+            <div className="space-y-3">
+              {feedSchedules.length === 0 ? (
+                <p className="text-sm text-slate-400">{t("No feeding schedules yet.")}</p>
+              ) : (
+                feedSchedules.map((schedule) => (
+                  <div key={schedule.id} className="rounded-3xl border border-white/10 bg-slate-950/35 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-white">{schedule.animalLabel}</p>
+                        <p className="mt-1 text-xs text-slate-400">{schedule.feedType}</p>
+                      </div>
+                      <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">{schedule.time}</span>
+                    </div>
+                    <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
+                      <span>{t("Feed")}: {schedule.amount}</span>
+                      <span>{t("Water")}: {schedule.water}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === 'health' && (
+        <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+          <Card title={t("Add Health Record")} subtitle={t("Record symptoms, diagnosis, and treatment")}>
+            <form onSubmit={handleHealthSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200/70">{t("Animal")}</label>
+                <select className="farm-input" value={healthForm.livestockId} onChange={(e) => setHealthForm((prev) => ({ ...prev, livestockId: e.target.value }))} required>
+                  <option value="">{t("Select animal")}</option>
+                  {livestock.map((animal) => (
+                    <option key={animal.dbId || animal.id} value={animal.dbId || animal.id}>{animal.id} • {animal.pen}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200/70">{t("Health issue")}</label>
+                <input className="farm-input" value={healthForm.healthIssue} onChange={(e) => setHealthForm((prev) => ({ ...prev, healthIssue: e.target.value }))} placeholder={t("e.g. Fever")} required />
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <input className="farm-input" value={healthForm.symptoms} onChange={(e) => setHealthForm((prev) => ({ ...prev, symptoms: e.target.value }))} placeholder={t("Symptoms")} />
+                <input className="farm-input" value={healthForm.diagnosis} onChange={(e) => setHealthForm((prev) => ({ ...prev, diagnosis: e.target.value }))} placeholder={t("Diagnosis")} />
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <input className="farm-input" value={healthForm.treatment} onChange={(e) => setHealthForm((prev) => ({ ...prev, treatment: e.target.value }))} placeholder={t("Treatment")} />
+                <input className="farm-input" value={healthForm.vaccinationDetails} onChange={(e) => setHealthForm((prev) => ({ ...prev, vaccinationDetails: e.target.value }))} placeholder={t("Vaccination details")} />
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <input type="date" className="farm-input" value={healthForm.eventDate} onChange={(e) => setHealthForm((prev) => ({ ...prev, eventDate: e.target.value }))} />
+                <select className="farm-input" value={healthForm.status} onChange={(e) => setHealthForm((prev) => ({ ...prev, status: e.target.value }))}>
+                  <option>{t("Healthy")}</option>
+                  <option>{t("Under Treatment")}</option>
+                  <option>{t("Recovered")}</option>
+                  <option>{t("Critical")}</option>
+                </select>
+              </div>
+              <Button type="submit" className="w-full bg-gradient-to-r from-emerald-500 to-lime-400 text-slate-950">{t("Save Health Record")}</Button>
+            </form>
+          </Card>
+          <Card title={t("Health History")} subtitle={t("Recent animal health records")}>
+            <div className="space-y-3">
+              {healthEvents.length === 0 ? (
+                <p className="text-sm text-slate-400">{t("No health records yet.")}</p>
+              ) : (
+                healthEvents.map((record) => (
+                  <div key={record.id} className="rounded-3xl border border-white/10 bg-slate-950/35 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-white">{record.animalTag || record.livestockId}</p>
+                        <p className="mt-1 text-xs text-slate-400">{record.healthIssue}</p>
+                      </div>
+                      <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">{record.status}</span>
+                    </div>
+                    <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
+                      <span>{t("Symptoms")}: {record.symptoms || '-'}</span>
+                      <span>{t("Diagnosis")}: {record.diagnosis || '-'}</span>
+                      <span>{t("Treatment")}: {record.treatment || '-'}</span>
+                      <span>{t("Vaccination")}: {record.vaccinationDetails || '-'}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {showFeedModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-2xl">
+            <h3 className="mb-6 text-2xl font-bold text-white">{t("Edit Feed Requirement")}</h3>
+            <form onSubmit={handleFeedSave} className="grid gap-4 md:grid-cols-2">
+              <input className="farm-input md:col-span-1" value={feedForm.animalType} onChange={(e) => setFeedForm((prev) => ({ ...prev, animalType: e.target.value }))} placeholder={t("Animal type")} />
+              <input className="farm-input md:col-span-1" value={feedForm.breedOrVariety} onChange={(e) => setFeedForm((prev) => ({ ...prev, breedOrVariety: e.target.value }))} placeholder={t("Breed / variety")} />
+              <input className="farm-input md:col-span-2" value={feedForm.feedType} onChange={(e) => setFeedForm((prev) => ({ ...prev, feedType: e.target.value }))} placeholder={t("Feed type")} />
+              <input className="farm-input" value={feedForm.dailyFeedAmount} onChange={(e) => setFeedForm((prev) => ({ ...prev, dailyFeedAmount: e.target.value }))} placeholder={t("Daily feed amount")} />
+              <input className="farm-input" value={feedForm.dailyWaterRequirement} onChange={(e) => setFeedForm((prev) => ({ ...prev, dailyWaterRequirement: e.target.value }))} placeholder={t("Daily water requirement")} />
+              <input className="farm-input md:col-span-2" value={feedForm.unit} onChange={(e) => setFeedForm((prev) => ({ ...prev, unit: e.target.value }))} placeholder={t("Unit")} />
+              <div className="md:col-span-2 flex justify-end gap-3 pt-2">
+                <Button type="button" variant="ghost" onClick={() => setShowFeedModal(false)}>{t("Cancel")}</Button>
+                <Button type="submit" className="border-0 bg-gradient-to-r from-emerald-500 via-lime-400 to-emerald-600 text-white shadow-[0_16px_40px_rgba(16,185,129,0.28)] hover:from-emerald-400 hover:via-lime-300 hover:to-emerald-500">{t("Save Changes")}</Button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Add Livestock Modal */}

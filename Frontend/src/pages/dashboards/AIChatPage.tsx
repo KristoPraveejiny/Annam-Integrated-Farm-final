@@ -6,8 +6,8 @@ export default function AIChatPage() {
     <div className="section-shell py-8 h-[calc(100vh-80px)] flex flex-col">
       <SectionHeading
         eyebrow="Smart Assistant"
-        title="AI Chatbot"
-        description="Interact with the smart farming assistant for real-time recommendations, crop planning, and issue resolution."
+        title="SmartFarm AI Advisor"
+        description="Chat with an agriculture-focused assistant that uses farm data and live weather insights for practical recommendations."
         tone="light"
       />
       <div className="flex-1 mt-4">

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Card } from '../../../components/ui/Card';
-import { Button } from '../../../components/ui/Button';
 import { useTranslation } from 'react-i18next';
 import { deleteFeedback, getAdminFeedback, updateFeedbackStatus } from '../../../api/feedback';
 
@@ -56,15 +55,23 @@ export default function FeedbackManagementPage({ readOnly = false }: { readOnly?
     await fetchFeedback();
   };
 
-  const counts = useMemo(() => ({
-    all: feedback.length,
-    customer: feedback.filter((item) => item.user_role === 'Customer').length,
-    farmer: feedback.filter((item) => item.user_role === 'Farmer').length,
-  }), [feedback]);
+  const counts = useMemo(
+    () => ({
+      all: feedback.length,
+      customer: feedback.filter((item) => item.user_role === 'Customer').length,
+      farmer: feedback.filter((item) => item.user_role === 'Farmer').length,
+    }),
+    [feedback],
+  );
 
   return (
     <div className="space-y-6">
-      <Card title={t("Feedback Management")} subtitle={t("Review, approve, hide, or remove customer and farmer feedback.")} variant="dark" className="border-white/10 bg-white/[0.08] backdrop-blur-2xl">
+      <Card
+        title={t('Feedback Management')}
+        subtitle={t('Review, approve, hide, or remove customer and farmer feedback.')}
+        variant="dark"
+        className="border-white/10 bg-white/[0.08] backdrop-blur-2xl"
+      >
         <div className="grid gap-4 md:grid-cols-3">
           <Metric label="All Feedback" value={String(counts.all)} />
           <Metric label="Customer Feedback" value={String(counts.customer)} />
@@ -92,7 +99,9 @@ export default function FeedbackManagementPage({ readOnly = false }: { readOnly?
           <select className="farm-input" value={ratingFilter} onChange={(event) => setRatingFilter(event.target.value)}>
             <option value="all">All Ratings</option>
             {[1, 2, 3, 4, 5].map((value) => (
-              <option key={value} value={value}>{value} Stars</option>
+              <option key={value} value={value}>
+                {value} Stars
+              </option>
             ))}
           </select>
         </div>
@@ -105,36 +114,60 @@ export default function FeedbackManagementPage({ readOnly = false }: { readOnly?
           feedback.length === 0 ? (
             <p className="text-slate-300">No feedback found.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-white/10">
-                <thead className="bg-slate-950/80">
+            <div className="overflow-x-auto rounded-3xl border border-white/10 bg-slate-950/30">
+              <table className="min-w-full table-fixed divide-y divide-white/10">
+                <thead className="bg-slate-950/85">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">User</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">Role</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">Type</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">Rating</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">Message</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-300">Status</th>
-                    {!readOnly ? <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-slate-300">Actions</th> : null}
+                    <th className="w-40 px-6 py-4 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">User</th>
+                    <th className="w-28 px-6 py-4 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Role</th>
+                    <th className="w-28 px-6 py-4 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Type</th>
+                    <th className="w-28 px-6 py-4 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Rating</th>
+                    <th className="w-[34rem] px-6 py-4 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Message</th>
+                    <th className="w-32 px-6 py-4 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Date</th>
+                    <th className="w-28 px-6 py-4 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Status</th>
+                    {!readOnly ? (
+                      <th className="w-56 px-6 py-4 text-right text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Actions</th>
+                    ) : null}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/10 bg-slate-950/30">
+                <tbody className="divide-y divide-white/10 bg-slate-950/20">
                   {feedback.map((item) => (
-                    <tr key={item.id} className="hover:bg-white/5">
-                      <td className="px-6 py-4 text-white">{item.user_name}</td>
-                      <td className="px-6 py-4 text-slate-300">{item.user_role}</td>
-                      <td className="px-6 py-4 text-slate-300 capitalize">{item.feedback_type}</td>
-                      <td className="px-6 py-4 text-slate-300">{'★'.repeat(item.rating)}</td>
-                      <td className="px-6 py-4 text-slate-200 max-w-md">{item.message}</td>
-                      <td className="px-6 py-4 text-slate-300">{new Date(item.created_at).toLocaleDateString()}</td>
-                      <td className="px-6 py-4 text-slate-300 capitalize">{item.status}</td>
+                    <tr key={item.id} className="align-top transition-colors hover:bg-white/5">
+                      <td className="px-6 py-5 text-white">
+                        <div className="font-semibold">{item.user_name}</div>
+                      </td>
+                      <td className="px-6 py-5 text-slate-300">
+                        <span className="inline-flex rounded-full bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-200 ring-1 ring-inset ring-cyan-400/20">
+                          {item.user_role}
+                        </span>
+                      </td>
+                      <td className="px-6 py-5 text-slate-300 capitalize">{item.feedback_type}</td>
+                      <td className="px-6 py-5 text-amber-300">
+                        <span className="inline-flex items-center gap-1 text-sm font-semibold tracking-wide">
+                          {renderStars(item.rating)}
+                        </span>
+                      </td>
+                      <td className="px-6 py-5 text-slate-200">
+                        <div className="max-w-[34rem] whitespace-normal break-words leading-7 text-slate-100">
+                          {item.message}
+                        </div>
+                      </td>
+                      <td className="px-6 py-5 text-slate-300">{new Date(item.created_at).toLocaleDateString()}</td>
+                      <td className="px-6 py-5">
+                        <StatusBadge status={item.status} />
+                      </td>
                       {!readOnly ? (
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button variant="ghost" onClick={() => approve(item.id)} className="text-emerald-300">{t("Approve")}</Button>
-                            <Button variant="ghost" onClick={() => hide(item.id)} className="text-amber-300">{t("Hide")}</Button>
-                            <Button variant="ghost" onClick={() => remove(item.id)} className="text-rose-300">{t("Delete")}</Button>
+                        <td className="px-6 py-5 text-right">
+                          <div className="flex flex-wrap justify-end gap-2">
+                            <ActionButton color="emerald" onClick={() => approve(item.id)}>
+                              {t('Approve')}
+                            </ActionButton>
+                            <ActionButton color="amber" onClick={() => hide(item.id)}>
+                              {t('Hide')}
+                            </ActionButton>
+                            <ActionButton color="rose" onClick={() => remove(item.id)}>
+                              {t('Delete')}
+                            </ActionButton>
                           </div>
                         </td>
                       ) : null}
@@ -156,5 +189,54 @@ function Metric({ label, value }: { label: string; value: string }) {
       <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{label}</p>
       <p className="mt-2 text-3xl font-black text-white">{value}</p>
     </div>
+  );
+}
+
+function renderStars(rating: number) {
+  return `${'★'.repeat(rating)}${'☆'.repeat(Math.max(0, 5 - rating))}`;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const normalized = status.toLowerCase();
+  const styles: Record<string, string> = {
+    visible: 'bg-emerald-500/15 text-emerald-200 ring-emerald-400/20',
+    pending: 'bg-amber-500/15 text-amber-200 ring-amber-400/20',
+    hidden: 'bg-rose-500/15 text-rose-200 ring-rose-400/20',
+  };
+
+  return (
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ring-1 ring-inset ${
+        styles[normalized] ?? 'bg-slate-500/15 text-slate-200 ring-slate-400/20'
+      }`}
+    >
+      {status}
+    </span>
+  );
+}
+
+function ActionButton({
+  children,
+  color,
+  onClick,
+}: {
+  children: React.ReactNode;
+  color: 'emerald' | 'amber' | 'rose';
+  onClick: () => void;
+}) {
+  const styles: Record<'emerald' | 'amber' | 'rose', string> = {
+    emerald: 'border-emerald-400/25 bg-emerald-500/15 text-emerald-100 hover:bg-emerald-500/25',
+    amber: 'border-amber-400/25 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25',
+    rose: 'border-rose-400/25 bg-rose-500/15 text-rose-100 hover:bg-rose-500/25',
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full border px-4 py-2 text-sm font-semibold transition-all duration-200 hover:-translate-y-0.5 ${styles[color]}`}
+    >
+      {children}
+    </button>
   );
 }

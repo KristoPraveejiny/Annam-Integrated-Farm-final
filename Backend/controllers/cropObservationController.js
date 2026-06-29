@@ -42,6 +42,10 @@ export async function createCropObservation(req, res) {
       notes || null
     ]);
 
+    if (growthStage) {
+      await pool.query(`UPDATE crop_cycles SET current_stage = $1 WHERE id = $2`, [growthStage, cropCycleId]);
+    }
+
     // Fetch user details and manager details for email
     const farmerRes = await pool.query('SELECT full_name FROM app_users WHERE id = $1', [userId]);
     const farmerName = farmerRes.rows[0]?.full_name || 'Unknown Farmer';

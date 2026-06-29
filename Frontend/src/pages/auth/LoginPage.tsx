@@ -97,7 +97,7 @@ useEffect(() => {
   return (
     <AuthLayout title={t("Welcome back")} subtitle={t("Sign in to access your smart farm dashboard, alerts, analytics, and marketplace tools.")}>
       {!isOtpSent ? (
-        <form className="space-y-4 rounded-[1.5rem] border border-white/15 bg-white/8 p-6 backdrop-blur-2xl" onSubmit={handleSendOtp}>
+        <form className="space-y-4 rounded-[1.5rem] border border-white/15 bg-white/10 p-6 backdrop-blur-2xl" onSubmit={handleSendOtp}>
           <AuthField label={t("Email")} type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} required />
           <AuthField label={t("Password")} type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} required />
           <div className="flex items-center justify-between text-sm">
@@ -112,7 +112,7 @@ useEffect(() => {
           <p className="text-center text-sm text-white/70">{t("New user?")} <Link to="/register" className="font-semibold text-emerald-200">{t("Create account")}</Link></p>
         </form>
       ) : (
-        <form className="space-y-4 rounded-[1.5rem] border border-white/15 bg-white/8 p-6 backdrop-blur-2xl" onSubmit={handleVerifyOtp}>
+        <form className="space-y-4 rounded-[1.5rem] border border-white/15 bg-white/10 p-6 backdrop-blur-2xl" onSubmit={handleVerifyOtp}>
           <h3 className="text-xl font-semibold text-white text-center">{t("Verify Your Email")}</h3>
           <p className="text-white/70 text-center text-sm">{t("We've sent a 6-digit OTP to")} {email}</p>
           <AuthField 

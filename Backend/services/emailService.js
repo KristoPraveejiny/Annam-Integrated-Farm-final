@@ -1,7 +1,6 @@
+import '../loadEnv.js';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
-
-dotenv.config();
 
 // Create a transporter. For development, we'll use ethereal.email if SMTP config is missing.
 let transporter;

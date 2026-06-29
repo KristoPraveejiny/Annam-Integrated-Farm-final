@@ -1,7 +1,5 @@
+import './loadEnv.js';
 import jwt from 'jsonwebtoken';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'defaultsecret';
 
@@ -23,15 +21,14 @@ export function verifyToken(req, res, next) {
   }
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-
-    // Validate that userId is a proper UUID
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(payload.userId)) {
-      console.warn('Invalid UUID in token payload:', payload.userId);
-      return res.status(401).json({ error: 'Invalid token payload (malformed userId)' });
+    if (payload.userId === undefined || payload.userId === null || payload.userId === '') {
+      return res.status(401).json({ error: 'Invalid token payload' });
     }
 
-    req.user = { userId: payload.userId, role: payload.role };
+    req.user = {
+      userId: payload.userId,
+      role: payload.role,
+    };
     next();
   } catch (err) {
     console.error('JWT verification failed – token prefix:', token?.slice(0, 20) + '…', 'error:', err.message);

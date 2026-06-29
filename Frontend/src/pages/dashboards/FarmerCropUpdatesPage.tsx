@@ -14,27 +14,49 @@ export default function FarmerCropUpdatesPage() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string>('');
   
+  // Crop Stage form states
+  const [activeCrops, setActiveCrops] = useState<any[]>([]);
+  const [selectedCropCycleId, setSelectedCropCycleId] = useState('');
+  const [selectedGrowthStage, setSelectedGrowthStage] = useState(stages[0]);
+  const [stageNotes, setStageNotes] = useState('');
+  
   // Activity form states
   const [activityDate, setActivityDate] = useState(new Date().toISOString().split('T')[0]);
   const [activityNotes, setActivityNotes] = useState('');
   const [activityImage, setActivityImage] = useState<File | null>(null);
+  
+  const [stageImagePreview, setStageImagePreview] = useState<string | null>(null);
+  const [diseaseImagePreview, setDiseaseImagePreview] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchTasks = async () => {
+    const fetchData = async () => {
       try {
         const tokenRaw = localStorage.getItem('token');
         const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
-        const res = await fetch('/api/tasks/farmer', { headers: { Authorization: `Bearer ${token}` } });
-        if (res.ok) {
-          const data = await res.json();
+        
+        // Fetch tasks
+        const tasksRes = await fetch('/api/tasks/farmer', { headers: { Authorization: `Bearer ${token}` } });
+        if (tasksRes.ok) {
+          const data = await tasksRes.json();
           const activeTasks = data.filter((t: any) => t.status !== 'done' && t.crop_cycle_id != null);
           setTasks(activeTasks);
         }
+
+        // Fetch crops
+        const cropsRes = await fetch('/api/crops', { headers: { Authorization: `Bearer ${token}` } });
+        if (cropsRes.ok) {
+          const cropsData = await cropsRes.json();
+          const active = cropsData.filter((c: any) => c.status !== 'Harvested');
+          setActiveCrops(active);
+          if (active.length > 0) {
+             setSelectedCropCycleId(active[0].id);
+          }
+        }
       } catch (err) {
-        console.error('Failed to fetch tasks', err);
+        console.error('Failed to fetch data', err);
       }
     };
-    fetchTasks();
+    fetchData();
   }, []);
 
   const tasksForDate = tasks.filter(t => {
@@ -53,9 +75,8 @@ export default function FarmerCropUpdatesPage() {
     }
   }, [tasksForDate, selectedTaskId]);
 
-  // Derive unique crops from tasks for the first tab
+  // Fallback unique crops if tasks have crops but API crops failed
   const uniqueCrops = Array.from(new Set(tasks.filter(t => t.crop_name).map(t => t.crop_name)));
-  const cropsOptions = uniqueCrops.length > 0 ? uniqueCrops : ['No active crops found'];
 
   const selectedTask = tasks.find(t => t.id === selectedTaskId);
 
@@ -92,6 +113,40 @@ export default function FarmerCropUpdatesPage() {
     }
   };
 
+  const handleStageSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCropCycleId) return alert('No crop selected');
+    
+    const tokenRaw = localStorage.getItem('token');
+    const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
+
+    const body = {
+      cropCycleId: selectedCropCycleId,
+      growthStage: selectedGrowthStage,
+      notes: stageNotes
+    };
+
+    try {
+      const res = await fetch('/api/crop-observations', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+         alert('Crop stage updated successfully! The Farm Manager has been notified.');
+         setStageNotes('');
+         setStageImagePreview(null);
+      } else {
+         alert('Failed to update crop stage.');
+      }
+    } catch(err) {
+      alert('Error updating crop stage');
+    }
+  };
+
   return (
     <div className="space-y-6 pb-20">
       <SectionHeading eyebrow={t("Crop Updates")} title={t("Crop Management")} description={t("Update crop stages, record daily activities, and report diseases.")} tone="light" />
@@ -111,17 +166,31 @@ export default function FarmerCropUpdatesPage() {
 
       {activeTab === 'stages' && (
         <Card title={t("Update Crop Stage")} subtitle={t("Select crop and update current growth stage")}>
-          <form className="space-y-6 mt-4">
+          <form className="space-y-6 mt-4" onSubmit={handleStageSubmit}>
             <div className="grid gap-6 md:grid-cols-2">
               <label className="block">
                 <span className="mb-2 block text-sm font-semibold text-white/80">{t("Select Crop")}</span>
-                <select className="farm-input w-full appearance-none">
-                  {cropsOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                <select 
+                  className="farm-input w-full appearance-none"
+                  value={selectedCropCycleId}
+                  onChange={e => setSelectedCropCycleId(e.target.value)}
+                >
+                  {activeCrops.length > 0 ? (
+                    activeCrops.map(c => <option key={c.id} value={c.id}>{c.crop_name} {c.field_name ? `(${c.field_name})` : ''}</option>)
+                  ) : (
+                    uniqueCrops.length > 0 
+                      ? uniqueCrops.map(c => <option key={c} value={c}>{c}</option>)
+                      : <option value="">{t("No active crops found")}</option>
+                  )}
                 </select>
               </label>
               <label className="block">
                 <span className="mb-2 block text-sm font-semibold text-white/80">{t("Current Stage")}</span>
-                <select className="farm-input w-full appearance-none">
+                <select 
+                  className="farm-input w-full appearance-none"
+                  value={selectedGrowthStage}
+                  onChange={e => setSelectedGrowthStage(e.target.value)}
+                >
                   {stages.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </label>
@@ -129,18 +198,39 @@ export default function FarmerCropUpdatesPage() {
             
             <label className="block">
               <span className="mb-2 block text-sm font-semibold text-white/80">{t("Add Notes")}</span>
-              <textarea className="farm-input w-full min-h-32" placeholder={t("Describe the growth condition...")} />
+              <textarea 
+                className="farm-input w-full min-h-32" 
+                placeholder={t("Describe the growth condition...")} 
+                value={stageNotes}
+                onChange={e => setStageNotes(e.target.value)}
+              />
             </label>
 
-            <div>
+            <label className="block cursor-pointer">
               <span className="mb-2 block text-sm font-semibold text-white/80">{t("Upload Images")}</span>
-              <div className="grid place-items-center rounded-2xl border-2 border-dashed border-white/20 bg-white/5 p-8 text-center hover:bg-white/10 transition-colors cursor-pointer">
-                <FiUploadCloud className="text-4xl text-emerald-400" />
-                <p className="mt-4 text-sm text-slate-300">{t("Drag and drop images here")}</p>
+              <div className="grid place-items-center rounded-2xl border-2 border-dashed border-white/20 bg-white/5 p-8 text-center hover:bg-white/10 transition-colors cursor-pointer relative overflow-hidden">
+                {stageImagePreview ? (
+                  <img src={stageImagePreview} alt="Preview" className="max-h-48 object-contain rounded-lg" />
+                ) : (
+                  <>
+                    <FiUploadCloud className="text-4xl text-emerald-400" />
+                    <p className="mt-4 text-sm text-slate-300">{t("Drag and drop images here")}</p>
+                  </>
+                )}
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      setStageImagePreview(URL.createObjectURL(e.target.files[0]));
+                    }
+                  }}
+                />
               </div>
-            </div>
+            </label>
 
-            <Button type="button" className="w-full sm:w-auto">{t("Update Progress")}</Button>
+            <Button type="submit" className="w-full sm:w-auto" disabled={!selectedCropCycleId}>{t("Update Progress")}</Button>
           </form>
         </Card>
       )}
@@ -230,12 +320,30 @@ export default function FarmerCropUpdatesPage() {
       {activeTab === 'disease' && (
         <div className="grid gap-6 xl:grid-cols-2">
           <Card title={t("Report Disease")} subtitle={t("Upload leaf images for AI analysis")}>
-            <div className="grid place-items-center rounded-2xl border-2 border-dashed border-emerald-500/50 bg-emerald-500/10 p-10 text-center cursor-pointer hover:bg-emerald-500/20 transition-colors">
-              <FiUploadCloud className="text-6xl text-emerald-500" />
-              <p className="mt-4 text-lg font-bold text-white">{t("Upload leaf photo")}</p>
-              <p className="mt-2 text-sm text-slate-400">{t("Supported formats: JPG, PNG")}</p>
-              <Button className="mt-6">{t("Choose File")}</Button>
-            </div>
+            <label className="block cursor-pointer">
+              <div className="grid place-items-center rounded-2xl border-2 border-dashed border-emerald-500/50 bg-emerald-500/10 p-10 text-center hover:bg-emerald-500/20 transition-colors relative overflow-hidden">
+                {diseaseImagePreview ? (
+                  <img src={diseaseImagePreview} alt="Leaf Preview" className="max-h-64 object-contain rounded-lg" />
+                ) : (
+                  <>
+                    <FiUploadCloud className="text-6xl text-emerald-500" />
+                    <p className="mt-4 text-lg font-bold text-white">{t("Upload leaf photo")}</p>
+                    <p className="mt-2 text-sm text-slate-400">{t("Supported formats: JPG, PNG")}</p>
+                    <Button type="button" className="mt-6 pointer-events-none">{t("Choose File")}</Button>
+                  </>
+                )}
+                <input 
+                  type="file" 
+                  accept="image/jpeg, image/png" 
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      setDiseaseImagePreview(URL.createObjectURL(e.target.files[0]));
+                    }
+                  }}
+                />
+              </div>
+            </label>
           </Card>
           <Card title={t("Detection Results")} subtitle={t("AI feedback and recommendations")}>
             <div className="h-full flex flex-col justify-center items-center text-slate-400 p-6 text-center border-2 border-dashed border-white/10 rounded-2xl bg-white/5">

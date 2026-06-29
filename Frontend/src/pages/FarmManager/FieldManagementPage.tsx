@@ -4,6 +4,7 @@ import { SectionHeading } from '../../components/ui/SectionHeading';
 import { Button } from '../../components/ui/Button';
 import { FiPlus, FiMapPin, FiDroplet, FiLayers, FiActivity, FiTrash2, FiEdit2 } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
+import { apiFetch } from '../../utils/apiFetch';
 
 interface Field {
   id: string;
@@ -44,9 +45,7 @@ export default function FieldManagementPage() {
     setIsLoading(true);
     setError('');
     try {
-      const res = await fetch('/api/fields/farm/default', {
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
+      const res = await apiFetch('/api/fields/farm/default');
       if (!res.ok) throw new Error('Failed to fetch fields');
       const data = await res.json();
       setFields(data);
@@ -72,9 +71,9 @@ export default function FieldManagementPage() {
     try {
       const url = editField ? `/api/fields/${editField.id}` : '/api/fields';
       const method = editField ? 'PUT' : 'POST';
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
-        headers: { 'Authorization': `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...formData, area: parseFloat(formData.area) || null })
       });
       if (!res.ok) {
@@ -94,10 +93,7 @@ export default function FieldManagementPage() {
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Delete field "${name}"? This cannot be undone.`)) return;
     try {
-      const res = await fetch(`/api/fields/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${getToken()}` }
-      });
+      const res = await apiFetch(`/api/fields/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete field');
       fetchFields();
     } catch (err: any) {

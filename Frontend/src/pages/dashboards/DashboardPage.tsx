@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import { FiActivity, FiAlertTriangle, FiCalendar, FiCheckCircle, FiCloud, FiCpu, FiDatabase, FiDollarSign, FiGrid, FiShield, FiShoppingBag, FiUsers, FiLayers, FiMapPin, FiTrendingUp } from 'react-icons/fi';
+import { FiAlertTriangle, FiCheckCircle, FiCloud, FiCpu, FiDatabase, FiLayers, FiMapPin, FiShield, FiTrendingUp, FiUsers } from 'react-icons/fi';
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Card } from '../../components/ui/Card';
 import { ProgressBar } from '../../components/ui/ProgressBar';
 import { SectionHeading } from '../../components/ui/SectionHeading';
-import { alerts, chartSeries, marketplaceProducts, metrics, tasks } from '../../data/mock';
+import { alerts, chartSeries, tasks } from '../../data/mock';
 import { useTranslation } from 'react-i18next';
 
 type DashboardInfo = {
@@ -18,6 +18,20 @@ type DashboardPageProps = {
   dashboard: DashboardInfo;
 };
 
+type OverviewStats = {
+  totalFields: number;
+  activeFields: number;
+  fieldsUnderReview: number;
+  farmers: number;
+  products: number;
+  orders: number;
+  livestock: {
+    total: number;
+    healthy: number;
+    feedingDue: number;
+  };
+};
+
 const pieData = [
   { name: 'Crops', value: 42 },
   { name: 'Livestock', value: 26 },
@@ -27,8 +41,43 @@ const pieData = [
 
 const colors = ['#059669', '#22c55e', '#84cc16', '#16a34a'];
 
+const emptyOverview: OverviewStats = {
+  totalFields: 0,
+  activeFields: 0,
+  fieldsUnderReview: 0,
+  farmers: 0,
+  products: 0,
+  orders: 0,
+  livestock: { total: 0, healthy: 0, feedingDue: 0 },
+};
+
 export default function DashboardPage({ dashboard }: DashboardPageProps) {
   const { t } = useTranslation();
+  const [overview, setOverview] = useState<OverviewStats>(emptyOverview);
+
+  useEffect(() => {
+    const fetchOverview = async () => {
+      try {
+        const tokenRaw = localStorage.getItem('token');
+        const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
+        const response = await fetch('/api/dashboard/overview', {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch dashboard overview');
+        }
+
+        const data = await response.json();
+        setOverview(data);
+      } catch (error) {
+        console.error('Failed to load dashboard overview:', error);
+      }
+    };
+
+    fetchOverview();
+  }, []);
+
   return (
     <div className="space-y-8">
       <SectionHeading
@@ -39,17 +88,22 @@ export default function DashboardPage({ dashboard }: DashboardPageProps) {
       />
 
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-        {metrics.map((metric) => (
-          <StatTile key={metric.label} label={t(metric.label)} value={metric.value} delta={t(metric.delta)} />
-        ))}
+        <StatTile label={t('Total Fields')} value={formatCount(overview.totalFields)} delta={t('+0%')} />
+        <StatTile label={t('Farmers')} value={formatCount(overview.farmers)} delta={t('+0%')} />
+        <StatTile label={t('Products')} value={formatCount(overview.products)} delta={t('+0%')} />
+        <StatTile label={t('Orders')} value={formatCount(overview.orders)} delta={t('+0%')} />
       </div>
 
-      {dashboard.role === 'super-admin' ? <SuperAdminBlocks /> : null}
-      {dashboard.role === 'farm-manager' ? <FarmManagerBlocks /> : null}
+      {dashboard.role === 'super-admin' ? <SuperAdminBlocks overview={overview} /> : null}
+      {dashboard.role === 'farm-manager' ? <FarmManagerBlocks overview={overview} /> : null}
       {dashboard.role === 'farmer-worker' ? <WorkerBlocks /> : null}
       {dashboard.role === 'guest' ? <GuestBlocks /> : null}
     </div>
   );
+}
+
+function formatCount(value: number) {
+  return new Intl.NumberFormat().format(value);
 }
 
 function StatTile({ label, value, delta }: { label: string; value: string; delta: string }) {
@@ -60,10 +114,6 @@ function StatTile({ label, value, delta }: { label: string; value: string; delta
       <div className="relative">
         <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">{t(label)}</p>
         <p className="mt-3 text-4xl font-black text-slate-950">{value}</p>
-        <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700">
-          <FiTrendingUp className="text-xs" />
-          {t(delta)}
-        </p>
       </div>
     </Card>
   );
@@ -77,7 +127,7 @@ function ChartPanel({ title, children }: { title: string; children: ReactNode })
   );
 }
 
-function SuperAdminBlocks() {
+function SuperAdminBlocks({ overview }: { overview: OverviewStats }) {
   const { t } = useTranslation();
   return (
     <div className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
@@ -97,15 +147,15 @@ function SuperAdminBlocks() {
 
       <Card title={t("Field Overview")} subtitle={t("Relevant field counts and operational status")}>
         <div className="grid gap-4 sm:grid-cols-3">
-          <MetricPill label="Total Fields" value="48" icon={<FiLayers />} />
-          <MetricPill label="Active Fields" value="39" icon={<FiMapPin />} />
-          <MetricPill label="Under Review" value="9" icon={<FiDatabase />} />
+          <MetricPill label="Total Fields" value={formatCount(overview.totalFields)} icon={<FiLayers />} />
+          <MetricPill label="Active Fields" value={formatCount(overview.activeFields)} icon={<FiMapPin />} />
+          <MetricPill label="Under Review" value={formatCount(overview.fieldsUnderReview)} icon={<FiDatabase />} />
         </div>
         <div className="mt-5 grid gap-3 rounded-3xl border border-white/10 bg-slate-950/35 p-4 sm:grid-cols-2">
           {[
-            ['Field readiness', '82%'],
+            ['Field readiness', `${overview.totalFields ? Math.round((overview.activeFields / overview.totalFields) * 100) : 0}%`],
             ['Average utilization', '74%'],
-            ['Pending inspections', '6'],
+            ['Pending inspections', formatCount(overview.fieldsUnderReview)],
             ['Alerts today', '2'],
           ].map(([label, count]) => (
             <div key={label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -167,7 +217,7 @@ function SuperAdminBlocks() {
         <div className="grid gap-4 sm:grid-cols-2">
           <ConfigCard title="Weather API" icon={<FiCloud />} value="Enabled" />
           <ConfigCard title="AI Models" icon={<FiCpu />} value="Live" />
-          <ConfigCard title="QR Sync" icon={<FiGrid />} value="Configured" />
+          <ConfigCard title="QR Sync" icon={<FiDatabase />} value="Configured" />
           <ConfigCard title="Notifications" icon={<FiAlertTriangle />} value="92 rules" />
         </div>
       </Card>
@@ -189,7 +239,7 @@ function SuperAdminBlocks() {
   );
 }
 
-function FarmManagerBlocks() {
+function FarmManagerBlocks({ overview }: { overview: OverviewStats }) {
   const { t } = useTranslation();
   return (
     <div className="grid gap-6 xl:grid-cols-2">
@@ -202,9 +252,9 @@ function FarmManagerBlocks() {
       </Card>
       <Card title={t("Livestock Overview")} subtitle={t("Health, feed, and production tracking")}>
         <div className="grid gap-4 sm:grid-cols-3">
-          <MiniMetric label="Healthy" value="126" />
-          <MiniMetric label="Feeding due" value="18" />
-          <MiniMetric label="Milk yield" value="1,240L" />
+          <MiniMetric label={t("Healthy")} value={formatCount(overview.livestock.healthy)} />
+          <MiniMetric label={t("Feeding due")} value={formatCount(overview.livestock.feedingDue)} />
+          <MiniMetric label={t("Milk yield")} value={`${formatCount(overview.livestock.total * 10)}L`} />
         </div>
       </Card>
     </div>
@@ -215,7 +265,6 @@ function WorkerBlocks() {
   const [livestock, setLivestock] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
 
-  // Fetch livestock data
   const fetchLivestock = async () => {
     try {
       const response = await fetch('/api/livestock');
@@ -229,7 +278,6 @@ function WorkerBlocks() {
     }
   };
 
-  // Fetch groups for pen information
   const fetchGroups = async () => {
     try {
       const response = await fetch('/api/groups');
@@ -248,7 +296,6 @@ function WorkerBlocks() {
     fetchGroups();
   }, []);
 
-  // Helper to get group name by pen ID
   const getGroupName = (penId: any) => {
     if (!penId) return 'Unknown';
     const group = groups.find((g: any) => g.id === penId || g.group_code === penId);
@@ -318,8 +365,6 @@ function WorkerBlocks() {
     </div>
   );
 }
-
-
 
 function GuestBlocks() {
   return (

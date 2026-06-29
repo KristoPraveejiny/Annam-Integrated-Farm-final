@@ -15,7 +15,7 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
     <div className="glass-bg min-h-screen bg-[linear-gradient(160deg,#04130c_0%,#0c2d1b_42%,#071420_100%)] p-4 text-white sm:p-6">
       <div className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-7xl items-center">
         <div className="grid w-full gap-8 lg:grid-cols-[0.95fr_1.05fr]">
-          <div className="relative overflow-hidden rounded-[2rem] border border-white/15 bg-white/8 p-8 backdrop-blur-2xl shadow-[0_25px_70px_rgba(2,6,23,0.28)] sm:p-10">
+          <div className="relative overflow-hidden rounded-[2rem] border border-white/15 bg-white/10 p-8 backdrop-blur-2xl shadow-[0_25px_70px_rgba(2,6,23,0.28)] sm:p-10">
             <Link to="/" className="inline-flex items-center gap-2 text-sm font-semibold text-white/80 hover:text-white">
               <FiArrowLeft /> {t("Back to landing")}
             </Link>
@@ -41,7 +41,7 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
               </div>
             </div>
           </div>
-          <div className="glass-panel rounded-[2rem] border-white/15 bg-white/8 p-4 text-white shadow-[0_25px_70px_rgba(2,6,23,0.26)] sm:p-6">{children}</div>
+          <div className="glass-panel rounded-[2rem] border-white/15 bg-white/10 p-4 text-white shadow-[0_25px_70px_rgba(2,6,23,0.26)] sm:p-6">{children}</div>
         </div>
       </div>
     </div>

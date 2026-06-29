@@ -21,10 +21,7 @@ export function Button({ children, className = '', variant = 'primary', theme = 
   };
 
   return (
-    <button
-      className={`inline-flex items-center justify-center rounded-2xl px-5 py-3 text-sm font-semibold tracking-wide transition duration-300 ${styles[theme][variant]} ${className}`}
-      {...props}
-    >
+    <button className={`inline-flex items-center justify-center rounded-2xl px-5 py-3 text-sm font-semibold tracking-wide transition duration-300 ${styles[theme][variant]} ${className}`} {...props}>
       {children}
     </button>
   );

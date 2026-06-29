@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { FiPlus, FiCheckCircle } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
+import { apiFetch } from '../../utils/apiFetch';
 
 export default function FarmManagerTasksPage() {
   const { t } = useTranslation();
@@ -27,16 +28,11 @@ export default function FarmManagerTasksPage() {
 
   const fetchData = async () => {
     try {
-      const tokenRaw = localStorage.getItem('token');
-      const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
-      
-      const headers = { Authorization: `Bearer ${token}` };
-
       const [tasksRes, cropsRes, workersRes, livestockRes] = await Promise.all([
-        fetch('/api/tasks/manager', { headers }),
-        fetch('/api/crops', { headers }),
-        fetch('/api/tasks/workers', { headers }),
-        fetch('/api/livestock/groups', { headers })
+        apiFetch('/api/tasks/manager'),
+        apiFetch('/api/crops'),
+        apiFetch('/api/tasks/workers'),
+        apiFetch('/api/livestock/groups')
       ]);
 
       if (tasksRes.ok) {
@@ -73,14 +69,10 @@ export default function FarmManagerTasksPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const tokenRaw = localStorage.getItem('token');
-      const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
-      
-      const res = await fetch('/api/tasks', {
+      const res = await apiFetch('/api/tasks', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(formData)
       });

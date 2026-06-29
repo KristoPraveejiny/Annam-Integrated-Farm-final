@@ -1,4 +1,4 @@
-// Farm Manager Dashboard â€“ extracted from DashboardPage.tsx
+// Farm Manager Dashboard – extracted from DashboardPage.tsx
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
@@ -7,58 +7,104 @@ import { ProgressBar } from '../../components/ui/ProgressBar';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { ChartPanel } from '../../components/ui/ChartPanel';
 import { FiCheckCircle, FiUsers, FiAlertTriangle, FiActivity } from 'react-icons/fi';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { chartSeries, alerts } from '../../data/mock';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import { chartSeries } from '../../data/mock';
 import { useState, useEffect } from 'react';
+
+type OverviewStats = {
+  totalFields: number;
+  activeFields: number;
+  farmers: number;
+  customers: number;
+  products: number;
+  orders: number;
+  livestock: {
+    total: number;
+    healthy: number;
+    feedingDue: number;
+  };
+};
+
+const emptyOverview: OverviewStats = {
+  totalFields: 0,
+  activeFields: 0,
+  farmers: 0,
+  customers: 0,
+  products: 0,
+  orders: 0,
+  livestock: {
+    total: 0,
+    healthy: 0,
+    feedingDue: 0,
+  },
+};
+
+const API_BASE_URL = 'http://localhost:5000';
 
 export default function FarmManagerDashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [overview, setOverview] = useState<OverviewStats>(emptyOverview);
   const [tasks, setTasks] = useState<any[]>([]);
   const [recentUpdates, setRecentUpdates] = useState<any[]>([]);
+  const [crops, setCrops] = useState<any[]>([]);
+  const [livestock, setLivestock] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const tokenRaw = localStorage.getItem('token');
-        const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
-        const headers = { Authorization: `Bearer ${token}` };
-
-        const [tasksRes, obsRes] = await Promise.all([
-          fetch('/api/tasks/manager', { headers }),
-          fetch('/api/crop-observations/recent', { headers })
+        const [overviewRes, tasksRes, obsRes, cropsRes, livestockRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/dashboard/overview`),
+          fetch(`${API_BASE_URL}/api/tasks/manager`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE_URL}/api/crop-observations/recent`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE_URL}/api/crops`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE_URL}/api/livestock`, { headers: getAuthHeaders() }),
         ]);
+
+        if (overviewRes.ok) {
+          setOverview(await overviewRes.json());
+        } else {
+          console.error('Overview request failed:', overviewRes.status, await overviewRes.text());
+        }
 
         if (tasksRes.ok) setTasks(await tasksRes.json());
         if (obsRes.ok) setRecentUpdates(await obsRes.json());
+        if (cropsRes.ok) setCrops(await cropsRes.json());
+        if (livestockRes.ok) setLivestock(await livestockRes.json());
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
       }
     };
+
     fetchData();
   }, []);
 
   return (
     <>
       <SectionHeading eyebrow={t("Dashboard")} title={t("Farm Manager Overview")} description={t("Operations, workforce, and analytics for your farm.")} tone="light" />
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        {/* Crop Overview */}
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-5">
+        <StatTile label={t('Total Fields')} value={formatCount(overview.totalFields)} />
+        <StatTile label={t('Farmers')} value={formatCount(overview.farmers)} />
+        <StatTile label={t('Customers')} value={formatCount(overview.customers)} />
+        <StatTile label={t('Products')} value={formatCount(overview.products)} />
+        <StatTile label={t('Orders')} value={formatCount(overview.orders)} />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr] mt-6">
         <Card title={t("Crop Overview")} subtitle={t("Field health and growth progress")}>
           <div className="space-y-5">
-            <ProgressBar value={82} label={t("Rice block")} />
-            <ProgressBar value={68} label={t("Vegetable block")} />
-            <ProgressBar value={91} label={t("Fruit orchard")} />
+            <ProgressBar value={overview.totalFields > 0 ? Math.min(100, Math.max(20, overview.totalFields * 10)) : 0} label={t("Registered Fields")} />
+            <ProgressBar value={crops.length > 0 ? Math.min(100, Math.max(20, crops.length * 15)) : 0} label={t("Active Crops")} />
+            <ProgressBar value={recentUpdates.length > 0 ? Math.min(100, Math.max(20, recentUpdates.length * 12)) : 0} label={t("Recent Updates")} />
           </div>
         </Card>
-        {/* Livestock Overview */}
         <Card title={t("Livestock Overview")} subtitle={t("Health, feed, and production tracking")}>
           <div className="grid gap-4 sm:grid-cols-3">
-            <MiniMetric label={t("Healthy")} value="126" />
-            <MiniMetric label={t("Feeding due")} value="18" />
-            <MiniMetric label={t("Milk yield")} value="1,240L" />
+            <MiniMetric label={t("Healthy")} value={formatCount(overview.livestock.healthy)} />
+            <MiniMetric label={t("Feeding due")} value={formatCount(overview.livestock.feedingDue)} />
+            <MiniMetric label={t("Milk yield")} value={`${formatCount(overview.livestock.total * 10)}L`} />
           </div>
         </Card>
-        {/* Task Progress Cards */}
         <Card title={t("Task Progress Cards")} subtitle={t("Work allocation across teams")}>
           <div className="grid gap-4 md:grid-cols-2">
             {tasks.length === 0 ? <p className="text-sm text-slate-500">{t("No tasks assigned.")}</p> : tasks.map((task) => (
@@ -77,32 +123,23 @@ export default function FarmManagerDashboard() {
             ))}
           </div>
         </Card>
-        {/* Recent Farmer Updates Navigation */}
         <div className="flex justify-end mb-4">
-          <Button
-            onClick={() => navigate('/dashboard/farm-manager/recent-updates')}
-            className="flex items-center gap-2"
-          >
+          <Button onClick={() => navigate('/dashboard/farm-manager/recent-updates')} className="flex items-center gap-2">
             {t("View Recent Farmer Updates")}
           </Button>
         </div>
-        {/* Calendar View */}
         <Card title={t("Calendar View")} subtitle={t("Upcoming field events")}>
           <div className="grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-500">
             {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day) => (
               <span key={day}>{day}</span>
             ))}
             {Array.from({ length: 28 }, (_, i) => i + 1).map((date) => (
-              <div
-                key={date}
-                className={`rounded-2xl p-2 ${date === 18 ? 'bg-emerald-600 text-white' : 'bg-slate-50 text-slate-700'}`}
-              >
+              <div key={date} className={`rounded-2xl p-2 ${date === 18 ? 'bg-emerald-600 text-white' : 'bg-slate-50 text-slate-700'}`}>
                 {date}
               </div>
             ))}
           </div>
         </Card>
-        {/* Farm Activity Timeline */}
         <Card title={t("Farm Activity Timeline")} subtitle={t("Latest operational updates")}>
           <div className="space-y-4">
             {[
@@ -118,7 +155,6 @@ export default function FarmManagerDashboard() {
             ))}
           </div>
         </Card>
-        {/* Productivity Chart */}
         <ChartPanel title={t("Productivity Chart")}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartSeries}>
@@ -135,13 +171,35 @@ export default function FarmManagerDashboard() {
   );
 }
 
+function getAuthHeaders() {
+  const tokenRaw = localStorage.getItem('token');
+  const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
+  return token ? { Authorization: `Bearer ${token}` } : undefined;
+}
+
+function formatCount(value: number) {
+  return new Intl.NumberFormat().format(value);
+}
+
+function StatTile({ label, value }: { label: string; value: string }) {
+  return (
+    <Card className="relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/8 via-transparent to-teal-500/10" />
+      <div className="relative">
+        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</p>
+        <p className="mt-3 text-4xl font-black text-slate-950">{value}</p>
+        
+      </div>
+    </Card>
+  );
+}
+
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-3xl bg-slate-50 p-4">
-      <div className="flex items-center gap-2 text-sm font-semibold text-slate-500">
-        {label}
-      </div>
+      <div className="flex items-center gap-2 text-sm font-semibold text-slate-500">{label}</div>
       <p className="mt-2 text-2xl font-black text-slate-900">{value}</p>
     </div>
   );
 }
+

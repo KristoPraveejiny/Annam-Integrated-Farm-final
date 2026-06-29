@@ -72,7 +72,7 @@ export default function ForgotPasswordPage() {
   return (
     <AuthLayout title={t("Reset your password")} subtitle={t("We will send a secure OTP to your registered email and let you create a new password.")}>
       {step === 'request' ? (
-        <form className="space-y-4 rounded-[1.5rem] border border-white/15 bg-white/8 p-6 backdrop-blur-2xl" onSubmit={handleSendOtp}>
+        <form className="space-y-4 rounded-[1.5rem] border border-white/15 bg-white/10 p-6 backdrop-blur-2xl" onSubmit={handleSendOtp}>
           <AuthField label={t("Registered Email")} type="email" placeholder={t("you@example.com")} value={email} onChange={(e) => setEmail(e.target.value)} required />
           {message ? <p className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{message}</p> : null}
           {error ? <p className="rounded-2xl bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</p> : null}
@@ -81,7 +81,7 @@ export default function ForgotPasswordPage() {
           </Button>
         </form>
       ) : (
-        <form className="space-y-4 rounded-[1.5rem] border border-white/15 bg-white/8 p-6 backdrop-blur-2xl" onSubmit={handleResetPassword}>
+        <form className="space-y-4 rounded-[1.5rem] border border-white/15 bg-white/10 p-6 backdrop-blur-2xl" onSubmit={handleResetPassword}>
           <AuthField label={t("Registered Email")} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           <AuthField label={t("OTP Code")} placeholder={t("Enter 6-digit OTP")} value={otp} onChange={(e) => setOtp(e.target.value)} maxLength={6} required />
           <AuthField label={t("New Password")} type="password" placeholder={t("Create a strong password")} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />

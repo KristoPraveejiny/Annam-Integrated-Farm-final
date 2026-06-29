@@ -1,11 +1,9 @@
+import './loadEnv.js';
 import { pool } from './db.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { sendEmail } from './services/emailService.js';
-
-dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'defaultsecret';
 const PASSWORD_RESET_OTP_TTL_MINUTES = 10;

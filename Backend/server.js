@@ -1,8 +1,7 @@
+import './loadEnv.js';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-
-dotenv.config();
 import authRoutes from './routes/authRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import livestockRoutes from './routes/livestockRoutes.js';
@@ -18,6 +17,10 @@ import contactRoutes from './routes/contactRoutes.js';
 import siteContentRoutes from './routes/siteContentRoutes.js';
 import fieldRoutes from './routes/fieldRoutes.js';
 import feedbackRoutes from './routes/feedbackRoutes.js';
+import feedRequirementRoutes from './routes/feedRequirementRoutes.js';
+import feedScheduleRoutes from './routes/feedScheduleRoutes.js';
+import livestockHealthRoutes from './routes/livestockHealthRoutes.js';
+import chatRoutes from './routes/chatRoutes.js';
 import { verifyToken } from './authMiddleware.js';
 
 import path from 'path';
@@ -50,6 +53,10 @@ app.use('/api/contact', contactRoutes);
 app.use('/api/site-content', siteContentRoutes);
 app.use('/api/fields', fieldRoutes);
 app.use('/api/feedback', feedbackRoutes);
+app.use('/api/livestock/feed-requirements', feedRequirementRoutes);
+app.use('/api/livestock/feed-schedules', feedScheduleRoutes);
+app.use('/api/livestock/health-events', livestockHealthRoutes);
+app.use('/api/chat', chatRoutes);
 
 const PORT = process.env.PORT || 5000;
 

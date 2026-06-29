@@ -7,7 +7,7 @@ export async function getCrops(req, res) {
     const userId = req.user.userId;
     const farmId = await getDefaultFarmId(userId);
     const result = await pool.query(
-      `SELECT id, crop_name, variety, block_id, field_id, planting_date, expected_harvest_date, status, expected_yield, yield_unit, notes, created_at`
+      `SELECT id, crop_name, variety, block_id, field_id, planting_date, expected_harvest_date, current_stage, status, expected_yield, yield_unit, notes, created_at`
       + ` FROM crop_cycles WHERE farm_id = $1 ORDER BY created_at DESC`,
       [farmId]
     );
