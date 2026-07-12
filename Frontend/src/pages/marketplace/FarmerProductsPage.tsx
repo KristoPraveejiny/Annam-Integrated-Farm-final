@@ -3,6 +3,7 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { getFarmerProducts, addProduct } from '../../api/marketplace';
 import { useTranslation } from 'react-i18next';
+import { notifyError, notifySuccess } from '../../utils/notifications';
 
 export default function FarmerProductsPage() {
   const { t } = useTranslation();
@@ -56,8 +57,9 @@ export default function FarmerProductsPage() {
       setIsAdding(false);
       setImageFile(null);
       fetchProducts();
+      notifySuccess('Product added successfully.');
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to add product.');
+      notifyError(err.response?.data?.error || 'Failed to add product.');
     }
   };
 

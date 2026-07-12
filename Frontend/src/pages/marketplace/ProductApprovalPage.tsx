@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { getPendingProducts, approveProduct, rejectProduct } from '../../api/marketplace';
+import { notifyError, notifySuccess, notifyWarning } from '../../utils/notifications';
 
 export default function ProductApprovalPage() {
   const [products, setProducts] = useState<any[]>([]);
@@ -35,11 +36,13 @@ export default function ProductApprovalPage() {
     
     try {
       if (actionType === 'approve') {
-        if (!approvedPrice) return alert('Please enter an approved price.');
+        if (!approvedPrice) return notifyWarning('Please enter an approved price.');
         await approveProduct(selectedProduct.id, { approved_price: approvedPrice, remarks });
+        notifySuccess('Product approved successfully.');
       } else {
-        if (!remarks) return alert('Please enter remarks for rejection.');
+        if (!remarks) return notifyWarning('Please enter remarks for rejection.');
         await rejectProduct(selectedProduct.id, { remarks });
+        notifySuccess('Product rejected successfully.');
       }
       
       setSelectedProduct(null);
@@ -48,7 +51,7 @@ export default function ProductApprovalPage() {
       setApprovedPrice('');
       fetchProducts();
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to process product.');
+      notifyError(err.response?.data?.error || 'Failed to process product.');
     }
   };
 

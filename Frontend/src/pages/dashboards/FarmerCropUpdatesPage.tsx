@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { FiCheckCircle, FiUploadCloud, FiSearch, FiLayers, FiDroplet } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
+import { notifyError, notifySuccess, notifyWarning } from '../../utils/notifications';
 
 const activitiesFallback = ['Irrigation', 'Fertilizer Application', 'Pesticide Application', 'Weeding', 'Pruning', 'Harvesting'];
 const stages = ['Seed Sowing', 'Germination', 'Vegetative', 'Flowering', 'Fruiting', 'Harvesting'];
@@ -82,7 +83,7 @@ export default function FarmerCropUpdatesPage() {
 
   const handleActivitySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedTaskId) return alert('No task selected');
+    if (!selectedTaskId) return notifyWarning('No task selected');
 
     const tokenRaw = localStorage.getItem('token');
     const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
@@ -101,21 +102,21 @@ export default function FarmerCropUpdatesPage() {
       });
 
       if (res.ok) {
-        alert('Activity updated successfully!');
+        notifySuccess('Activity updated successfully!');
         setActivityNotes('');
         setActivityImage(null);
       } else {
-        alert('Failed to update activity');
+        notifyError('Failed to update activity');
       }
     } catch (err) {
       console.error(err);
-      alert('Error updating activity');
+      notifyError('Error updating activity');
     }
   };
 
   const handleStageSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCropCycleId) return alert('No crop selected');
+    if (!selectedCropCycleId) return notifyWarning('No crop selected');
     
     const tokenRaw = localStorage.getItem('token');
     const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
@@ -136,14 +137,14 @@ export default function FarmerCropUpdatesPage() {
         body: JSON.stringify(body)
       });
       if (res.ok) {
-         alert('Crop stage updated successfully! The Farm Manager has been notified.');
+         notifySuccess('Crop stage updated successfully! The Farm Manager has been notified.');
          setStageNotes('');
          setStageImagePreview(null);
       } else {
-         alert('Failed to update crop stage.');
+         notifyError('Failed to update crop stage.');
       }
     } catch(err) {
-      alert('Error updating crop stage');
+      notifyError('Error updating crop stage');
     }
   };
 

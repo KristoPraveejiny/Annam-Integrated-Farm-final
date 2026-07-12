@@ -21,6 +21,7 @@ import feedRequirementRoutes from './routes/feedRequirementRoutes.js';
 import feedScheduleRoutes from './routes/feedScheduleRoutes.js';
 import livestockHealthRoutes from './routes/livestockHealthRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
+import aiRoutes from './routes/aiRoutes.js';
 import { verifyToken } from './authMiddleware.js';
 
 import path from 'path';
@@ -57,6 +58,7 @@ app.use('/api/livestock/feed-requirements', feedRequirementRoutes);
 app.use('/api/livestock/feed-schedules', feedScheduleRoutes);
 app.use('/api/livestock/health-events', livestockHealthRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/ai', aiRoutes);
 
 const PORT = process.env.PORT || 5000;
 

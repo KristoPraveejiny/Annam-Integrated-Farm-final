@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { FiX } from 'react-icons/fi';
+import { notifyError } from '../../utils/notifications';
 
 interface PaymentFormProps {
   isOpen: boolean;
@@ -69,7 +70,7 @@ export function MonthlyPaymentFormModal({
       onClose();
     } catch (err) {
       console.error('Payment error', err);
-      alert('Failed to process payment');
+      notifyError('Failed to process payment');
     } finally {
       setIsSubmitting(false);
     }

@@ -2,6 +2,33 @@ import { pool } from '../db.js';
 import { sendTaskAssignedEmail, sendTaskCompletedEmail, sendTaskUpdateEmail } from '../services/emailService.js';
 import { getDefaultFarmId } from './livestockController.js';
 
+function normalizeDateInput(value) {
+  if (!value) return null;
+  const asString = String(value).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(asString) ? asString : null;
+}
+
+async function validateTaskDate(req, res, dueDate) {
+  if (!dueDate) return null;
+
+  const normalizedDueDate = normalizeDateInput(dueDate);
+  if (!normalizedDueDate) {
+    res.status(400).json({ error: 'Invalid task date' });
+    return null;
+  }
+
+  const todayResult = await pool.query('SELECT CURRENT_DATE AS today');
+  const todayValue = todayResult.rows[0]?.today;
+  const today = new Date(todayValue).toISOString().slice(0, 10);
+
+  if (normalizedDueDate < today) {
+    res.status(400).json({ error: 'Task date cannot be earlier than today.' });
+    return null;
+  }
+
+  return normalizedDueDate;
+}
+
 export async function getWorkers(req, res) {
   try {
     const userId = req.user.userId;
@@ -35,6 +62,11 @@ export async function createTask(req, res) {
       return res.status(400).json({ error: 'Title and assignedToUserId are required' });
     }
 
+    const validatedDueDate = await validateTaskDate(req, res, dueDate);
+    if (dueDate && !validatedDueDate) {
+      return;
+    }
+
     // Insert task
     const result = await pool.query(`
       INSERT INTO tasks 
@@ -50,7 +82,7 @@ export async function createTask(req, res) {
       assignedToUserId,
       userId,
       priority || 'medium',
-      dueDate || null,
+      validatedDueDate || null,
       session || 'morning'
     ]);
 
@@ -93,6 +125,83 @@ export async function createTask(req, res) {
   } catch (err) {
     console.error('Error creating task:', err);
     res.status(500).json({ error: 'Failed to create task' });
+  }
+}
+
+export async function updateTaskDetails(req, res) {
+  try {
+    const userId = req.user.userId;
+    const farmId = await getDefaultFarmId(userId);
+    const taskId = req.params.id;
+    const {
+      title,
+      description,
+      cropCycleId,
+      livestockGroupId,
+      assignedToUserId,
+      priority,
+      dueDate,
+      session,
+    } = req.body;
+
+    const validatedDueDate = await validateTaskDate(req, res, dueDate);
+    if (dueDate && !validatedDueDate) {
+      return;
+    }
+
+    const currentTaskResult = await pool.query(
+      'SELECT * FROM tasks WHERE id = $1 AND farm_id = $2',
+      [taskId, farmId]
+    );
+
+    if (currentTaskResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Task not found or unauthorized' });
+    }
+
+    const currentTask = currentTaskResult.rows[0];
+    const nextTitle = title ?? currentTask.title;
+    const nextDescription = description ?? currentTask.description;
+    const nextCropCycleId = cropCycleId ?? currentTask.crop_cycle_id;
+    const nextLivestockGroupId = livestockGroupId ?? currentTask.livestock_group_id;
+    const nextAssignedToUserId = assignedToUserId ?? currentTask.assigned_to_user_id;
+    const nextPriority = priority ?? currentTask.priority;
+    const nextDueDate = dueDate ? validatedDueDate : currentTask.due_date;
+    const nextSession = session ?? currentTask.session;
+
+    const result = await pool.query(`
+      UPDATE tasks
+      SET title = $1,
+          description = $2,
+          crop_cycle_id = $3,
+          livestock_group_id = $4,
+          assigned_to_user_id = $5,
+          priority = $6,
+          due_date = $7,
+          session = $8,
+          updated_at = NOW()
+      WHERE id = $9 AND farm_id = $10
+      RETURNING *
+    `, [
+      nextTitle,
+      nextDescription,
+      nextCropCycleId,
+      nextLivestockGroupId,
+      nextAssignedToUserId,
+      nextPriority,
+      nextDueDate,
+      nextSession,
+      taskId,
+      farmId,
+    ]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Task not found or unauthorized' });
+    }
+
+    res.json({ message: 'Task updated successfully', task: result.rows[0] });
+  } catch (err) {
+    console.error('Error updating task details:', err);
+    res.status(500).json({ error: 'Failed to update task' });
   }
 }
 

@@ -89,6 +89,92 @@ DISEASE_RECOMMENDATIONS = {
         "recommendation": "No disease detected. Monitor nitrogen balance and keep fields weed-free for optimal yield.",
     },
 
+    # BEANS
+    "beans_angular_leaf_spot": {
+        "disease": "Beans Angular Leaf Spot",
+        "recommendation": (
+            "1. Remove heavily infected leaves and avoid working in wet bean fields.\n"
+            "2. Improve plant spacing and airflow to reduce humidity around foliage.\n"
+            "3. Rotate away from beans and other legumes next season.\n"
+            "4. Apply a registered copper-based fungicide if disease pressure becomes severe."
+        ),
+    },
+    "beans_bean_rust": {
+        "disease": "Beans Rust",
+        "recommendation": (
+            "1. Scout early for rust pustules and remove crop residue after harvest.\n"
+            "2. Avoid overhead irrigation and keep foliage dry whenever possible.\n"
+            "3. Rotate to a non-host crop in the next season.\n"
+            "4. Use a registered fungicide such as chlorothalonil or azoxystrobin if the outbreak spreads."
+        ),
+    },
+    "beans_healthy": {
+        "disease": "Beans (Healthy)",
+        "recommendation": (
+            "1. Continue routine scouting for leaf spots and rust.\n"
+            "2. Keep rows well ventilated and avoid excess nitrogen.\n"
+            "3. Maintain clean irrigation and field hygiene."
+        ),
+    },
+    "beans_unknown": {
+        "disease": "Beans (Unknown)",
+        "recommendation": (
+            "1. The model was not confident enough to classify this bean leaf.\n"
+            "2. Retake the image in brighter light with the leaf centered clearly.\n"
+            "3. Inspect the plant manually for spotting, rust, or angular lesions."
+        ),
+    },
+
+    # BRINJAL
+    "brinjal_fruit_cracking": {
+        "disease": "Fruit Cracking",
+        "recommendation": (
+            "1. Keep soil moisture consistent and avoid sudden watering changes.\n"
+            "2. Improve calcium nutrition and use mulch to reduce plant stress.\n"
+            "3. Harvest fruits promptly at maturity to prevent cracking."
+        ),
+    },
+    "healthy_brinjal": {
+        "disease": "Healthy Brinjal",
+        "recommendation": (
+            "1. Maintain balanced fertilization and regular irrigation.\n"
+            "2. Scout frequently for early pest or disease symptoms.\n"
+            "3. Keep the field clean and well ventilated."
+        ),
+    },
+    "phomopsis_blight": {
+        "disease": "Phomopsis Blight",
+        "recommendation": (
+            "1. Remove infected plant debris and prune for better airflow.\n"
+            "2. Avoid overhead irrigation and keep foliage dry.\n"
+            "3. Rotate away from solanaceous crops and apply a fungicide such as chlorothalonil or mancozeb if needed."
+        ),
+    },
+    "shoot_and_fruit_borer": {
+        "disease": "Shoot and Fruit Borer",
+        "recommendation": (
+            "1. Remove bored shoots and damaged fruits quickly.\n"
+            "2. Use pheromone traps and destroy infested plant parts.\n"
+            "3. Apply a recommended insecticide if pest pressure is high."
+        ),
+    },
+    "wet_rot": {
+        "disease": "Wet Rot",
+        "recommendation": (
+            "1. Improve drainage and avoid waterlogging.\n"
+            "2. Remove infected tissue and disinfect tools.\n"
+            "3. Reduce overhead watering to limit spread."
+        ),
+    },
+    "brinjal_little_leaf": {
+        "disease": "Brinjal Little Leaf",
+        "recommendation": (
+            "1. Uproot and destroy severely affected plants.\n"
+            "2. Control leafhopper vectors promptly.\n"
+            "3. Keep the field weed-free to reduce insect hosts."
+        ),
+    },
+
     # ── GRAPE ──────────────────────────────────────────────────────────────────
     "grape_black_rot": {
         "disease": "Grape Black Rot",

@@ -37,7 +37,12 @@ Thank you for using Annam Integrated Farm.
 Best Regards,
 Annam Integrated Farm.
 '''
-    send_mail(subject, message, settings.EMAIL_HOST_USER, [email], fail_silently=False)
+    try:
+        send_mail(subject, message, settings.EMAIL_HOST_USER, [email], fail_silently=False)
+    except Exception as e:
+        print(f"\n[DEVELOPMENT WARNING] Failed to send email to {email}. Error: {e}")
+        print(f"👉 YOUR SIGNUP OTP IS: {otp}\n")
+        logger.error(f"Failed to send email to {email}. Error: {e}")
 
 
 def send_login_otp_email(email, otp):
@@ -59,7 +64,12 @@ Thank you for using Annam Integrated Farm.
 Best Regards,
 Annam Integrated Farm.
 ''' 
-    send_mail(subject, message, settings.EMAIL_HOST_USER, [email], fail_silently=False)
+    try:
+        send_mail(subject, message, settings.EMAIL_HOST_USER, [email], fail_silently=False)
+    except Exception as e:
+        print(f"\n[DEVELOPMENT WARNING] Failed to send email to {email}. Error: {e}")
+        print(f"👉 YOUR LOGIN OTP IS: {otp}\n")
+        logger.error(f"Failed to send email to {email}. Error: {e}")
 
 
 import logging

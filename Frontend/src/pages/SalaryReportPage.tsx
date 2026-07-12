@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Card } from '../components/ui/Card';
 import { SectionHeading } from '../components/ui/SectionHeading';
 import { MonthlyPaymentFormModal } from '../components/Salary/MonthlyPaymentFormModal';
+import { FiCheckCircle } from 'react-icons/fi';
 
 interface ReportRow {
   worker_id: string;
@@ -10,6 +11,7 @@ interface ReportRow {
   total_completed_tasks: string;
   total_approved_sessions: string;
   basic_salary: string;
+  is_paid?: boolean;
 }
 
 export default function SalaryReportPage() {
@@ -79,13 +81,19 @@ export default function SalaryReportPage() {
                     <td className="px-4 py-3 text-slate-600">{item.total_completed_tasks}</td>
                     <td className="px-4 py-3 font-semibold text-blue-600">Rs. {Number(item.basic_salary).toFixed(2)}</td>
                     <td className="px-4 py-3">
-                      <button 
-                        onClick={() => openPaymentModal(item)}
-                        disabled={Number(item.basic_salary) === 0}
-                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-                      >
-                        Make Payment
-                      </button>
+                      {item.is_paid ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
+                          <FiCheckCircle /> Paid
+                        </span>
+                      ) : (
+                        <button 
+                          onClick={() => openPaymentModal(item)}
+                          disabled={Number(item.basic_salary) === 0}
+                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                          Make Payment
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

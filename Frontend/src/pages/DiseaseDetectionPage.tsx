@@ -1,37 +1,144 @@
 import { useState, useRef, useEffect, DragEvent, ChangeEvent } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
-  FiDownload, FiUploadCloud, FiTrash2, FiAlertCircle,
-  FiLoader, FiCheckCircle, FiInfo
+  FiUploadCloud, FiTrash2, FiAlertCircle, FiLoader, FiCheckCircle, FiInfo,
+  FiCloudRain, FiSun, FiWind, FiCalendar, FiClock, FiFileText, FiShield,
+  FiZap, FiCompass, FiPercent, FiTrendingUp, FiCheck, FiMessageSquare
 } from 'react-icons/fi';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { SectionHeading } from '../components/ui/SectionHeading';
 import { useTranslation } from 'react-i18next';
+import { Link, useNavigate } from 'react-router-dom';
 
 interface AnalysisResult {
   disease: string;
-  confidence: string;
-  recommendation_steps: string[];
+  confidence: number;
+  crop_name?: string; // dynamic fallback
+  weatherSummary?: {
+    temperature: number;
+    humidity: number;
+    description: string;
+    windSpeed: number;
+  };
+  aiRecommendation?: {
+    disease_explanation: string;
+    possible_causes: string[];
+    organic_treatment: string[];
+    chemical_treatment: string[];
+    immediate_action: string[];
+    future_prevention: string[];
+    weather_based_advice: string;
+  };
 }
 
-// ── Supported Crop Types ─────────────────────────────────────────
+interface WeatherSummaryData {
+  temperature: number;
+  humidity: number;
+  windSpeed: number;
+  rainProbability: number;
+  condition: string;
+  riskLevel: 'Low' | 'Medium' | 'High';
+  suitableForSpraying: 'YES' | 'NO';
+}
+
 const SUPPORTED_CROPS = [
-  { name: 'Tomato', emoji: '🍅' },
-  { name: 'Papaw (Papaya)', emoji: '🥭' },
-  { name: 'Coconut', emoji: '🥥' },
-  { name: 'Paddyfield (Rice)', emoji: '🌾' },
+  { name: 'Tomato', emoji: '🍅', diseases: 8 },
+  { name: 'Beans', emoji: '🫘', diseases: 5 },
+  { name: 'Papaya', emoji: '🥭', diseases: 6 },
+  { name: 'Brinjal', emoji: '🍆', diseases: 5 },
+  { name: 'Coconut', emoji: '🥥', diseases: 4 },
+  { name: 'Paddy', emoji: '🌾', diseases: 7 },
+  { name: 'Corn', emoji: '🌽', diseases: 6 },
+  { name: 'Green Chilli', emoji: '🌶', diseases: 5 },
+  { name: 'Ladies Finger', emoji: '🥬', diseases: 4 },
+  { name: 'Lemon', emoji: '🍋', diseases: 5 },
+  { name: 'Turmeric', emoji: '🟡', diseases: 4 },
 ];
 
+const LOADING_STEPS = [
+  "Scanning Leaf...",
+  "Loading AI Model...",
+  "Analyzing Disease...",
+  "Generating Recommendation...",
+  "Almost Done..."
+];
+
+interface HistoryItem {
+  id: string;
+  crop_name: string;
+  disease_name: string;
+  confidence: number;
+  uploaded_image: string;
+  weather_summary?: {
+    temperature: number;
+    description: string;
+  };
+  ai_recommendation?: {
+    disease_explanation: string;
+    possible_causes: string[];
+    organic_treatment: string[];
+    chemical_treatment: string[];
+    immediate_action?: string[];
+    future_prevention?: string[];
+    weather_based_advice: string;
+  };
+  created_at: string;
+}
+
 export default function DiseaseDetectionPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
+  const [selectedCrop, setSelectedCrop] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [loadingStep, setLoadingStep] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState<boolean>(true);
+
+  // Preview file stats
+  const [fileSize, setFileSize] = useState<string>('');
+  const [resolution, setResolution] = useState<string>('Detecting...');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Cycling the loading messages
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (loading) {
+      setLoadingStep(0);
+      interval = setInterval(() => {
+        setLoadingStep((prev) => (prev < LOADING_STEPS.length - 1 ? prev + 1 : prev));
+      }, 1800);
+    }
+    return () => clearInterval(interval);
+  }, [loading]);
+
+  // Fetch prediction history
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  const fetchHistory = async () => {
+    try {
+      setHistoryLoading(true);
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:5000/api/ai/disease-history', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setHistory(data);
+      }
+    } catch (err) {
+      console.error('Error fetching prediction history:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -44,21 +151,46 @@ export default function DiseaseDetectionPage() {
       setError('Invalid file type. Please upload an image file (JPG, PNG, JPEG).');
       return;
     }
+    if (selectedFile.size > 5 * 1024 * 1024) {
+      setError('File is too large. Maximum size allowed is 5 MB.');
+      return;
+    }
     setError(null);
     setResult(null);
     setFile(selectedFile);
-    setPreviewUrl(URL.createObjectURL(selectedFile));
-    uploadAndAnalyze(selectedFile);
+
+    // Format file size
+    const sizeInMB = (selectedFile.size / (1024 * 1024)).toFixed(2);
+    setFileSize(`${sizeInMB} MB`);
+
+    const objectUrl = URL.createObjectURL(selectedFile);
+    setPreviewUrl(objectUrl);
+
+    // Get Image Resolution
+    const img = new Image();
+    img.onload = () => {
+      setResolution(`${img.naturalWidth} x ${img.naturalHeight}`);
+    };
+    img.src = objectUrl;
   };
 
-  const uploadAndAnalyze = async (selectedFile: File) => {
+  const uploadAndAnalyze = async () => {
+    if (!file || !selectedCrop) return;
     setLoading(true);
+    setError(null);
+
     const formData = new FormData();
-    formData.append('image', selectedFile);
+    formData.append('image', file);
+    formData.append('crop', selectedCrop);
+    formData.append('language', i18n.language || 'en');
 
     try {
-      const response = await fetch('http://localhost:8000/api/predict/', {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:5000/api/ai/disease-detection', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
         body: formData,
       });
 
@@ -67,281 +199,695 @@ export default function DiseaseDetectionPage() {
         throw new Error(errorData.error || `Server responded with status ${response.status}`);
       }
 
-      const data: AnalysisResult = await response.json();
-      setResult(data);
+      const data = await response.json();
+      setResult(data as AnalysisResult);
+      // Refresh prediction history
+      fetchHistory();
     } catch (err: any) {
       console.error('API Error:', err);
-      setError(
-        err.message ||
-        'Failed to connect to the AI model server. Ensure the Django API server is running on http://127.0.0.1:8000.'
-      );
+      setError(err.message || 'Failed to connect to the AI model server.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDragOver = (e: DragEvent<HTMLDivElement>) => { e.preventDefault(); setIsDragging(true); };
-  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => { e.preventDefault(); setIsDragging(false); };
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault(); setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) processFile(e.dataTransfer.files[0]);
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFile(e.dataTransfer.files[0]);
+    }
   };
-  const handleBoxClick = () => fileInputRef.current?.click();
+
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) processFile(e.target.files[0]);
+    if (e.target.files && e.target.files.length > 0) {
+      processFile(e.target.files[0]);
+    }
   };
+
   const handleClear = () => {
     setFile(null);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
     setResult(null);
     setError(null);
+    setResolution('Detecting...');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // Confidence level helper
-  const getConfidenceNum = () =>
-    result ? parseFloat(result.confidence.replace('%', '')) : 0;
+  const loadHistoryItem = (item: HistoryItem) => {
+    setSelectedCrop(item.crop_name);
+    setPreviewUrl(`http://localhost:5000${item.uploaded_image}`);
+    setFile(null); // Clear active file so it doesn't try to upload again
+    setFileSize('N/A');
+    setResolution('N/A');
 
-  const isLowConfidence = () => getConfidenceNum() < 70;
+    // Format results to match active state
+    setResult({
+      disease: item.disease_name,
+      confidence: item.confidence,
+      crop_name: item.crop_name,
+      weatherSummary: item.weather_summary ? {
+        temperature: item.weather_summary.temperature,
+        humidity: 65, // default fallback
+        description: item.weather_summary.description,
+        windSpeed: 12 // default fallback
+      } : undefined,
+      aiRecommendation: item.ai_recommendation ? {
+        disease_explanation: item.ai_recommendation.disease_explanation,
+        possible_causes: item.ai_recommendation.possible_causes || [],
+        organic_treatment: item.ai_recommendation.organic_treatment || [],
+        chemical_treatment: item.ai_recommendation.chemical_treatment || [],
+        immediate_action: item.ai_recommendation.immediate_action || [],
+        future_prevention: item.ai_recommendation.future_prevention || [],
+        weather_based_advice: item.ai_recommendation.weather_based_advice || ''
+      } : undefined
+    });
 
-  // Report download
-  const downloadReport = () => {
-    if (!result) return;
-    const steps = result.recommendation_steps ?? [];
-    const reportText = `Smart Farm Management & Advisory System
-Crop Disease Analysis Report
---------------------------------------
-Image File   : ${file?.name || 'Uploaded Leaf'}
-Detected     : ${result.disease}
-Confidence   : ${result.confidence}
-
-Recommended Treatment Actions:
-${steps.map((rec, i) => `${i + 1}. ${rec}`).join('\n')}
---------------------------------------
-⚠  NOTE: This AI model is trained on specific crops (Tomato, Papaw, Coconut, Paddyfield).
-   Results for other crops may be inaccurate. Always verify with a local agronomist.
---------------------------------------
-Generated on ${new Date().toLocaleString()}`;
-
-    const element = document.createElement('a');
-    element.href = URL.createObjectURL(new Blob([reportText], { type: 'text/plain' }));
-    element.download = `${result.disease.replace(/\s+/g, '_')}_Report.txt`;
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
+    // Scroll to results
+    setTimeout(() => {
+      const el = document.getElementById('result-section');
+      if (el) el.scrollIntoView({ behavior: 'smooth' });
+    }, 150);
   };
 
-  const isHealthy = result?.disease.toLowerCase().includes('healthy');
+  // Derive weather card details
+  const tempVal = result?.weatherSummary?.temperature ?? 28;
+  const humidityVal = result?.weatherSummary?.humidity ?? 70;
+  const windVal = result?.weatherSummary?.windSpeed ?? 14;
+  const rainProbVal = humidityVal > 80 ? 80 : humidityVal > 60 ? 40 : 10;
+  const weatherCond = result?.weatherSummary?.description ?? 'Partly Cloudy';
+  const riskLevelVal: 'Low' | 'Medium' | 'High' = humidityVal > 80 ? 'High' : humidityVal > 60 ? 'Medium' : 'Low';
+  const suitableSp = (riskLevelVal === 'Low' && windVal < 20) ? 'YES' : 'NO';
+
+  // Determine Confidence Meter color
+  const getConfidenceColor = (conf: number) => {
+    if (conf >= 90) return 'bg-[#00C853]';
+    if (conf >= 70) return 'bg-[#FFC107]';
+    return 'bg-[#FF5252]';
+  };
+
+  const getConfidenceTextColor = (conf: number) => {
+    if (conf >= 90) return 'text-[#00C853]';
+    if (conf >= 70) return 'text-[#FFC107]';
+    return 'text-[#FF5252]';
+  };
 
   return (
-    <div className="section-shell py-10">
-      <SectionHeading
-        eyebrow={t("Disease Detection")}
-        title={t("Crop Disease Detection")}
-        description={t("Upload a crop leaf image to receive AI-powered disease diagnosis and treatment recommendations.")}
-        tone="light"
-      />
-
-      {/* ── Supported Crops Notice ─────────────────────────────────────── */}
-      <div className="mb-6 rounded-2xl border border-blue-200 bg-blue-50 p-4">
-        <div className="flex items-start gap-3">
-          <FiInfo className="mt-0.5 shrink-0 text-lg text-blue-600" />
-          <div>
-            <p className="font-semibold text-blue-800">{t("Supported Crop Types")}</p>
-            <p className="mt-0.5 text-sm text-blue-700">
-              {t("This AI model is trained on the PlantVillage dataset and can only detect diseases for the following crops. Uploading a leaf from a different plant may give incorrect results.")}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {SUPPORTED_CROPS.map((crop) => (
-                <span
-                  key={crop.name}
-                  className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-medium text-blue-800"
-                >
-                  <span>{crop.emoji}</span> {crop.name}
-                </span>
-              ))}
-            </div>
+    <div className="min-h-screen bg-[#081C15] text-white p-4 md:p-8 space-y-8 font-sans selection:bg-[#00C853] selection:text-white">
+      {/* 1. Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full flex flex-col md:flex-row md:items-center justify-between border border-[#112D2B] bg-[#112D2B]/50 backdrop-blur-md rounded-2xl p-6 md:p-8 shadow-xl"
+      >
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-3xl">🌿</span>
+            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-emerald-100 to-[#00C853] bg-clip-text text-transparent">
+              AI Crop Disease Detection
+            </h1>
           </div>
+          <p className="text-sm md:text-base text-[#B0BEC5] max-w-2xl">
+            Analyze crop diseases using AI-powered Deep Learning models.
+          </p>
+        </div>
+        <Link to="/dashboard/farm-manager/disease-history" className="mt-4 md:mt-0">
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.98 }}
+            className="w-full md:w-auto px-6 py-3 rounded-xl border border-[#00C853]/40 bg-[#00C853]/10 hover:bg-[#00C853]/20 hover:border-[#00C853] text-[#00C853] font-bold text-sm tracking-wide transition-all shadow-[0_0_15px_rgba(0,200,83,0.1)]"
+          >
+            Open Disease History
+          </motion.button>
+        </Link>
+      </motion.div>
+
+      {/* 2. Crop Selection */}
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-lg font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-[#00C853] animate-ping" />
+            1. Select Crop Type
+          </h2>
+          <p className="text-xs text-[#B0BEC5] mt-1">
+            Choose the target crop to optimize detection accuracy. Only one crop can be selected at a time.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          {SUPPORTED_CROPS.map((crop) => {
+            const isSelected = selectedCrop === crop.name;
+            return (
+              <motion.button
+                key={crop.name}
+                onClick={() => setSelectedCrop(crop.name)}
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.97 }}
+                className={`relative flex flex-col items-center justify-center p-4 rounded-xl border transition-all text-center h-32 ${
+                  isSelected
+                    ? 'bg-[#112D2B] border-[#00C853] shadow-[0_0_15px_rgba(0,200,83,0.25)]'
+                    : 'bg-[#112D2B]/40 border-emerald-950 hover:bg-[#112D2B]/80 hover:border-[#00C853]/50'
+                }`}
+              >
+                <div className="text-3xl mb-2 filter drop-shadow-md">{crop.emoji}</div>
+                <div className="font-bold text-sm text-white">{crop.name}</div>
+                <div className="text-[10px] text-[#B0BEC5] mt-1">
+                  {crop.diseases} Diseases Supported
+                </div>
+                {isSelected && (
+                  <div className="absolute top-2 right-2 bg-[#00C853] text-[#081C15] rounded-full p-0.5">
+                    <FiCheck size={12} className="stroke-[3]" />
+                  </div>
+                )}
+              </motion.button>
+            );
+          })}
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        {/* ── Left: Upload Area ─────────────────────────────────────────── */}
-        <Card title={t("Image Upload")} subtitle={t("Drag and drop area")}>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            accept="image/*"
-            className="hidden"
-          />
-          <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onClick={handleBoxClick}
-            className={`grid cursor-pointer place-items-center rounded-[2rem] border-2 border-dashed p-10 text-center transition duration-300 ${isDragging
-                ? 'border-emerald-500 bg-emerald-100 scale-[1.01]'
-                : 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100/70'
-              }`}
+      {/* 3 & 4. Image Upload & Preview Section */}
+      <AnimatePresence mode="wait">
+        {selectedCrop && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            className="grid grid-cols-1 lg:grid-cols-2 gap-6"
           >
-            <FiUploadCloud
-              className={`text-6xl transition duration-300 ${isDragging ? 'text-emerald-700 animate-bounce' : 'text-emerald-600'}`}
-            />
-            <p className="mt-4 text-lg font-bold text-slate-900">{t("Drag and drop crop leaf image here")}</p>
-            <p className="mt-2 text-sm text-slate-600">
-              {t("Supported: JPG, PNG, high-resolution field photos.")}
-            </p>
-            <p className="mt-1 text-xs text-amber-600 font-medium">
-              ⚠ {t("Only upload leaves from the supported crop types listed above.")}
-            </p>
-            <Button
-              theme="light"
-              variant="primary"
-              className="mt-5"
-              onClick={(e) => { e.stopPropagation(); handleBoxClick(); }}
-            >
-              {t("Choose File")}
-            </Button>
-          </div>
-        </Card>
-
-        {/* ── Right: Preview + Results ──────────────────────────────────── */}
-        <div className="space-y-6">
-          {/* Preview */}
-          <Card title={t("Preview Image")} subtitle={t("Selected file preview")}>
-            <div className="relative flex h-56 w-full items-center justify-center overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-100 via-lime-50 to-white border border-emerald-100">
-              {previewUrl ? (
-                <>
-                  <img src={previewUrl} alt="Uploaded leaf preview" className="h-full w-full object-cover" />
-                  <button
-                    onClick={handleClear}
-                    className="absolute right-4 top-4 rounded-full bg-red-500 p-2 text-white shadow-md hover:bg-red-600 transition"
-                    title="Remove Image"
-                  >
-                    <FiTrash2 size={16} />
-                  </button>
-                </>
-              ) : (
-                <p className="text-sm text-slate-500">{t("No image selected. Upload a crop leaf photo to start.")}</p>
-              )}
+            {/* Upload Area */}
+            <div className="space-y-3">
+              <h2 className="text-lg font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                <span>📷</span> 2. Upload Leaf Image
+              </h2>
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={`relative h-64 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed cursor-pointer transition-all p-6 text-center ${
+                  isDragging
+                    ? 'border-[#00C853] bg-[#00C853]/10 scale-[1.01]'
+                    : 'border-emerald-800/80 bg-[#112D2B]/35 hover:bg-[#112D2B]/60 hover:border-[#00C853]/60'
+                }`}
+              >
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  accept="image/png, image/jpeg, image/jpg"
+                  className="hidden"
+                />
+                <motion.div
+                  animate={isDragging ? { y: -8 } : { y: 0 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 15 }}
+                  className="p-4 rounded-full bg-[#112D2B]/80 text-[#00C853] mb-4 shadow-md"
+                >
+                  <FiUploadCloud size={36} />
+                </motion.div>
+                <p className="font-bold text-base text-white">Drag Image Here</p>
+                <p className="text-xs text-[#B0BEC5] my-1">OR</p>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
+                  className="px-4 py-2 bg-[#00C853] hover:bg-[#00E676] text-[#081C15] font-extrabold text-xs rounded-lg transition-colors shadow-lg"
+                >
+                  Browse Image
+                </button>
+                <p className="text-[10px] text-[#B0BEC5] mt-4">
+                  Supported formats: JPG, JPEG, PNG | Maximum 5 MB
+                </p>
+              </div>
             </div>
-          </Card>
 
-          {/* AI Analysis */}
-          <Card title={t("AI Analysis")} subtitle={t("Disease detection result")}>
-            <div className="space-y-4">
-
-              {/* Loading */}
-              {loading && (
-                <div className="space-y-4 py-4 text-center">
-                  <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
-                    <div className="h-full w-full origin-left animate-[pulse_1.5s_infinite] rounded-full bg-emerald-500" />
-                  </div>
-                  <div className="flex items-center justify-center gap-2 text-emerald-700 font-semibold animate-pulse">
-                    <FiLoader className="animate-spin text-lg" />
-                    <span>Analyzing crop health with AI...</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Error */}
-              {error && (
-                <div className="rounded-3xl border border-red-200 bg-red-50 p-4 text-red-700">
-                  <div className="flex gap-2.5 items-start">
-                    <FiAlertCircle size={20} className="shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-semibold">Analysis Failed</p>
-                      <p className="mt-1 text-sm leading-relaxed">{error}</p>
-                      <p className="mt-2 text-xs text-red-500">
-                        Make sure the Django AI server is running: <code className="bg-red-100 px-1 rounded">python manage.py runserver 8000</code>
-                      </p>
+            {/* Preview Area */}
+            <div className="space-y-3">
+              <h2 className="text-lg font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                <span>🖼️</span> Image Preview
+              </h2>
+              <div className="h-64 rounded-2xl border border-emerald-950 bg-[#112D2B]/40 p-4 flex flex-col md:flex-row gap-4 justify-between items-center relative overflow-hidden">
+                {previewUrl ? (
+                  <>
+                    <div className="h-full w-full md:w-1/2 rounded-xl overflow-hidden bg-black/40 border border-emerald-950 flex items-center justify-center">
+                      <img
+                        src={previewUrl}
+                        alt="Preview"
+                        className="h-full w-full object-contain"
+                      />
                     </div>
-                  </div>
-                </div>
-              )}
+                    <div className="flex-1 flex flex-col justify-between h-full py-2 w-full">
+                      <div className="space-y-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-emerald-500 font-semibold text-xs tracking-wider uppercase">Crop:</span>
+                          <span className="text-sm font-bold">{selectedCrop}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[#B0BEC5] text-[10px] uppercase">File Name</span>
+                          <span className="text-xs font-medium truncate max-w-[200px]">
+                            {file?.name || 'Loaded from History'}
+                          </span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[#B0BEC5] text-[10px] uppercase">File Size</span>
+                          <span className="text-xs font-semibold">{fileSize}</span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[#B0BEC5] text-[10px] uppercase">Resolution</span>
+                          <span className="text-xs font-semibold text-emerald-300">{resolution}</span>
+                        </div>
+                      </div>
 
-              {/* Result */}
-              {result && (
-                <div className="space-y-4 animate-[fadeIn_0.5s_ease-out]">
-
-                  {/* Outcome box */}
-                  <div className={`rounded-3xl p-5 border ${isHealthy
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                      : 'bg-amber-50 border-amber-200 text-amber-900'
-                    }`}>
-                    <div className="flex items-center gap-2.5">
-                      {isHealthy
-                        ? <FiCheckCircle className="text-xl text-emerald-600" />
-                        : <FiAlertCircle className="text-xl text-amber-600" />}
-                      <p className="text-md font-bold">Detected: {result.disease}</p>
+                      <button
+                        onClick={handleClear}
+                        className="mt-3 py-2 px-3 border border-red-500/30 hover:border-red-500 bg-red-500/10 hover:bg-red-500/20 text-[#FF5252] font-bold text-xs rounded-lg transition-colors flex items-center justify-center gap-2 w-full"
+                      >
+                        <FiTrash2 size={13} />
+                        Remove Image
+                      </button>
                     </div>
-                    <p className="mt-2 text-sm">
-                      Model Confidence: <strong>{result.confidence}</strong>
+                  </>
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center text-[#B0BEC5]">
+                    <span className="text-4xl mb-2">📸</span>
+                    <p className="text-sm">No leaf image uploaded yet.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 5. Analyze Button */}
+      {selectedCrop && previewUrl && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex flex-col items-center justify-center py-4"
+        >
+          {loading ? (
+            <div className="w-full max-w-md bg-[#112D2B] border border-emerald-900 rounded-2xl p-6 flex flex-col items-center text-center shadow-lg space-y-4">
+              <FiLoader className="text-3xl text-[#00C853] animate-spin" />
+              <div className="h-6 flex items-center justify-center">
+                <motion.p
+                  key={loadingStep}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="font-bold text-emerald-400 text-base"
+                >
+                  {LOADING_STEPS[loadingStep]}
+                </motion.p>
+              </div>
+              <div className="w-full bg-[#081C15] h-2 rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full bg-gradient-to-r from-emerald-500 to-[#00C853]"
+                  initial={{ width: '0%' }}
+                  animate={{ width: `${((loadingStep + 1) / LOADING_STEPS.length) * 100}%` }}
+                  transition={{ duration: 1.5 }}
+                />
+              </div>
+            </div>
+          ) : (
+            <motion.button
+              whileHover={{ scale: 1.03, boxShadow: '0 0 25px rgba(0, 200, 83, 0.4)' }}
+              whileTap={{ scale: 0.97 }}
+              onClick={uploadAndAnalyze}
+              className="px-12 py-4 bg-gradient-to-r from-emerald-600 via-[#00C853] to-emerald-400 hover:from-emerald-500 hover:to-emerald-300 text-[#081C15] font-extrabold text-lg rounded-2xl transition-all shadow-xl tracking-wider uppercase"
+            >
+              Analyze with AI
+            </motion.button>
+          )}
+        </motion.div>
+      )}
+
+      {error && (
+        <div className="p-4 rounded-xl border border-red-500 bg-red-500/10 text-[#FF5252] flex items-center gap-3">
+          <FiAlertCircle size={22} className="shrink-0" />
+          <p className="font-semibold text-sm">{error}</p>
+        </div>
+      )}
+
+      {/* 6. AI Result Dashboard & 7. Confidence Meter */}
+      <AnimatePresence>
+        {result && (
+          <motion.div
+            id="result-section"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
+          >
+            <div>
+              <h2 className="text-xl font-extrabold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                <span>📊</span> AI Diagnosis Dashboard
+              </h2>
+              <div className="h-0.5 bg-emerald-950/80 w-full mt-2" />
+            </div>
+
+            {/* Results Grid */}
+            <div className="flex justify-end w-full mb-4">
+               <button
+                 onClick={() => navigate('/dashboard/farm-manager/ai-chat', { state: { crop: result.crop_name || selectedCrop, predictedDisease: result.disease, confidence: result.confidence } })}
+                 className="px-6 py-2.5 bg-[#00C853] hover:bg-[#00E676] text-[#081C15] font-extrabold text-sm rounded-xl transition-colors shadow-lg flex items-center gap-2"
+               >
+                 <FiMessageSquare size={16} />
+                 Ask AI Assistant
+               </button>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Card 1: Crop */}
+              <div className="bg-[#112D2B] border border-emerald-900/50 p-4 rounded-xl shadow-md flex items-center gap-4">
+                <div className="p-3 bg-emerald-900/30 text-emerald-400 rounded-lg">
+                  <FiCompass size={22} />
+                </div>
+                <div>
+                  <p className="text-[10px] text-[#B0BEC5] uppercase font-bold tracking-wider">Crop</p>
+                  <p className="text-base font-bold text-white mt-0.5">{result.crop_name || selectedCrop}</p>
+                </div>
+              </div>
+
+              {/* Card 2: Disease */}
+              <div className="bg-[#112D2B] border border-emerald-900/50 p-4 rounded-xl shadow-md flex items-center gap-4">
+                <div className="p-3 bg-red-950/30 text-[#FF5252] rounded-lg">
+                  <FiAlertCircle size={22} />
+                </div>
+                <div>
+                  <p className="text-[10px] text-[#B0BEC5] uppercase font-bold tracking-wider">Disease</p>
+                  <p className="text-base font-bold text-white mt-0.5 truncate max-w-[140px]" title={result.disease}>
+                    {result.disease}
+                  </p>
+                </div>
+              </div>
+
+              {/* Card 3: Confidence */}
+              <div className="bg-[#112D2B] border border-emerald-900/50 p-4 rounded-xl shadow-md flex items-center gap-4">
+                <div className="p-3 bg-amber-950/30 text-[#FFC107] rounded-lg">
+                  <FiPercent size={22} />
+                </div>
+                <div>
+                  <p className="text-[10px] text-[#B0BEC5] uppercase font-bold tracking-wider">Confidence</p>
+                  <p className="text-base font-bold text-white mt-0.5">{(result.confidence).toFixed(2)}%</p>
+                </div>
+              </div>
+
+              {/* Card 4: Detection Status */}
+              <div className="bg-[#112D2B] border border-emerald-900/50 p-4 rounded-xl shadow-md flex items-center gap-4">
+                <div className="p-3 bg-emerald-950/30 text-[#00C853] rounded-lg">
+                  <FiCheckCircle size={22} />
+                </div>
+                <div>
+                  <p className="text-[10px] text-[#B0BEC5] uppercase font-bold tracking-wider">Status</p>
+                  <p className="text-base font-bold text-[#00C853] mt-0.5">Detected</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Confidence Meter Progress Bar */}
+            <div className="bg-[#112D2B] border border-emerald-900/40 p-6 rounded-xl shadow-md space-y-3">
+              <div className="flex justify-between items-center">
+                <h3 className="text-sm font-bold text-white tracking-wide">Confidence Rating</h3>
+                <span className={`text-base font-extrabold ${getConfidenceTextColor(result.confidence)}`}>
+                  {result.confidence.toFixed(2)}%
+                </span>
+              </div>
+              <div className="w-full bg-[#081C15] h-4 rounded-full overflow-hidden border border-emerald-950 p-0.5">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.min(result.confidence, 100)}%` }}
+                  transition={{ duration: 0.8, ease: 'easeOut' }}
+                  className={`h-full rounded-full ${getConfidenceColor(result.confidence)}`}
+                />
+              </div>
+              <div className="flex justify-between text-[10px] text-[#B0BEC5] font-bold">
+                <span className="text-[#FF5252]">High Risk (&lt;70%)</span>
+                <span className="text-[#FFC107]">Warning (70%-89%)</span>
+                <span className="text-[#00C853]">High Confidence (&gt;=90%)</span>
+              </div>
+            </div>
+
+            {/* 8. AI Recommendation Section */}
+            {result.aiRecommendation && (
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-xl font-extrabold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                    <span>💡</span> AI Treatment & Prevention Advisory
+                  </h2>
+                  <div className="h-0.5 bg-emerald-950/80 w-full mt-2" />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {/* Card 1: Disease Summary */}
+                  <div className="bg-[#112D2B] border border-emerald-900/40 p-5 rounded-xl shadow-md space-y-2">
+                    <div className="flex items-center gap-2.5 text-[#00C853] font-bold border-b border-emerald-900/40 pb-2 mb-2">
+                      <FiFileText size={18} />
+                      <span className="text-sm uppercase tracking-wider">Disease Summary</span>
+                    </div>
+                    <p className="text-xs text-[#B0BEC5] leading-relaxed">
+                      {result.aiRecommendation.disease_explanation}
                     </p>
                   </div>
 
-                  {/* ⚠ Low-confidence OR out-of-scope warning */}
-                  {isLowConfidence() && (
-                    <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3 text-amber-800 text-sm flex gap-2 items-start">
-                      <FiAlertCircle className="shrink-0 mt-0.5" />
-                      <span>
-                        <strong>Low confidence result.</strong> The AI is not certain about this prediction.
-                        Please verify with a trained agronomist.
-                      </span>
+                  {/* Card 2: Possible Causes */}
+                  <div className="bg-[#112D2B] border border-emerald-900/40 p-5 rounded-xl shadow-md space-y-2">
+                    <div className="flex items-center gap-2.5 text-[#FFC107] font-bold border-b border-emerald-900/40 pb-2 mb-2">
+                      <FiAlertCircle size={18} />
+                      <span className="text-sm uppercase tracking-wider">Possible Causes</span>
                     </div>
-                  )}
-
-                  {/* General disclaimer for out-of-scope crops */}
-                  <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-blue-800 text-xs flex gap-2 items-start">
-                    <FiInfo className="shrink-0 mt-0.5 text-blue-600" size={14} />
-                    <span>
-                      <strong>Important:</strong> This model only recognises diseases in the supported crops listed above.
-                      If your plant is <em>not</em> in the supported list (e.g., cucumber, pumpkin, beans),
-                      the result shown may be <strong>incorrect</strong>. Always cross-check with a local agronomist.
-                    </span>
+                    <ul className="list-disc pl-4 text-xs text-[#B0BEC5] leading-relaxed space-y-1.5">
+                      {result.aiRecommendation.possible_causes.map((cause, idx) => (
+                        <li key={idx}>{cause}</li>
+                      ))}
+                    </ul>
                   </div>
 
-                  {/* Recommendations */}
-                  {(result.recommendation_steps?.length ?? 0) > 0 && (
-                    <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
-                      <p className="font-bold text-slate-900">Recommended Treatment Actions</p>
-                      <ul className="mt-3 space-y-2 text-sm text-slate-600 leading-relaxed">
-                        {result.recommendation_steps.map((item, idx) => (
-                          <li key={idx} className="flex gap-2 items-start">
-                            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700">
-                              {idx + 1}
-                            </span>
-                            <span>{item.replace(/^\d+\.\s*/, '')}</span>
-                          </li>
-                        ))}
-                      </ul>
+                  {/* Card 3: Organic Treatment */}
+                  <div className="bg-[#112D2B] border border-emerald-900/40 p-5 rounded-xl shadow-md space-y-2">
+                    <div className="flex items-center gap-2.5 text-[#00C853] font-bold border-b border-emerald-900/40 pb-2 mb-2">
+                      <span className="text-base">🌱</span>
+                      <span className="text-sm uppercase tracking-wider">Organic Treatment</span>
                     </div>
-                  )}
+                    <ul className="list-disc pl-4 text-xs text-[#B0BEC5] leading-relaxed space-y-1.5">
+                      {result.aiRecommendation.organic_treatment.map((treatment, idx) => (
+                        <li key={idx}>{treatment}</li>
+                      ))}
+                    </ul>
+                  </div>
 
-                  <Button
-                    theme="light"
-                    variant="secondary"
-                    className="w-full gap-2 mt-2"
-                    onClick={downloadReport}
-                  >
-                    <FiDownload /> Download Report
-                  </Button>
+                  {/* Card 4: Chemical Treatment */}
+                  <div className="bg-[#112D2B] border border-emerald-900/40 p-5 rounded-xl shadow-md space-y-2">
+                    <div className="flex items-center gap-2.5 text-[#FF5252] font-bold border-b border-emerald-900/40 pb-2 mb-2">
+                      <span className="text-base">🧪</span>
+                      <span className="text-sm uppercase tracking-wider">Chemical Treatment</span>
+                    </div>
+                    <ul className="list-disc pl-4 text-xs text-[#B0BEC5] leading-relaxed space-y-1.5">
+                      {result.aiRecommendation.chemical_treatment.map((treatment, idx) => (
+                        <li key={idx}>{treatment}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Card 5: Immediate Action */}
+                  <div className="bg-[#112D2B] border border-emerald-900/40 p-5 rounded-xl shadow-md space-y-2">
+                    <div className="flex items-center gap-2.5 text-[#FFC107] font-bold border-b border-emerald-900/40 pb-2 mb-2">
+                      <FiZap size={18} />
+                      <span className="text-sm uppercase tracking-wider">Immediate Action</span>
+                    </div>
+                    <ul className="list-disc pl-4 text-xs text-[#B0BEC5] leading-relaxed space-y-1.5">
+                      {result.aiRecommendation.immediate_action.map((action, idx) => (
+                        <li key={idx}>{action}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Card 6: Future Prevention */}
+                  <div className="bg-[#112D2B] border border-emerald-900/40 p-5 rounded-xl shadow-md space-y-2">
+                    <div className="flex items-center gap-2.5 text-blue-400 font-bold border-b border-emerald-900/40 pb-2 mb-2">
+                      <FiShield size={18} />
+                      <span className="text-sm uppercase tracking-wider">Future Prevention</span>
+                    </div>
+                    <ul className="list-disc pl-4 text-xs text-[#B0BEC5] leading-relaxed space-y-1.5">
+                      {result.aiRecommendation.future_prevention.map((prev, idx) => (
+                        <li key={idx}>{prev}</li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
-              )}
 
-              {/* Idle */}
-              {!loading && !error && !result && (
-                <div className="py-6 text-center border border-dashed border-slate-200 rounded-3xl bg-slate-50/50">
-                  <p className="text-sm text-slate-500">
-                    Upload a leaf photo from a supported crop type. The AI diagnostic and treatment card will appear here.
+                {/* Card 7: Weather-Based Recommendation */}
+                <div className="bg-[#112D2B] border border-emerald-900/40 p-5 rounded-xl shadow-md">
+                  <div className="flex items-center gap-2.5 text-[#00C853] font-bold border-b border-emerald-900/40 pb-2 mb-3">
+                    <FiCloudRain size={18} />
+                    <span className="text-sm uppercase tracking-wider">Weather-Based Recommendation</span>
+                  </div>
+                  <p className="text-xs text-[#B0BEC5] leading-relaxed">
+                    {result.aiRecommendation.weather_based_advice}
                   </p>
                 </div>
-              )}
+              </div>
+            )}
+
+            {/* 9. Weather Summary */}
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-xl font-extrabold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                  <span>🌤️</span> Local Weather Metrics & Spray Suitability
+                </h2>
+                <div className="h-0.5 bg-emerald-950/80 w-full mt-2" />
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                {/* Temp */}
+                <div className="bg-[#112D2B] border border-emerald-900/40 p-4 rounded-xl text-center space-y-1">
+                  <span className="text-2xl block">🌡️</span>
+                  <span className="text-[10px] text-[#B0BEC5] font-bold uppercase tracking-wider block">Temperature</span>
+                  <span className="text-base font-extrabold">{tempVal}°C</span>
+                </div>
+
+                {/* Humidity */}
+                <div className="bg-[#112D2B] border border-emerald-900/40 p-4 rounded-xl text-center space-y-1">
+                  <span className="text-2xl block">💧</span>
+                  <span className="text-[10px] text-[#B0BEC5] font-bold uppercase tracking-wider block">Humidity</span>
+                  <span className="text-base font-extrabold">{humidityVal}%</span>
+                </div>
+
+                {/* Wind Speed */}
+                <div className="bg-[#112D2B] border border-emerald-900/40 p-4 rounded-xl text-center space-y-1">
+                  <span className="text-2xl block">💨</span>
+                  <span className="text-[10px] text-[#B0BEC5] font-bold uppercase tracking-wider block">Wind Speed</span>
+                  <span className="text-base font-extrabold">{windVal} km/h</span>
+                </div>
+
+                {/* Rain Prob */}
+                <div className="bg-[#112D2B] border border-emerald-900/40 p-4 rounded-xl text-center space-y-1">
+                  <span className="text-2xl block">🌧️</span>
+                  <span className="text-[10px] text-[#B0BEC5] font-bold uppercase tracking-wider block">Rain Prob.</span>
+                  <span className="text-base font-extrabold">{rainProbVal}%</span>
+                </div>
+
+                {/* Condition */}
+                <div className="bg-[#112D2B] border border-emerald-900/40 p-4 rounded-xl text-center space-y-1">
+                  <span className="text-2xl block">☁️</span>
+                  <span className="text-[10px] text-[#B0BEC5] font-bold uppercase tracking-wider block">Condition</span>
+                  <span className="text-xs font-extrabold capitalize block truncate">{weatherCond}</span>
+                </div>
+
+                {/* Risk Level */}
+                <div className="bg-[#112D2B] border border-emerald-900/40 p-4 rounded-xl text-center space-y-1">
+                  <span className="text-2xl block">⚠️</span>
+                  <span className="text-[10px] text-[#B0BEC5] font-bold uppercase tracking-wider block">Disease Risk</span>
+                  <span className={`text-sm font-extrabold block ${
+                    riskLevelVal === 'High' ? 'text-[#FF5252]' : riskLevelVal === 'Medium' ? 'text-[#FFC107]' : 'text-[#00C853]'
+                  }`}>{riskLevelVal}</span>
+                </div>
+              </div>
+
+              {/* Spray Suitability Banner */}
+              <div className={`p-4 rounded-xl flex items-center justify-between border ${
+                suitableSp === 'YES'
+                  ? 'border-[#00C853]/40 bg-[#00C853]/10 text-[#00C853]'
+                  : 'border-[#FFC107]/40 bg-[#FFC107]/10 text-[#FFC107]'
+              }`}>
+                <div className="flex items-center gap-2.5">
+                  <span className="text-xl">🚿</span>
+                  <div>
+                    <p className="font-extrabold text-sm tracking-wide">SPRAYING STATUS FOR CHEMICALS/ORGANICS</p>
+                    <p className="text-xs opacity-90 mt-0.5">
+                      {suitableSp === 'YES'
+                        ? 'Optimal weather parameters detected. Suitable for foliage spraying.'
+                        : 'Suboptimal weather conditions or high disease risk. Spraying is not advised.'}
+                    </p>
+                  </div>
+                </div>
+                <span className="text-2xl font-black tracking-widest">{suitableSp}</span>
+              </div>
             </div>
-          </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 10. Prediction History Table */}
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-xl font-extrabold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+            <span>📅</span> Recent Prediction History
+          </h2>
+          <div className="h-0.5 bg-emerald-950/80 w-full mt-2" />
         </div>
+
+        {historyLoading ? (
+          <div className="flex items-center justify-center p-8 bg-[#112D2B]/30 border border-emerald-950 rounded-2xl">
+            <FiLoader className="animate-spin text-[#00C853] text-2xl mr-3" />
+            <span className="text-sm text-[#B0BEC5]">Loading historical data...</span>
+          </div>
+        ) : history.length === 0 ? (
+          <div className="p-8 text-center bg-[#112D2B]/30 border border-dashed border-emerald-900/60 rounded-2xl text-[#B0BEC5]">
+            No recent prediction records found on file.
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-2xl border border-emerald-950/80 bg-[#112D2B]/20">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-[#112D2B]/80 text-[#B0BEC5] border-b border-emerald-950 font-semibold text-xs tracking-wider uppercase">
+                  <th className="p-4">Image</th>
+                  <th className="p-4">Crop</th>
+                  <th className="p-4">Detected Disease</th>
+                  <th className="p-4">Confidence</th>
+                  <th className="p-4">Prediction Date</th>
+                  <th className="p-4 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-emerald-950/50 text-xs">
+                {history.slice(0, 10).map((item) => (
+                  <tr key={item.id} className="hover:bg-[#112D2B]/40 transition-colors">
+                    <td className="p-4">
+                      <div className="h-10 w-10 rounded-lg overflow-hidden border border-emerald-950 bg-black/30">
+                        <img
+                          src={`http://localhost:5000${item.uploaded_image}`}
+                          alt="Leaf"
+                          className="h-full w-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    </td>
+                    <td className="p-4 font-bold text-white">{item.crop_name}</td>
+                    <td className="p-4 text-[#B0BEC5] font-semibold">{item.disease_name}</td>
+                    <td className="p-4">
+                      <span className={`font-bold ${getConfidenceTextColor(item.confidence)}`}>
+                        {item.confidence.toFixed(2)}%
+                      </span>
+                    </td>
+                    <td className="p-4 text-[#B0BEC5]">
+                      {new Date(item.created_at).toLocaleDateString()} {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td className="p-4 text-right">
+                      <button
+                        onClick={() => loadHistoryItem(item)}
+                        className="px-3.5 py-1.5 border border-[#00C853]/40 hover:border-[#00C853] bg-[#00C853]/15 hover:bg-[#00C853] text-[#00C853] hover:text-[#081C15] font-bold rounded-lg transition-all"
+                      >
+                        View Details
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

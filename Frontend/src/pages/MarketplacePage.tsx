@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { PublicHeader } from '../components/layout/PublicHeader';
 import { useTranslation } from 'react-i18next';
+import { notifyError, notifySuccess, notifyWarning } from '../utils/notifications';
 
 export default function MarketplacePage() {
   const { t } = useTranslation();
@@ -58,13 +59,13 @@ export default function MarketplacePage() {
     try {
       const quantity = quantities[product.id] || 1;
       await addToCart({ product_id: product.id, quantity });
-      alert(t('Product added to cart!'));
+      notifySuccess(t('Product added to cart!'));
     } catch (err: any) {
       if (err.response?.status === 401) {
-        alert(t('Please login to add to cart.'));
+        notifyWarning(t('Please login to add to cart.'));
         navigate('/login');
       } else {
-        alert(err.response?.data?.error || t('Failed to add to cart.'));
+        notifyError(err.response?.data?.error || t('Failed to add to cart.'));
       }
     }
   };

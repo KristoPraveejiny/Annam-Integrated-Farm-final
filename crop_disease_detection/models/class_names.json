@@ -1,10 +1,13 @@
 [
-    "Coconut___Bud_rot",
-    "Coconut___healthy",
-    "Paddyfield___Blast",
-    "Paddyfield___healthy",
-    "Papaw___Anthracnose",
-    "Papaw___healthy",
-    "Tomato___Early_blight",
-    "Tomato___healthy"
+  "Bacterial_spot",
+  "Early_blight",
+  "healthy",
+  "Late_blight",
+  "Leaf_Mold",
+  "powdery_mildew",
+  "Septoria_leaf_spot",
+  "Spider_mites Two-spotted_spider_mite",
+  "Target_Spo",
+  "Tomato_mosaic_virus",
+  "Tomato_Yellow_Leaf_Curl_Virus"
 ]

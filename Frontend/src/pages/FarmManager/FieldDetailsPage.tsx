@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { Button } from '../../components/ui/Button';
 import { FiArrowLeft, FiMapPin, FiDroplet, FiLayers, FiActivity, FiCheckCircle, FiClock, FiAlertCircle, FiLink } from 'react-icons/fi';
+import { notifyError, notifyWarning } from '../../utils/notifications';
 
 export default function FieldDetailsPage() {
   const { id } = useParams<{ id: string }>();
@@ -41,7 +42,7 @@ export default function FieldDetailsPage() {
 
   const handleAssignCrop = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCropId) return;
+    if (!selectedCropId) return notifyWarning('Please select a crop cycle to assign.');
     setIsAssigning(true);
     try {
       const res = await fetch(`/api/fields/${id}/assign-crop`, {
@@ -53,7 +54,7 @@ export default function FieldDetailsPage() {
       setSelectedCropId('');
       fetchData();
     } catch (err: any) {
-      alert(err.message);
+      notifyError(err.message);
     } finally {
       setIsAssigning(false);
     }

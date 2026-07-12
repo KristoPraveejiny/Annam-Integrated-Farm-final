@@ -1,9 +1,11 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { ToastContainer } from 'react-toastify';
 import { publicNavItems, roleDashboards } from './data/mock';
 import AIAdvisoryPage from './pages/AIAdvisoryPage';
 import DashboardPage from './pages/dashboards/DashboardPage';
 import AboutPage from './pages/AboutPage';
 import DiseaseDetectionPage from './pages/DiseaseDetectionPage';
+import DiseaseHistoryPage from './pages/DiseaseHistoryPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import LandingPage from './pages/LandingPage';
 import LivestockManagementPage from './pages/LivestockManagementPage';
@@ -63,8 +65,17 @@ import OrdersPage from './pages/marketplace/OrdersPage';
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<LandingPage />} />
+    <>
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        newestOnTop
+        closeOnClick
+        pauseOnHover
+        draggable
+      />
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -219,6 +230,11 @@ export default function App() {
           <DiseaseDetectionPage />
         </AppShell>
       } />
+      <Route path="/dashboard/farm-manager/disease-history" element={
+        <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
+          <DiseaseHistoryPage />
+        </AppShell>
+      } />
       <Route path="/dashboard/farm-manager/recent-updates" element={
         <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
           <RecentFarmerUpdatesPage />
@@ -353,7 +369,8 @@ export default function App() {
           />
         );
       })}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   );
 }

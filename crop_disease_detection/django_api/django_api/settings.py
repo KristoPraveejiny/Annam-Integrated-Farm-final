@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 
+# Trigger reload to load new EMAIL_HOST_PASSWORD from .env
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
@@ -46,6 +47,12 @@ DATABASES = {
         "PORT": "5432",
     }
 }
+
+import os
+# Model is stored in crop_disease_detection/models/
+MODEL_DIR = os.path.join(os.path.dirname(BASE_DIR), 'models')
+MODEL_PATH = os.path.join(MODEL_DIR, 'tomato_disease_model.keras')
+CLASSES_PATH = os.path.join(MODEL_DIR, 'class_names.json')
 
 # Email Configuration
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
@@ -108,4 +115,3 @@ LOGGING = {
         },
     },
 }
-

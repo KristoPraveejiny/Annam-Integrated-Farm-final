@@ -51,26 +51,53 @@ export async function getMonthlySalarySummary(req, res) {
     const userId = req.user.userId;
     const farmId = await getDefaultFarmId(userId);
 
-    const result = await pool.query(`
+    // Pending payments (approved tasks)
+    const pendingResult = await pool.query(`
       SELECT 
         u.id as worker_id,
         u.full_name as worker_name,
         TO_CHAR(ta.date, 'FMMonth YYYY') as payment_month,
         COUNT(ta.id) as total_completed_tasks,
         COUNT(ta.id) as total_approved_sessions,
-        SUM(ta.payment_amount) as basic_salary
+        SUM(ta.payment_amount) as basic_salary,
+        false as is_paid
       FROM app_users u
       JOIN task_attendances ta ON u.id = ta.worker_id
       WHERE ta.farm_id = $1 AND ta.status = 'approved' AND ta.attendance_status = 'Completed'
       GROUP BY u.id, u.full_name, TO_CHAR(ta.date, 'FMMonth YYYY')
-      ORDER BY payment_month DESC, u.full_name
     `, [farmId]);
 
+    // Paid payments
+    const paidResult = await pool.query(`
+      SELECT 
+        u.id as worker_id,
+        u.full_name as worker_name,
+        msp.payment_month as payment_month,
+        msp.total_completed_tasks,
+        msp.total_approved_sessions,
+        msp.final_payment_amount as basic_salary,
+        true as is_paid
+      FROM monthly_salary_payments msp
+      JOIN app_users u ON msp.worker_id = u.id
+      WHERE msp.farm_id = $1
+    `, [farmId]);
+
+    const combined = [...pendingResult.rows, ...paidResult.rows];
+
     // Trim strings for month to avoid whitespace issues
-    const rows = result.rows.map(r => ({
+    const rows = combined.map(r => ({
       ...r,
       payment_month: r.payment_month.trim()
     }));
+    
+    rows.sort((a, b) => {
+       const dateA = new Date(a.payment_month);
+       const dateB = new Date(b.payment_month);
+       if (dateB.getTime() !== dateA.getTime()) {
+           return dateB.getTime() - dateA.getTime();
+       }
+       return a.worker_name.localeCompare(b.worker_name);
+    });
 
     res.json(rows);
   } catch (err) {

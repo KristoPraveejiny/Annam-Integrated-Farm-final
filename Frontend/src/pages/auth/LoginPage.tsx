@@ -4,6 +4,7 @@ import type { InputHTMLAttributes } from 'react';
 import { AuthLayout } from './AuthLayout';
 import { Button } from '../../components/ui/Button';
 import { useTranslation } from 'react-i18next';
+import { notifyError } from '../../utils/notifications';
 
 import { sendLoginOtp, verifyLoginOtp } from '../../api/auth';
 
@@ -57,14 +58,14 @@ useEffect(() => {
     try {
       const response = await sendLoginOtp(email, password);
       if (response.error) {
-        alert(t(response.error));
+        notifyError(t(response.error));
       } else {
         setIsOtpSent(true);
         startOtpTimer();
       }
     } catch (err) {
       console.error(err);
-      alert(t('Failed to send OTP. Please ensure the Django server is running and configured.'));
+      notifyError(t('Failed to send OTP. Please ensure the Django server is running and configured.'));
     } finally {
       setIsLoading(false);
     }
@@ -84,11 +85,11 @@ useEffect(() => {
         const dashRole = role?.replace('_', '-') === 'worker' ? 'farmer-worker' : role?.replace('_', '-');
         navigate(`/dashboard/${dashRole || 'farmer'}`);
       } else {
-        alert(t(response.error) || t('Login failed'));
+        notifyError(t(response.error) || t('Login failed'));
       }
     } catch (err) {
       console.error(err);
-      alert(t('An error occurred during login'));
+      notifyError(t('An error occurred during login'));
     } finally {
       setIsLoading(false);
     }

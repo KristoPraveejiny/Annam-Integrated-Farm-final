@@ -5,6 +5,7 @@ import { SectionHeading } from '../../components/ui/SectionHeading';
 import { FiPlus, FiCheckCircle } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import { apiFetch } from '../../utils/apiFetch';
+import { notifyError, notifySuccess, notifyWarning } from '../../utils/notifications';
 
 export default function FarmManagerTasksPage() {
   const { t } = useTranslation();
@@ -25,6 +26,8 @@ export default function FarmManagerTasksPage() {
     session: 'morning',
     dueDate: ''
   });
+
+  const todayDate = new Date().toISOString().split('T')[0];
 
   const fetchData = async () => {
     try {
@@ -68,6 +71,10 @@ export default function FarmManagerTasksPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.dueDate && formData.dueDate < todayDate) {
+      notifyWarning('Task date cannot be earlier than today.');
+      return;
+    }
     try {
       const res = await apiFetch('/api/tasks', {
         method: 'POST',
@@ -81,14 +88,14 @@ export default function FarmManagerTasksPage() {
         setShowModal(false);
         setFormData({ title: '', description: '', cropCycleId: '', livestockGroupId: '', assignedToUserId: '', priority: 'medium', session: 'morning', dueDate: '' });
         fetchData();
-        alert('Task assigned and email sent successfully!');
+        notifySuccess('Task assigned and email sent successfully!');
       } else {
         const errorData = await res.json();
-        alert(errorData.error || 'Failed to create task');
+        notifyError(errorData.error || 'Failed to create task');
       }
     } catch (err) {
       console.error('Submit error:', err);
-      alert('An error occurred while saving.');
+      notifyError('An error occurred while saving.');
     }
   };
 
@@ -252,6 +259,7 @@ export default function FarmManagerTasksPage() {
                   <label className="block text-sm font-medium text-slate-300 mb-1">Due Date</label>
                   <input
                     type="date"
+                    min={todayDate}
                     value={formData.dueDate}
                     onChange={e => setFormData({...formData, dueDate: e.target.value})}
                     className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none [color-scheme:dark]"

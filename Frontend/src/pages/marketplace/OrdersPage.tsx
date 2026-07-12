@@ -4,6 +4,7 @@ import { Card } from '../../components/ui/Card';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { FiBox, FiDollarSign, FiCheckCircle } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
+import { notifyError, notifySuccess } from '../../utils/notifications';
 
 export default function OrdersPage({ role }: { role: 'customer' | 'farm-manager' }) {
   const { t } = useTranslation();
@@ -32,9 +33,10 @@ export default function OrdersPage({ role }: { role: 'customer' | 'farm-manager'
       setUpdatingId(id);
       await markOrderReceived(id);
       await fetchOrders();
+      notifySuccess('Order marked as received.');
     } catch (err) {
       console.error(err);
-      alert('Failed to update order status.');
+      notifyError('Failed to update order status.');
     } finally {
       setUpdatingId(null);
     }
@@ -118,6 +120,17 @@ export default function OrdersPage({ role }: { role: 'customer' | 'farm-manager'
                           <span className="text-sm font-bold text-slate-900">
                             Rs. {(Number(order.total_amount) - Number(advancePayment.amount)).toFixed(2)}
                           </span>
+                        </div>
+                        <div className="mt-3 rounded-2xl border border-emerald-200/70 bg-white/70 p-3">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">Sender details</p>
+                          <div className="mt-2 grid gap-1 text-sm text-slate-700">
+                            <p><span className="font-semibold">Name:</span> {advancePayment.sender_name || '-'}</p>
+                            <p><span className="font-semibold">Bank:</span> {advancePayment.sender_bank_name || '-'}</p>
+                            <p><span className="font-semibold">Account:</span> {advancePayment.sender_account_number || '-'}</p>
+                            <p><span className="font-semibold">Mobile:</span> {advancePayment.sender_phone || '-'}</p>
+                            {advancePayment.sender_note ? <p><span className="font-semibold">Note:</span> {advancePayment.sender_note}</p> : null}
+                            {advancePayment.payment_method ? <p><span className="font-semibold">Method:</span> {advancePayment.payment_method}</p> : null}
+                          </div>
                         </div>
                         {role === 'farm-manager' && (
                           <div className="mt-3 flex justify-end">

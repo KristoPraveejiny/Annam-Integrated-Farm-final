@@ -3,6 +3,7 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { getMarketplaceProducts, addToCart } from '../../api/marketplace';
 import { useTranslation } from 'react-i18next';
+import { notifyError, notifySuccess } from '../../utils/notifications';
 
 export default function CustomerMarketplacePage() {
   const { t } = useTranslation();
@@ -44,9 +45,9 @@ export default function CustomerMarketplacePage() {
     try {
       const quantity = quantities[product_id] || 1;
       await addToCart({ product_id, quantity });
-      alert('Product added to cart!');
+      notifySuccess('Product added to cart!');
     } catch (err: any) {
-      alert(err.response?.data?.error || 'Failed to add to cart.');
+      notifyError(err.response?.data?.error || 'Failed to add to cart.');
     }
   };
 

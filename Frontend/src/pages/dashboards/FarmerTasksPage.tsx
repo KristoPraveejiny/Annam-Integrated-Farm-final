@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { FiCheckCircle, FiClock, FiMessageSquare } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
+import { notifyError, notifySuccess } from '../../utils/notifications';
 
 export default function FarmerTasksPage() {
   const { t } = useTranslation();
@@ -90,13 +91,14 @@ export default function FarmerTasksPage() {
           setShowCropModal(true);
         } else {
           fetchTasks();
+          notifySuccess('Task status updated successfully.');
         }
       } else {
-        alert('Failed to update task status');
+        notifyError('Failed to update task status');
       }
     } catch (err) {
       console.error('Update status error:', err);
-      alert('Error updating task');
+      notifyError('Error updating task');
     }
   };
 
@@ -121,15 +123,15 @@ export default function FarmerTasksPage() {
       if (res.ok) {
         setShowCropModal(false);
         setCropFormData({ growthStage: '', healthScore: '', moistureScore: '', pestRisk: '', notes: '' });
-        alert('Crop observation submitted successfully!');
+        notifySuccess('Crop observation submitted successfully!');
         fetchTasks();
       } else {
         const errorData = await res.json();
-        alert(errorData.error || 'Failed to submit crop observation');
+        notifyError(errorData.error || 'Failed to submit crop observation');
       }
     } catch (err) {
       console.error('Submit crop error:', err);
-      alert('Error submitting observation');
+      notifyError('Error submitting observation');
     }
   };
 

@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { Button } from '../../components/ui/Button';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { FiPlus, FiMapPin, FiDroplet, FiLayers, FiActivity, FiTrash2, FiEdit2 } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import { apiFetch } from '../../utils/apiFetch';
+import { notifyError, notifySuccess } from '../../utils/notifications';
 
 interface Field {
   id: string;
@@ -32,6 +34,7 @@ export default function FieldManagementPage() {
   const [error, setError] = useState('');
   const [editField, setEditField] = useState<Field | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fieldToDelete, setFieldToDelete] = useState<Field | null>(null);
 
   const emptyForm = { field_name: '', field_code: '', area: '', soil_type: '', irrigation_type: '', location: '', status: 'Active' };
   const [formData, setFormData] = useState<any>(emptyForm);
@@ -83,21 +86,22 @@ export default function FieldManagementPage() {
       setIsModalOpen(false);
       setFormData(emptyForm);
       fetchFields();
+      notifySuccess(editField ? 'Field updated successfully.' : 'Field added successfully.');
     } catch (err: any) {
-      alert(err.message);
+      notifyError(err.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Delete field "${name}"? This cannot be undone.`)) return;
     try {
       const res = await apiFetch(`/api/fields/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete field');
       fetchFields();
+      notifySuccess('Field deleted successfully.');
     } catch (err: any) {
-      alert(err.message);
+      notifyError(err.message);
     }
   };
 
@@ -217,7 +221,7 @@ export default function FieldManagementPage() {
                     <FiEdit2 />
                   </button>
                   <button
-                    onClick={() => handleDelete(field.id, field.field_name)}
+                    onClick={() => setFieldToDelete(field)}
                     className="p-2 bg-slate-800 text-slate-400 border border-white/10 rounded-xl hover:text-red-400 hover:bg-red-500/10 transition-colors"
                   >
                     <FiTrash2 />
@@ -308,6 +312,21 @@ export default function FieldManagementPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(fieldToDelete)}
+        title="Delete field?"
+        description={fieldToDelete ? `Delete field "${fieldToDelete.field_name}"? This cannot be undone.` : ''}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        destructive
+        onCancel={() => setFieldToDelete(null)}
+        onConfirm={async () => {
+          if (!fieldToDelete) return;
+          await handleDelete(fieldToDelete.id, fieldToDelete.field_name);
+          setFieldToDelete(null);
+        }}
+      />
     </div>
   );
 }

@@ -48,7 +48,16 @@ CREATE TABLE IF NOT EXISTS cart_items (
     CONSTRAINT cart_items_unique UNIQUE (cart_id, product_id)
 );
 
--- 6. Add triggers for new tables
+-- 6. Extend payments table with customer sender details
+ALTER TABLE payments
+ADD COLUMN IF NOT EXISTS payment_method text,
+ADD COLUMN IF NOT EXISTS sender_name text,
+ADD COLUMN IF NOT EXISTS sender_bank_name text,
+ADD COLUMN IF NOT EXISTS sender_account_number text,
+ADD COLUMN IF NOT EXISTS sender_phone text,
+ADD COLUMN IF NOT EXISTS sender_note text;
+
+-- 7. Add triggers for new tables
 DO $$
 DECLARE
     table_name text;

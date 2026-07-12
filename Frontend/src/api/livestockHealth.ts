@@ -21,11 +21,12 @@ export async function getLivestockHealthEvents(): Promise<LivestockHealthEvent[]
   return response.json();
 }
 
-export async function createLivestockHealthEvent(payload: Partial<LivestockHealthEvent> & { livestockId: string; healthIssue: string; status: string }): Promise<LivestockHealthEvent> {
+export async function createLivestockHealthEvent(payload: Partial<LivestockHealthEvent> | FormData): Promise<LivestockHealthEvent> {
+  const isFormData = payload instanceof FormData;
   const response = await apiFetch('/api/livestock/health-events', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    headers: isFormData ? {} : { 'Content-Type': 'application/json' },
+    body: isFormData ? payload : JSON.stringify(payload),
   });
   if (!response.ok) {
     throw new Error('Failed to save livestock health event');

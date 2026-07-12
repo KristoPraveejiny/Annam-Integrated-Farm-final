@@ -58,6 +58,84 @@ DISEASE_RECOMMENDATIONS = {
         "recommendation": "No disease detected. Monitor nitrogen fertilizer balance. Keep fields free of competitive weeds to maximize crop yield."
     },
 
+    # BEANS
+    "beans_angular_leaf_spot": {
+        "disease": "Beans Angular Leaf Spot",
+        "recommendation": "Remove heavily infected leaves and avoid working in wet fields. Improve air circulation, rotate away from beans and other legumes, and apply a copper-based fungicide if pressure is high."
+    },
+    "beans_bean_rust": {
+        "disease": "Beans Rust",
+        "recommendation": "Scout early for reddish-brown pustules on leaves. Remove crop residue, rotate to a non-host crop next season, and apply a registered fungicide such as chlorothalonil or azoxystrobin if the outbreak spreads."
+    },
+    "beans_healthy": {
+        "disease": "Beans (Healthy)",
+        "recommendation": "No disease detected. Keep rows well-ventilated, maintain balanced fertilization, and continue routine scouting for leaf spots or rust."
+    },
+    "beans_unknown": {
+        "disease": "Beans (Unknown)",
+        "recommendation": "The model was not confident enough to classify this bean leaf. Recheck the image quality, ensure the leaf is clearly visible, and inspect for visible spotting, rust, or angular lesions."
+    },
+
+    # BRINJAL
+    "brinjal_fruit_cracking": {
+        "disease": "Fruit Cracking",
+        "recommendation": "Keep soil moisture consistent and avoid sudden irrigation changes. Improve calcium nutrition, mulch to reduce stress, and harvest promptly when fruits reach maturity."
+    },
+    "healthy_brinjal": {
+        "disease": "Healthy Brinjal",
+        "recommendation": "No disease detected. Maintain balanced fertilization, regular irrigation, and routine scouting for early pest or disease symptoms."
+    },
+    "phomopsis_blight": {
+        "disease": "Phomopsis Blight",
+        "recommendation": "Remove infected plant debris and prune for airflow. Avoid overhead irrigation, rotate away from solanaceous crops, and apply a fungicide such as chlorothalonil or mancozeb if needed."
+    },
+    "shoot_and_fruit_borer": {
+        "disease": "Shoot and Fruit Borer",
+        "recommendation": "Remove bored shoots and damaged fruits quickly. Use pheromone traps, destroy infested plant parts, and apply a recommended insecticide if pest pressure is high."
+    },
+    "wet_rot": {
+        "disease": "Wet Rot",
+        "recommendation": "Improve drainage and avoid waterlogging around plants. Remove infected tissue, disinfect tools, and reduce overhead watering to limit spread."
+    },
+    "brinjal_little_leaf": {
+        "disease": "Brinjal Little Leaf",
+        "recommendation": "Uproot and destroy severely affected plants. Control leafhopper vectors, keep the field weed-free, and apply insect control measures promptly."
+    },
+
+    # MANGO
+    "mango_anthracnose": {
+        "disease": "Mango Anthracnose",
+        "recommendation": "Remove infected leaves and fruit, improve canopy airflow, avoid overhead irrigation, and apply a registered copper fungicide during humid periods."
+    },
+    "mango_bacterial_canker": {
+        "disease": "Mango Bacterial Canker",
+        "recommendation": "Prune infected twigs, disinfect tools between cuts, avoid working in wet conditions, and apply a copper-based spray if recommended locally."
+    },
+    "mango_cutting_weevil": {
+        "disease": "Cutting Weevil",
+        "recommendation": "Collect and destroy affected plant parts, keep the orchard clean of fallen debris, and use recommended orchard sanitation and pest control measures."
+    },
+    "mango_die_back": {
+        "disease": "Die Back",
+        "recommendation": "Prune infected shoots below the damaged area, disinfect pruning tools, improve tree nutrition, and apply a suitable fungicide or bactericide if advised."
+    },
+    "mango_gall_midge": {
+        "disease": "Gall Midge",
+        "recommendation": "Remove affected buds and shoots, monitor for new galls, maintain orchard sanitation, and use approved insect control methods during infestation pressure."
+    },
+    "mango_healthy": {
+        "disease": "Healthy Mango",
+        "recommendation": "No disease detected. Maintain balanced nutrition, irrigation, pruning, and regular orchard monitoring."
+    },
+    "mango_powdery_mildew": {
+        "disease": "Powdery Mildew",
+        "recommendation": "Improve airflow through pruning, avoid dense canopy growth, and apply a recommended sulfur or fungicide spray during early infection."
+    },
+    "mango_sooty_mould": {
+        "disease": "Sooty Mould",
+        "recommendation": "Control honeydew-producing insects such as aphids or scale, wash affected foliage if practical, and improve orchard hygiene and airflow."
+    },
+
     # GRAPE
     "grape_black_rot": {
         "disease": "Grape Black Rot",

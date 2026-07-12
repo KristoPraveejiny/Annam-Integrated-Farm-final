@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card } from '../../../components/ui/Card';
 import { getUsers, updateUserStatus } from '../../../api/admin';
 import { useTranslation } from 'react-i18next';
+import { notifyError, notifySuccess } from '../../../utils/notifications';
 
 export default function UserManagementPage() {
   const { t } = useTranslation();
@@ -29,9 +30,10 @@ export default function UserManagementPage() {
       await updateUserStatus(id, newStatus);
       // Optimistic update
       setUsers(users.map(u => u.id === id ? { ...u, status: newStatus } : u));
+      notifySuccess('User status updated successfully.');
     } catch (error) {
       console.error('Failed to update status:', error);
-      alert('Failed to update status');
+      notifyError('Failed to update status');
     }
   };
 

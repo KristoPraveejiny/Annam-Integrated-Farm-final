@@ -185,6 +185,7 @@ export async function sendProductRejectedEmail(farmerEmail, productDetails) {
 
 export async function sendNewOrderEmail(customerEmail, orderDetails) {
   const subject = 'Order Confirmation from Annam Integrated Farm';
+  const senderDetails = orderDetails.senderDetails || {};
   const html = `
     <h2>Order Placed Successfully</h2>
     <p>Thank you${orderDetails.customerName ? `, ${orderDetails.customerName}` : ''}. We have received your order and recorded the advance payment.</p>
@@ -193,6 +194,9 @@ export async function sendNewOrderEmail(customerEmail, orderDetails) {
       <li><strong>Total Amount:</strong> Rs. ${orderDetails.totalAmount}</li>
       <li><strong>Status:</strong> ${orderDetails.status}</li>
       ${orderDetails.advanceAmount ? `<li><strong>Advance Paid:</strong> Rs. ${orderDetails.advanceAmount}</li>` : ''}
+      ${senderDetails.senderName ? `<li><strong>Sender Name:</strong> ${senderDetails.senderName}</li>` : ''}
+      ${senderDetails.senderBankName ? `<li><strong>Sender Bank:</strong> ${senderDetails.senderBankName}</li>` : ''}
+      ${senderDetails.senderAccountNumber ? `<li><strong>Sender Account:</strong> ${senderDetails.senderAccountNumber}</li>` : ''}
     </ul>
     <p>Please keep this email for your records. We will notify you again when the order is ready for pickup or delivery.</p>
   `;

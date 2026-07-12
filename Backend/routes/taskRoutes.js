@@ -1,6 +1,6 @@
 import express from 'express';
 import { verifyToken } from '../authMiddleware.js';
-import { createTask, getFarmerTasks, getFarmManagerTasks, updateTaskStatus, getWorkers } from '../controllers/taskController.js';
+import { createTask, getFarmerTasks, getFarmManagerTasks, updateTaskDetails, updateTaskStatus, getWorkers } from '../controllers/taskController.js';
 
 const router = express.Router();
 
@@ -16,6 +16,7 @@ import { createTaskUpdate, getRecentTaskUpdates } from '../controllers/taskContr
 router.get('/updates/recent', getRecentTaskUpdates);
 
 router.put('/:id/status', updateTaskStatus);
+router.put('/:id', updateTaskDetails);
 router.post('/:id/updates', upload.single('image'), createTaskUpdate);
 
 export default router;

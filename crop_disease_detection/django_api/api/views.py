@@ -16,51 +16,120 @@ from .models import ChatSession, ChatMessage
 from .serializers import ChatSessionSerializer
 from .openrouter_service import generate_chat_response
 
-try:
-    import tensorflow as tf
-    TF_AVAILABLE = True
-except Exception as tf_err:
-    tf = None
-    TF_AVAILABLE = False
-    print(f"[WARNING] TensorFlow could not be loaded: {tf_err}")
-    print("[WARNING] Disease detection endpoint will be unavailable.")
-
+# Removed top-level tensorflow import to prevent init conflicts
 # Import recommendations mapping from local app module
 from .recommendations import get_recommendation
+from .model_loader import get_model_and_classes
 
-
-class ModelSingleton:
+def _get_expected_image_size(model, fallback=(224, 224)):
     """
-    Singleton class to load the Keras model and class names config only once.
-    This saves CPU/GPU memory and prevents massive latency on API requests.
+    Read the spatial input size directly from the loaded model.
+    This keeps inference aligned with whatever crop-specific model is loaded.
     """
-    _model = None
-    _class_names = None
+    try:
+        _, height, width, _ = model.input_shape
+        if height and width:
+            return (int(height), int(width))
+    except Exception:
+        pass
+    return fallback
 
-    @classmethod
-    def load_resources(cls):
-        if cls._model is None:
-            model_path = str(settings.MODEL_PATH)
-            class_path = str(settings.CLASSES_PATH)
 
-            if not os.path.exists(model_path) or not os.path.exists(class_path):
-                raise FileNotFoundError(
-                    f"Model resources not found at '{model_path}' or '{class_path}'. "
-                    "Make sure to run the training script first: 'python train_model.py'."
-                )
+def _get_brinjal_input_size():
+    return (224, 224)
 
-            # Load model
-            print("Loading TensorFlow Keras model into API memory...")
-            cls._model = tf.keras.models.load_model(model_path)
-            
-            # Load classes list
-            with open(class_path, "r") as f:
-                cls._class_names = json.load(f)
-                
-            print("Model loaded successfully. Service is ready for predictions.")
-            
-        return cls._model, cls._class_names
 
+def _apply_input_mode(model, img_batch, input_mode="auto"):
+    import tensorflow as tf
+
+    if input_mode == "raw":
+        return img_batch
+    if input_mode == "unit":
+        return img_batch / 255.0
+    if input_mode == "minus1to1":
+        return (img_batch / 127.5) - 1.0
+
+    has_rescaling = any(
+        isinstance(layer, tf.keras.layers.Rescaling)
+        or "rescaling" in layer.name.lower()
+        or "preprocess" in layer.name.lower()
+        for layer in model.layers
+    )
+    if has_rescaling:
+        return img_batch
+
+    is_mobilenet = any("expanded_conv" in layer.name for layer in model.layers)
+    if is_mobilenet:
+        return (img_batch / 127.5) - 1.0
+    return img_batch / 255.0
+
+
+def _predict_single_bundle(bundle, img_batch):
+    import tensorflow as tf
+
+    model = bundle["model"]
+    class_names = bundle["class_names"]
+    input_mode = bundle.get("input_mode", getattr(model, "_codex_input_mode", "auto"))
+    img_batch = _apply_input_mode(model, img_batch, input_mode)
+
+    predictions = model.predict(img_batch, verbose=0)[0]
+    predicted_idx = int(np.argmax(predictions))
+    confidence_score = float(predictions[predicted_idx])
+    predicted_class_name = class_names[predicted_idx] if class_names else f"class_{predicted_idx}"
+
+    return {
+        "model_name": bundle.get("name", "model"),
+        "predicted_class": predicted_class_name,
+        "predicted_index": predicted_idx,
+        "confidence": round(min(100.0, max(0.0, confidence_score * 100)), 2),
+        "raw_confidence": confidence_score,
+    }
+
+
+def _extract_prediction(bundle, img_batch):
+    result = _predict_single_bundle(bundle, img_batch)
+    result["predicted_label"] = result["predicted_class"]
+    return result
+
+
+def _predict_brinjal_sequential(bundle_results, img_batch):
+    primary_bundle = bundle_results[0]
+    secondary_bundle = bundle_results[1] if len(bundle_results) > 1 else None
+
+    primary_result = _extract_prediction(primary_bundle, img_batch.copy())
+    primary_label = primary_result["predicted_class"]
+
+    if primary_result["confidence"] < 20.0:
+        return {
+            "error": "The uploaded image could not be identified. Please upload a clearer Brinjal leaf image.",
+            "model_results": [primary_result],
+        }
+
+    if primary_label != "Healthy Brinjal":
+        return {
+            "final_result": primary_result,
+            "model_results": [primary_result],
+        }
+
+    if secondary_bundle is None:
+        return {
+            "final_result": primary_result,
+            "model_results": [primary_result],
+        }
+
+    secondary_result = _extract_prediction(secondary_bundle, img_batch.copy())
+    model_results = [primary_result, secondary_result]
+
+    if secondary_result["predicted_class"] == "Brinjal Little Leaf" and secondary_result["confidence"] >= 20.0:
+        return {
+            "final_result": secondary_result,
+            "model_results": model_results,
+        }
+
+    return {
+        "final_result": primary_result,
+        "model_results": model_results,
+    }
 
 @csrf_exempt
 def predict_disease_view(request):
@@ -71,13 +140,6 @@ def predict_disease_view(request):
     Accepts: POST request with 'image' file in multipart/form-data.
     Returns: JSON response containing disease, confidence, and recommendation.
     """
-    if not TF_AVAILABLE:
-        return JsonResponse(
-            {"error": "Disease detection is temporarily unavailable due to a library conflict. "
-                      "The weather chat and advisory endpoints are still operational."},
-            status=503,
-        )
-
     if request.method != "POST":
         return JsonResponse(
             {"error": "Method not allowed. Use POST requests."},
@@ -92,46 +154,92 @@ def predict_disease_view(request):
         )
 
     image_file = request.FILES["image"]
+    
+    # Read crop from request, default to Tomato
+    crop = request.POST.get("crop", "Tomato")
 
     try:
-        # 1. Load model and config resources (cached after first run)
-        try:
-            model, class_names = ModelSingleton.load_resources()
-        except FileNotFoundError as fnf_err:
+        # 1. Load model and config resources via model_loader
+        model, class_names, error_msg = get_model_and_classes(crop)
+        
+        if error_msg:
             return JsonResponse(
-                {"error": str(fnf_err)},
-                status=503  # Service Unavailable
+                {"success": False, "message": error_msg},
+                status=400
             )
+
+        target_size = _get_expected_image_size(model)
+        if isinstance(model, list):
+            target_size = _get_brinjal_input_size()
 
         # 2. Open image in memory using PIL
         img = Image.open(image_file).convert("RGB")
         
-        # 3. Resize image to match input shape expected by the model (224x224)
-        img_resized = img.resize((224, 224))
+        # 3. Resize image to match the loaded model's input shape
+        img_resized = img.resize(target_size)
         
         # 4. Convert image to numeric numpy array
         img_array = np.array(img_resized, dtype=np.float32)
         
-        # 5. Expand dimensions to create batch shape: (1, 224, 224, 3)
+        # 5. Expand dimensions to create batch shape: (1, H, W, 3)
         img_batch = np.expand_dims(img_array, axis=0)
 
+        # 5.5 Support both single-model and multi-model crop pipelines.
+        if isinstance(model, list):
+            brinjal_result = _predict_brinjal_sequential(model, img_batch)
+            if "error" in brinjal_result:
+                return JsonResponse({"error": brinjal_result["error"]}, status=400)
+
+            final_result = brinjal_result["final_result"]
+            model_results = brinjal_result["model_results"]
+            confidence_percentage = final_result["confidence"]
+            disease_name = final_result["predicted_class"]
+            if "_" in disease_name:
+                disease_name = disease_name.replace("_", " ").title()
+
+            return JsonResponse({
+                "success": True,
+                "crop": crop,
+                "disease": disease_name,
+                "confidence": confidence_percentage,
+                "selected_model": final_result["model_name"],
+                "model_results": model_results
+            }, status=200)
+
         # 6. Execute model inference (rescaling is handled inside the model graph)
+        import tensorflow as tf
+        input_mode = getattr(model, "_codex_input_mode", "auto")
+        img_batch = _apply_input_mode(model, img_batch, input_mode)
+
         predictions = model.predict(img_batch, verbose=0)
+        predictions_normalized = predictions[0]
+
+        predicted_idx = np.argmax(predictions_normalized)
+        confidence_score = float(predictions_normalized[predicted_idx])
         
-        # 7. Extract the highest probability class
-        predicted_idx = np.argmax(predictions[0])
-        confidence_score = float(predictions[0][predicted_idx])
+        print(f"DEBUG: model={crop}, preds={predictions_normalized}, max_idx={predicted_idx}, conf={confidence_score}")
+
+        confidence_percentage = round(min(100.0, max(0.0, confidence_score * 100)), 2)
+        
+        if confidence_percentage < 20.0:
+            print(f"DEBUG: Rejected due to low confidence: {confidence_percentage}%")
+            return JsonResponse(
+                {"error": f"Prediction confidence is low ({confidence_percentage}%)."},
+                status=400
+            )
+
         predicted_class_name = class_names[predicted_idx]
+        disease_name = predicted_class_name.replace("_", " ").title()
+        
+        if disease_name.lower() == "healthy":
+            disease_name = "Healthy"
 
-        # 8. Fetch recommendations
-        rec_data = get_recommendation(predicted_class_name)
-
-        # 9. Return JSON output with recommendation steps list
-        recommendation_steps = [step.strip() for step in rec_data["recommendation"].split("\n") if step.strip()]
+        # 10. Return JSON output with required structure
         return JsonResponse({
-            "disease": rec_data["disease"],
-            "confidence": f"{confidence_score * 100:.1f}%",
-            "recommendation_steps": recommendation_steps
+            "success": True,
+            "crop": crop,
+            "disease": disease_name,
+            "confidence": confidence_percentage
         }, status=200)
 
     except Exception as e:
@@ -200,4 +308,3 @@ class ChatAPIView(APIView):
             import traceback
             traceback.print_exc()
             return Response({'error': f"Internal Server Error: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-

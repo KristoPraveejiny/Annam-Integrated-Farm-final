@@ -5,7 +5,7 @@ import { createFeedSchedule, getFeedSchedules, updateFeedScheduleStatus } from '
 const router = express.Router();
 
 router.use(verifyToken);
-router.get('/', authorizeRole(['farm_manager']), getFeedSchedules);
+router.get('/', authorizeRole(['farm_manager', 'super_admin', 'worker', 'farmer']), getFeedSchedules);
 router.post('/', authorizeRole(['farm_manager']), createFeedSchedule);
 router.put('/:id/status', authorizeRole(['farm_manager']), updateFeedScheduleStatus);
 

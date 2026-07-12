@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiMapPin, FiHeart, FiDroplet, FiCheckCircle } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import { deleteFeedRequirement, getFeedRequirements, upsertFeedRequirement, type FeedRequirement } from '../../api/livestock';
 import { createLivestockHealthEvent, getLivestockHealthEvents, type LivestockHealthEvent } from '../../api/livestockHealth';
+import { notifyError, notifySuccess } from '../../utils/notifications';
 
 export default function FarmManagerLivestockPage() {
   const { t } = useTranslation();
@@ -21,6 +23,7 @@ export default function FarmManagerLivestockPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingFeedId, setEditingFeedId] = useState<string | null>(null);
+  const [animalToDelete, setAnimalToDelete] = useState<any | null>(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -201,13 +204,14 @@ export default function FarmManagerLivestockPage() {
         setIsEditing(false);
         setEditingId(null);
         fetchLivestock(); // Refresh the list
+        notifySuccess(isEditing ? 'Animal updated successfully.' : 'Animal added successfully.');
       } else {
         const errorData = await res.json();
-        alert(errorData.error || `Failed to ${isEditing ? 'update' : 'add'} animal`);
+        notifyError(errorData.error || `Failed to ${isEditing ? 'update' : 'add'} animal`);
       }
     } catch (err) {
       console.error('Submit error:', err);
-      alert('An error occurred while saving.');
+      notifyError('An error occurred while saving.');
     }
   };
 
@@ -228,7 +232,6 @@ export default function FarmManagerLivestockPage() {
   };
 
   const handleDelete = async (dbId: string) => {
-    if (!confirm('Are you sure you want to delete this animal?')) return;
     try {
       const token = localStorage.getItem('token');
       const cleanToken = token && token.startsWith('"') && token.endsWith('"') ? token.slice(1, -1) : token;
@@ -239,13 +242,14 @@ export default function FarmManagerLivestockPage() {
 
       if (res.ok) {
         fetchLivestock();
+        notifySuccess('Animal deleted successfully.');
       } else {
         const errorData = await res.json();
-        alert(errorData.error || 'Failed to delete animal');
+        notifyError(errorData.error || 'Failed to delete animal');
       }
     } catch (err) {
       console.error('Delete error:', err);
-      alert('An error occurred while deleting.');
+      notifyError('An error occurred while deleting.');
     }
   };
 
@@ -277,8 +281,10 @@ export default function FarmManagerLivestockPage() {
       });
       setShowFeedModal(false);
       setEditingFeedId(null);
+      notifySuccess('Feed requirement saved successfully.');
     } catch (error) {
       console.error('Failed to save feed requirement:', error);
+      notifyError('Failed to save feed requirement.');
     }
   };
 
@@ -286,8 +292,10 @@ export default function FarmManagerLivestockPage() {
     try {
       await deleteFeedRequirement(id);
       setFeedConfigs((prev) => prev.filter((item) => item.id !== id));
+      notifySuccess('Feed requirement deleted successfully.');
     } catch (error) {
       console.error('Failed to delete feed requirement:', error);
+      notifyError('Failed to delete feed requirement.');
     }
   };
 
@@ -306,8 +314,10 @@ export default function FarmManagerLivestockPage() {
         eventDate: '',
         status: 'Healthy',
       });
+      notifySuccess('Livestock health record saved successfully.');
     } catch (error) {
       console.error('Failed to save livestock health event:', error);
+      notifyError('Failed to save livestock health record.');
     }
   };
 
@@ -449,7 +459,7 @@ export default function FarmManagerLivestockPage() {
                           <FiEdit2 className="text-lg" />
                         </button>
                         <button 
-                          onClick={() => handleDelete(l.dbId)}
+                          onClick={() => setAnimalToDelete(l)}
                           className="text-rose-400 hover:text-rose-300 transition-colors" 
                           title="Delete"
                         >
@@ -585,42 +595,7 @@ export default function FarmManagerLivestockPage() {
       )}
 
       {activeTab === 'health' && (
-        <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-          <Card title={t("Add Health Record")} subtitle={t("Record symptoms, diagnosis, and treatment")}>
-            <form onSubmit={handleHealthSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200/70">{t("Animal")}</label>
-                <select className="farm-input" value={healthForm.livestockId} onChange={(e) => setHealthForm((prev) => ({ ...prev, livestockId: e.target.value }))} required>
-                  <option value="">{t("Select animal")}</option>
-                  {livestock.map((animal) => (
-                    <option key={animal.dbId || animal.id} value={animal.dbId || animal.id}>{animal.id} • {animal.pen}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200/70">{t("Health issue")}</label>
-                <input className="farm-input" value={healthForm.healthIssue} onChange={(e) => setHealthForm((prev) => ({ ...prev, healthIssue: e.target.value }))} placeholder={t("e.g. Fever")} required />
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <input className="farm-input" value={healthForm.symptoms} onChange={(e) => setHealthForm((prev) => ({ ...prev, symptoms: e.target.value }))} placeholder={t("Symptoms")} />
-                <input className="farm-input" value={healthForm.diagnosis} onChange={(e) => setHealthForm((prev) => ({ ...prev, diagnosis: e.target.value }))} placeholder={t("Diagnosis")} />
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <input className="farm-input" value={healthForm.treatment} onChange={(e) => setHealthForm((prev) => ({ ...prev, treatment: e.target.value }))} placeholder={t("Treatment")} />
-                <input className="farm-input" value={healthForm.vaccinationDetails} onChange={(e) => setHealthForm((prev) => ({ ...prev, vaccinationDetails: e.target.value }))} placeholder={t("Vaccination details")} />
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <input type="date" className="farm-input" value={healthForm.eventDate} onChange={(e) => setHealthForm((prev) => ({ ...prev, eventDate: e.target.value }))} />
-                <select className="farm-input" value={healthForm.status} onChange={(e) => setHealthForm((prev) => ({ ...prev, status: e.target.value }))}>
-                  <option>{t("Healthy")}</option>
-                  <option>{t("Under Treatment")}</option>
-                  <option>{t("Recovered")}</option>
-                  <option>{t("Critical")}</option>
-                </select>
-              </div>
-              <Button type="submit" className="w-full bg-gradient-to-r from-emerald-500 to-lime-400 text-slate-950">{t("Save Health Record")}</Button>
-            </form>
-          </Card>
+        <div className="grid gap-6">
           <Card title={t("Health History")} subtitle={t("Recent animal health records")}>
             <div className="space-y-3">
               {healthEvents.length === 0 ? (
@@ -635,6 +610,13 @@ export default function FarmManagerLivestockPage() {
                       </div>
                       <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">{record.status}</span>
                     </div>
+                    {/* @ts-ignore */}
+                    {record.imageUrl && (
+                      <div className="mt-3">
+                        {/* @ts-ignore */}
+                        <img src={record.imageUrl} alt="Health condition" className="h-32 w-full object-cover rounded-xl" />
+                      </div>
+                    )}
                     <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
                       <span>{t("Symptoms")}: {record.symptoms || '-'}</span>
                       <span>{t("Diagnosis")}: {record.diagnosis || '-'}</span>
@@ -785,6 +767,21 @@ export default function FarmManagerLivestockPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(animalToDelete)}
+        title="Delete livestock?"
+        description={animalToDelete ? `Are you sure you want to delete ${animalToDelete.id}? This cannot be undone.` : ''}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        destructive
+        onCancel={() => setAnimalToDelete(null)}
+        onConfirm={async () => {
+          if (!animalToDelete) return;
+          await handleDelete(animalToDelete.dbId);
+          setAnimalToDelete(null);
+        }}
+      />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { FiUploadCloud, FiSearch } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
+import { notifyError, notifySuccess, notifyWarning } from '../../utils/notifications';
 
 export default function FarmerLivestockUpdatesPage() {
   const { t } = useTranslation();
@@ -59,7 +60,7 @@ export default function FarmerLivestockUpdatesPage() {
 
   const handleActivitySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedTaskId) return alert('No task selected');
+    if (!selectedTaskId) return notifyWarning('No task selected');
     const tokenRaw = localStorage.getItem('token');
     const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
     const formData = new FormData();
@@ -72,15 +73,15 @@ export default function FarmerLivestockUpdatesPage() {
         body: formData,
       });
       if (res.ok) {
-        alert('Livestock activity updated!');
+        notifySuccess('Livestock activity updated!');
         setActivityNotes('');
         setActivityImage(null);
       } else {
-        alert('Failed to update activity');
+        notifyError('Failed to update activity');
       }
     } catch (err) {
       console.error(err);
-      alert('Error updating activity');
+      notifyError('Error updating activity');
     }
   };
 

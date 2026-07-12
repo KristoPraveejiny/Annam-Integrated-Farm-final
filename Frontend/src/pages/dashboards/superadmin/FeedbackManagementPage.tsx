@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Card } from '../../../components/ui/Card';
 import { useTranslation } from 'react-i18next';
 import { deleteFeedback, getAdminFeedback, updateFeedbackStatus } from '../../../api/feedback';
+import { notifyError, notifySuccess } from '../../../utils/notifications';
 
 type FeedbackItem = {
   id: string;
@@ -41,18 +42,33 @@ export default function FeedbackManagementPage({ readOnly = false }: { readOnly?
   };
 
   const approve = async (id: string) => {
-    await updateFeedbackStatus(id, 'visible');
-    await fetchFeedback();
+    try {
+      await updateFeedbackStatus(id, 'visible');
+      await fetchFeedback();
+      notifySuccess('Feedback approved successfully.');
+    } catch {
+      notifyError('Failed to update feedback.');
+    }
   };
 
   const hide = async (id: string) => {
-    await updateFeedbackStatus(id, 'hidden');
-    await fetchFeedback();
+    try {
+      await updateFeedbackStatus(id, 'hidden');
+      await fetchFeedback();
+      notifySuccess('Feedback hidden successfully.');
+    } catch {
+      notifyError('Failed to update feedback.');
+    }
   };
 
   const remove = async (id: string) => {
-    await deleteFeedback(id);
-    await fetchFeedback();
+    try {
+      await deleteFeedback(id);
+      await fetchFeedback();
+      notifySuccess('Feedback deleted successfully.');
+    } catch {
+      notifyError('Failed to delete feedback.');
+    }
   };
 
   const counts = useMemo(

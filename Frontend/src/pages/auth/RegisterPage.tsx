@@ -4,6 +4,7 @@ import { AuthLayout } from './AuthLayout';
 import { Button } from '../../components/ui/Button';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { notifyError, notifySuccess, notifyWarning } from '../../utils/notifications';
 
 import { sendSignupOtp, verifySignupOtp } from '../../api/auth';
 
@@ -54,34 +55,34 @@ export default function RegisterPage() {
     // Validate inputs
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      alert(t('Please enter a valid email address'));
+      notifyWarning(t('Please enter a valid email address'));
       return;
     }
     const phoneDigits = phone.replace(/\D/g, '');
     if (phoneDigits.length !== 10) {
-      alert(t('Phone number must contain exactly 10 digits'));
+      notifyWarning(t('Phone number must contain exactly 10 digits'));
       return;
     }
     if (password.length > 12) {
-      alert(t('Password must be at most 12 characters'));
+      notifyWarning(t('Password must be at most 12 characters'));
       return;
     }
     if (password !== confirmPassword) {
-      alert(t('Passwords do not match'));
+      notifyWarning(t('Passwords do not match'));
       return;
     }
     setIsLoading(true);
     try {
       const response = await sendSignupOtp(email);
       if (response.error) {
-        alert(response.error);
+        notifyWarning(response.error);
       } else {
         setIsOtpSent(true);
         startOtpTimer();
       }
     } catch (err) {
       console.error(err);
-      alert(t('Failed to send OTP. Please try again.'));
+      notifyError(t('Failed to send OTP. Please try again.'));
     } finally {
       setIsLoading(false);
     }
@@ -110,14 +111,14 @@ export default function RegisterPage() {
       });
       
       if (response.error) {
-        alert(t(response.error));
+        notifyWarning(t(response.error));
       } else {
-        alert(t('Account created successfully!'));
+        notifySuccess(t('Account created successfully!'));
         navigate('/login');
       }
     } catch (err) {
       console.error(err);
-      alert(t('Failed to verify OTP. Please try again.'));
+      notifyError(t('Failed to verify OTP. Please try again.'));
     } finally {
       setIsLoading(false);
     }

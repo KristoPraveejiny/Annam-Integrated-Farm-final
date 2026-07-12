@@ -294,7 +294,32 @@ export const placeOrder = async (req, res) => {
   try {
     await client.query('BEGIN');
     const customer_id = req.user.userId;
-    const { advanceAmount } = req.body;
+    const {
+      advanceAmount,
+      paymentMethod,
+      senderDetails: senderDetailsInput = {},
+    } = req.body;
+    const senderDetails = {
+      senderName: req.body.senderName || senderDetailsInput.senderName || '',
+      senderBankName: req.body.senderBankName || senderDetailsInput.senderBankName || '',
+      senderAccountNumber: req.body.senderAccountNumber || senderDetailsInput.senderAccountNumber || '',
+      senderPhone: req.body.senderPhone || senderDetailsInput.senderPhone || '',
+      senderNote: req.body.senderNote || senderDetailsInput.senderNote || '',
+    };
+
+    if (advanceAmount && advanceAmount > 0) {
+      const requiredFields = [
+        ['senderName', 'Sender name'],
+        ['senderBankName', 'Sender bank name'],
+        ['senderAccountNumber', 'Sender account number'],
+        ['senderPhone', 'Sender mobile number'],
+      ];
+      const missing = requiredFields.filter(([key]) => !String(senderDetails[key]).trim()).map(([, label]) => label);
+      if (missing.length > 0) {
+        throw new Error(`Please enter sender details before continuing.`);
+      }
+    }
+
     const customerInfoRes = await client.query(
       'SELECT email, full_name FROM app_users WHERE id = $1 LIMIT 1',
       [customer_id]
@@ -375,9 +400,40 @@ export const placeOrder = async (req, res) => {
     // Insert advance payment record if provided
     if (advanceAmount && advanceAmount > 0) {
       await client.query(
-        `INSERT INTO payments (order_id, provider, payment_reference, status, amount, currency, paid_at) 
-         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-        [order_id, 'SystemPreorder', 'ADV-' + orderNumber, 'paid', advanceAmount, 'USD']
+        `INSERT INTO payments (
+           order_id,
+           provider,
+           payment_reference,
+           payment_method,
+           sender_name,
+           sender_bank_name,
+           sender_account_number,
+           sender_phone,
+           sender_note,
+           status,
+           amount,
+           currency,
+           paid_at,
+           raw_payload
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), $13)`,
+        [
+          order_id,
+          'SystemPreorder',
+          'ADV-' + orderNumber,
+          paymentMethod || null,
+          senderDetails.senderName || null,
+          senderDetails.senderBankName || null,
+          senderDetails.senderAccountNumber || null,
+          senderDetails.senderPhone || null,
+          senderDetails.senderNote || null,
+          'paid',
+          advanceAmount,
+          'USD',
+          JSON.stringify({
+            paymentMethod: paymentMethod || null,
+            senderDetails,
+          }),
+        ]
       );
       
       // Update order payment status to authorized/partially_paid 
@@ -400,6 +456,8 @@ export const placeOrder = async (req, res) => {
             status: 'pending',
             customerName,
             advanceAmount: advanceAmount || 0,
+            paymentMethod: paymentMethod || null,
+            senderDetails,
           }),
           sendOrderStatusEmail(customerEmail, {
             orderNumber: orderRes.rows[0].order_number,
@@ -455,9 +513,15 @@ export const getOrderHistory = async (req, res) => {
             json_build_object(
               'id', p.id,
               'provider', p.provider,
+              'payment_method', p.payment_method,
               'amount', p.amount,
               'status', p.status,
-              'paid_at', p.paid_at
+              'paid_at', p.paid_at,
+              'sender_name', p.sender_name,
+              'sender_bank_name', p.sender_bank_name,
+              'sender_account_number', p.sender_account_number,
+              'sender_phone', p.sender_phone,
+              'sender_note', p.sender_note
             )
           ) FILTER (WHERE p.id IS NOT NULL),
           '[]'
@@ -525,9 +589,15 @@ export const getManagerOrders = async (req, res) => {
             json_build_object(
               'id', p.id,
               'provider', p.provider,
+              'payment_method', p.payment_method,
               'amount', p.amount,
               'status', p.status,
-              'paid_at', p.paid_at
+              'paid_at', p.paid_at,
+              'sender_name', p.sender_name,
+              'sender_bank_name', p.sender_bank_name,
+              'sender_account_number', p.sender_account_number,
+              'sender_phone', p.sender_phone,
+              'sender_note', p.sender_note
             )
           ) FILTER (WHERE p.id IS NOT NULL),
           '[]'
@@ -616,9 +686,15 @@ export const getAdminOrders = async (req, res) => {
             json_build_object(
               'id', p.id,
               'provider', p.provider,
+              'payment_method', p.payment_method,
               'amount', p.amount,
               'status', p.status,
-              'paid_at', p.paid_at
+              'paid_at', p.paid_at,
+              'sender_name', p.sender_name,
+              'sender_bank_name', p.sender_bank_name,
+              'sender_account_number', p.sender_account_number,
+              'sender_phone', p.sender_phone,
+              'sender_note', p.sender_note
             )
           ) FILTER (WHERE p.id IS NOT NULL),
           '[]'

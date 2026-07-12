@@ -100,11 +100,19 @@ async function getWeatherSnapshot(farmId) {
 
   const currentData = await currentResponse.json();
   const forecastData = forecastResponse.ok ? await forecastResponse.json() : null;
-  const forecastItems = Array.isArray(forecastData?.list) ? forecastData.list.slice(0, 8) : [];
+  const forecastItems = Array.isArray(forecastData?.list) ? forecastData.list : [];
 
   const rainProbability = forecastItems.length
-    ? Math.max(...forecastItems.map((item) => Number(item?.pop ?? 0)))
+    ? Math.max(...forecastItems.slice(0, 8).map((item) => Number(item?.pop ?? 0)))
     : Number(currentData?.rain?.['1h'] ? 1 : 0);
+
+  // Take representative forecast items for 5 days (e.g. every 8th item)
+  const dailyForecast = [];
+  for (let i = 0; i < forecastItems.length; i += 8) {
+    if (dailyForecast.length < 5) {
+      dailyForecast.push(forecastItems[i]);
+    }
+  }
 
   return {
     available: true,
@@ -115,8 +123,11 @@ async function getWeatherSnapshot(farmId) {
       condition: currentData?.weather?.[0]?.description ?? 'Unknown',
       windSpeed: currentData?.wind?.speed ?? null,
       rainProbability: Math.round(rainProbability * 100),
+      pressure: currentData?.main?.pressure ?? null,
+      clouds: currentData?.clouds?.all ?? null,
+      rain: currentData?.rain?.['1h'] ?? currentData?.rain?.['3h'] ?? 0,
     },
-    forecast: forecastItems.map((item) => ({
+    forecast: dailyForecast.map((item) => ({
       time: item.dt_txt,
       temperature: item?.main?.temp ?? null,
       humidity: item?.main?.humidity ?? null,
@@ -299,20 +310,138 @@ function buildSystemPrompt({ language, role, farmContext }) {
   ].join('\n');
 }
 
-async function callOpenRouter({ language, role, userMessage, farmContext, conversation }) {
+async function callOpenRouter({ language, role, userMessage, farmContext, conversation, latestDisease }) {
   if (!OPENROUTER_API_KEY) {
     throw new Error('OPENROUTER_API_KEY is not configured');
   }
 
+  const systemPrompt = `You are AgriMind AI, an intelligent AI farming assistant integrated into a Smart Farm Management System.
+
+Your role is to help farmers and farm managers by answering farming questions using four sources of information:
+1. User's question.
+2. Current Weather from OpenWeather API.
+3. 5-Day Weather Forecast from OpenWeather API.
+4. Latest AI Crop Disease Detection result (if available).
+
+You are NOT a general chatbot.
+Always answer only agriculture, crop, livestock, irrigation, soil, fertilizer, pest, disease, harvesting, marketplace, and farm management related questions.
+If the user asks an unrelated question, politely inform them that you are AgriMind AI and can only assist with agricultural and farming queries.
+
+-----------------------------------
+YOUR RESPONSE FORMAT
+-----------------------------------
+
+1. Direct Answer
+Give a simple and professional answer.
+
+2. Weather Analysis
+Explain how today's weather affects the crop.
+
+3. Forecast Analysis
+Explain what may happen during the next five days.
+
+4. Disease Risk
+If weather increases disease risk, explain why.
+If AI disease detection exists, relate your advice to the detected disease.
+Example:
+Detected Disease:
+Early Blight
+Current humidity is high.
+This weather increases fungal infection.
+
+5. Recommended Actions
+Provide step-by-step actions.
+Include:
+• Irrigation advice
+• Fertilizer advice
+• Spray recommendation
+• Harvest recommendation
+• Worker recommendation
+
+6. Warning
+Warn if:
+Heavy rain
+Heat stress
+High humidity
+Strong wind
+Disease spread
+Water logging
+Drought
+
+7. Confidence
+If disease confidence is below 60% say:
+"The AI prediction confidence is low. Please upload another clear leaf image."
+
+Never invent diseases.
+Never say confidence above 100%.
+Never answer outside agriculture.
+Use simple English.
+Limit answer to around 300 words.
+Reply only in ${language || 'English'}.
+`;
+
+  const weather = farmContext?.weather;
+  const tempVal = (weather?.available && weather.current?.temperature !== null) ? `${weather.current.temperature} °C` : 'N/A';
+  const humidityVal = (weather?.available && weather.current?.humidity !== null) ? `${weather.current.humidity} %` : 'N/A';
+  const rainVal = (weather?.available && weather.current?.rain !== undefined) ? `${weather.current.rain} mm` : '0 mm';
+  const windSpeedVal = (weather?.available && weather.current?.windSpeed !== null) ? `${weather.current.windSpeed} m/s` : 'N/A';
+  const pressureVal = (weather?.available && weather.current?.pressure !== null) ? `${weather.current.pressure} hPa` : 'N/A';
+  const cloudsVal = (weather?.available && weather.current?.clouds !== null) ? `${weather.current.clouds} %` : 'N/A';
+
+  let weatherForecastSection = '[]';
+  if (weather?.available && Array.isArray(weather.forecast)) {
+    weatherForecastSection = JSON.stringify(weather.forecast.map(item => ({
+      time: item.time,
+      temp: item.temperature !== null ? `${item.temperature} °C` : 'N/A',
+      humidity: item.humidity !== null ? `${item.humidity} %` : 'N/A',
+      rain_prob: item.rainProbability !== null ? `${item.rainProbability} %` : 'N/A',
+      condition: item.condition
+    })), null, 2);
+  }
+
+  let formattedUserMessage = `-----------------------------------
+CURRENT WEATHER
+-----------------------------------
+Temperature: ${tempVal}
+Humidity: ${humidityVal}
+Rain: ${rainVal}
+Wind Speed: ${windSpeedVal}
+Pressure: ${pressureVal}
+Clouds: ${cloudsVal}
+
+-----------------------------------
+5 DAY WEATHER FORECAST
+-----------------------------------
+${weatherForecastSection}
+`;
+
+  if (latestDisease) {
+    formattedUserMessage += `
+-----------------------------------
+LATEST DISEASE DETECTION
+-----------------------------------
+Crop: ${latestDisease.crop_name || 'Tomato'}
+Disease: ${latestDisease.disease_name}
+Confidence: ${latestDisease.confidence}%
+`;
+  }
+
+  formattedUserMessage += `
+-----------------------------------
+USER QUESTION
+-----------------------------------
+${userMessage}
+`;
+
   const messages = [
     {
       role: 'system',
-      content: buildSystemPrompt({ language, role, farmContext }),
+      content: systemPrompt,
     },
     ...conversation,
     {
       role: 'user',
-      content: userMessage,
+      content: formattedUserMessage,
     },
   ];
 
@@ -363,12 +492,32 @@ export async function generateChatReply({ userId, role, userMessage, conversatio
   await ensureChatTables();
   const { farmId, farmContext } = await buildFarmSnapshotForUser(userId);
   const language = detectLanguage(userMessage);
+
+  // Retrieve the latest disease detection for this user and farm
+  let latestDisease = null;
+  try {
+    const latestDiseaseRes = await pool.query(
+      `SELECT crop_name, disease_name, confidence 
+       FROM disease_detection_history 
+       WHERE user_id = $1 AND farm_id = $2
+       ORDER BY created_at DESC 
+       LIMIT 1`,
+      [userId, farmId]
+    );
+    if (latestDiseaseRes.rows.length > 0) {
+      latestDisease = latestDiseaseRes.rows[0];
+    }
+  } catch (err) {
+    console.error('Failed to retrieve latest disease detection:', err);
+  }
+
   const aiResponse = await callOpenRouter({
     language,
     role,
     userMessage,
     farmContext,
     conversation,
+    latestDisease,
   });
 
   return {
