@@ -3,6 +3,14 @@ import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'defaultsecret';
 
+function normalizeRole(role) {
+  const value = String(role || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (value === 'manager') return 'farm_manager';
+  if (value === 'superadmin') return 'super_admin';
+  if (value === 'farmer') return 'worker';
+  return value;
+}
+
 export function verifyToken(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
@@ -27,7 +35,7 @@ export function verifyToken(req, res, next) {
 
     req.user = {
       userId: payload.userId,
-      role: payload.role,
+      role: normalizeRole(payload.role),
     };
     next();
   } catch (err) {
@@ -41,7 +49,8 @@ export function verifyToken(req, res, next) {
 
 export function authorizeRole(roles) {
   return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    const normalizedRoles = roles.map(normalizeRole);
+    if (!req.user || !normalizedRoles.includes(normalizeRole(req.user.role))) {
       return res.status(403).json({ error: 'Access denied: insufficient permissions' });
     }
     next();

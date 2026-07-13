@@ -1,19 +1,35 @@
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { Card } from '../components/ui/Card';
 import { SectionHeading } from '../components/ui/SectionHeading';
-import { FiCheckCircle, FiClock, FiDollarSign } from 'react-icons/fi';
+import { FiCheckCircle, FiClock, FiDollarSign, FiActivity } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 
 interface Payment {
   id: string;
   payment_month: string;
   final_payment_amount: number;
+  net_salary?: number;
   payment_status: string;
   payment_date: string;
 }
 
 interface Summary {
+  completed_shifts: number;
+  equivalent_present_days: number;
+  attendance_percentage: number;
+  attendance_status: string;
   paid_salary: string;
+  shift_wage_earned: number;
+  overtime_pay: number;
+  bonus: number;
+  deductions: number;
+  gross_salary: number;
+  net_salary: number;
+  morning_shifts: number;
+  afternoon_shifts: number;
+  evening_shifts: number;
+  total_working_hours: number;
 }
 
 export default function MyEarningsPage() {
@@ -56,10 +72,27 @@ export default function MyEarningsPage() {
       <div className="grid gap-6 xl:grid-cols-[1fr_0.95fr] mb-6">
         <Card title={t("Earnings Summary")} subtitle={t("Your current balances")}>
           {summary ? (
-               <div className="rounded-3xl bg-emerald-50 p-4">
-                 <div className="flex items-center gap-2 text-sm font-semibold text-emerald-600"><FiDollarSign />{t("Total Paid Earnings")}</div>
-                 <p className="mt-2 text-2xl font-black text-emerald-700">Rs. {Number(summary.paid_salary).toFixed(2)}</p>
-               </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <SummaryStat label={t("Completed Shifts")} value={String(summary.completed_shifts ?? 0)} icon={<FiActivity />} />
+              <SummaryStat label={t("Equivalent Present Days")} value={Number(summary.equivalent_present_days ?? 0).toFixed(2)} icon={<FiCheckCircle />} />
+              <SummaryStat label={t("Attendance Percentage")} value={`${Number(summary.attendance_percentage ?? 0).toFixed(2)}%`} icon={<FiClock />} />
+              <SummaryStat label={t("Attendance Status")} value={summary.attendance_status || t("N/A")} icon={<FiDollarSign />} />
+            </div>
+          ) : (
+            <p>{t("Loading...")}</p>
+          )}
+        </Card>
+
+        <Card title={t("Salary Breakdown")} subtitle={t("Shift wage and monthly adjustments")}>
+          {summary ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <BreakdownStat label={t("Shift Wage Earned")} value={`Rs. ${Number(summary.shift_wage_earned ?? 0).toFixed(2)}`} />
+              <BreakdownStat label={t("Overtime Pay")} value={`Rs. ${Number(summary.overtime_pay ?? 0).toFixed(2)}`} />
+              <BreakdownStat label={t("Bonuses")} value={`Rs. ${Number(summary.bonus ?? 0).toFixed(2)}`} />
+              <BreakdownStat label={t("Deductions")} value={`Rs. ${Number(summary.deductions ?? 0).toFixed(2)}`} />
+              <BreakdownStat label={t("Gross Salary")} value={`Rs. ${Number(summary.gross_salary ?? 0).toFixed(2)}`} />
+              <BreakdownStat label={t("Net Salary")} value={`Rs. ${Number(summary.net_salary ?? 0).toFixed(2)}`} />
+            </div>
           ) : (
             <p>{t("Loading...")}</p>
           )}
@@ -86,7 +119,7 @@ export default function MyEarningsPage() {
                 {payments.map((item) => (
                   <tr key={item.id}>
                     <td className="px-4 py-3 font-medium text-slate-900">{item.payment_month}</td>
-                    <td className="px-4 py-3 font-medium text-slate-900">Rs. {Number(item.final_payment_amount).toFixed(2)}</td>
+                    <td className="px-4 py-3 font-medium text-slate-900">Rs. {Number(item.final_payment_amount ?? item.net_salary ?? 0).toFixed(2)}</td>
                     <td className="px-4 py-3 text-slate-600">{new Date(item.payment_date).toLocaleDateString()}</td>
                     <td className="px-4 py-3">
                       <span className={`capitalize font-medium ${item.payment_status.toLowerCase() === 'paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
@@ -100,6 +133,27 @@ export default function MyEarningsPage() {
           </div>
         )}
       </Card>
+    </div>
+  );
+}
+
+function SummaryStat({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
+  return (
+    <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-4">
+      <div className="flex items-center gap-2 text-sm font-semibold text-emerald-600">
+        {icon}
+        {label}
+      </div>
+      <p className="mt-2 text-xl font-black text-emerald-800">{value}</p>
+    </div>
+  );
+}
+
+function BreakdownStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{label}</p>
+      <p className="mt-2 text-lg font-bold text-slate-900">{value}</p>
     </div>
   );
 }

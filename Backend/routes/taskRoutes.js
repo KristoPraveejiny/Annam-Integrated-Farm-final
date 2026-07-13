@@ -1,6 +1,18 @@
 import express from 'express';
 import { verifyToken } from '../authMiddleware.js';
-import { createTask, getFarmerTasks, getFarmManagerTasks, updateTaskDetails, updateTaskStatus, getWorkers } from '../controllers/taskController.js';
+import { authorizeRole } from '../authMiddleware.js';
+import { 
+  createTask, 
+  getFarmerTasks, 
+  getFarmManagerTasks, 
+  updateTaskDetails, 
+  startTask, 
+  submitTaskEvidence, 
+  reviewTask,
+  getWorkers,
+  getRecentTaskUpdates
+} from '../controllers/taskController.js';
+import upload from '../uploadMiddleware.js';
 
 const router = express.Router();
 
@@ -10,13 +22,13 @@ router.get('/workers', getWorkers);
 router.post('/', createTask);
 router.get('/farmer', getFarmerTasks);
 router.get('/manager', getFarmManagerTasks);
-import upload from '../uploadMiddleware.js';
-import { createTaskUpdate, getRecentTaskUpdates } from '../controllers/taskController.js';
-
 router.get('/updates/recent', getRecentTaskUpdates);
 
-router.put('/:id/status', updateTaskStatus);
 router.put('/:id', updateTaskDetails);
-router.post('/:id/updates', upload.single('image'), createTaskUpdate);
+
+// New workflow routes
+router.put('/:id/start', startTask);
+router.post('/:id/evidence', upload.single('image'), submitTaskEvidence);
+router.put('/:id/review', authorizeRole(['farm_manager', 'super_admin']), reviewTask);
 
 export default router;

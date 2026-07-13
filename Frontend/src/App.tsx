@@ -29,10 +29,12 @@ import FieldManagementPage from './pages/FarmManager/FieldManagementPage';
 import FieldDetailsPage from './pages/FarmManager/FieldDetailsPage';
 
 
-import FarmerAttendancePage from './pages/dashboards/FarmerAttendancePage';
+import AttendanceManagementPage from './pages/dashboards/AttendanceManagementPage';
+import MyAttendancePage from './pages/dashboards/MyAttendancePage';
 import FarmerProfilePage from './pages/dashboards/FarmerProfilePage';
 import RecentFarmerUpdatesPage from './pages/dashboards/RecentFarmerUpdatesPage';
 import SalaryApprovalPage from './pages/SalaryApprovalPage';
+import SalaryPaymentPage from './pages/dashboards/SalaryPaymentPage';
 import SalaryReportPage from './pages/SalaryReportPage';
 import MyEarningsPage from './pages/MyEarningsPage';
 import AIChatPage from './pages/dashboards/AIChatPage';
@@ -240,9 +242,19 @@ export default function App() {
           <RecentFarmerUpdatesPage />
         </AppShell>
       } />
+      <Route path="/dashboard/farm-manager/attendance" element={
+        <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
+          <AttendanceManagementPage />
+        </AppShell>
+      } />
       <Route path="/dashboard/farm-manager/salary-approval" element={
         <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
           <SalaryApprovalPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/farm-manager/salary-payment" element={
+        <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
+          <SalaryPaymentPage />
         </AppShell>
       } />
       <Route path="/dashboard/farm-manager/salary-report" element={
@@ -288,7 +300,7 @@ export default function App() {
       } />
       <Route path="/dashboard/farmer-worker/attendance" element={
         <AppShell role="farmer-worker" items={publicNavItems['farmer-worker']}>
-          <FarmerAttendancePage />
+          <MyAttendancePage />
         </AppShell>
       } />
       <Route path="/dashboard/farmer-worker/profile" element={
@@ -311,11 +323,7 @@ export default function App() {
           <AIAdvisoryPage />
         </AppShell>
       } />
-      <Route path="/dashboard/farmer-worker/notifications" element={
-        <AppShell role="farmer-worker" items={publicNavItems['farmer-worker']}>
-          <NotificationsPage />
-        </AppShell>
-      } />
+
       <Route path="/dashboard/farmer-worker/feedback" element={
         <AppShell role="farmer-worker" items={publicNavItems['farmer-worker']}>
           <FeedbackPage role="farmer-worker" />

@@ -29,7 +29,10 @@ export default function FarmerLivestockUpdatesPage() {
         });
         if (res.ok) {
           const data = await res.json();
-          const active = data.filter((t: any) => t.status !== 'done' && t.crop_cycle_id == null);
+          const active = data.filter((t: any) => {
+            const status = String(t.status || '').trim().toLowerCase().replace(/\s+/g, '_');
+            return status === 'in_progress' && t.crop_cycle_id == null;
+          });
           setTasks(active);
         }
       } catch (err) {
@@ -67,11 +70,18 @@ export default function FarmerLivestockUpdatesPage() {
     formData.append('notes', activityNotes);
     if (activityImage) formData.append('image', activityImage);
     try {
-      const res = await fetch(`/api/tasks/${selectedTaskId}/updates`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
+    const selectedTask = tasks.find((t) => t.id === selectedTaskId);
+    const status = String(selectedTask?.status || '').trim().toLowerCase().replace(/\s+/g, '_');
+    if (status !== 'in_progress') {
+      notifyWarning('Please start the task before submitting activity.');
+      return;
+    }
+
+    const res = await fetch(`/api/tasks/${selectedTaskId}/evidence`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
       if (res.ok) {
         notifySuccess('Livestock activity updated!');
         setActivityNotes('');

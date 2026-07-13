@@ -1,4 +1,4 @@
-// Farm Manager Dashboard � extracted from DashboardPage.tsx
+﻿// Farm Manager Dashboard – extracted from DashboardPage.tsx
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../components/ui/Button';
@@ -49,16 +49,28 @@ export default function FarmManagerDashboard() {
   const [recentUpdates, setRecentUpdates] = useState<any[]>([]);
   const [crops, setCrops] = useState<any[]>([]);
   const [livestock, setLivestock] = useState<any[]>([]);
+  const [recentAttendance, setRecentAttendance] = useState<any[]>([]);
+  const [recentPayrolls, setRecentPayrolls] = useState<any[]>([]);
+  const normalizeTaskStatus = (status: string | undefined | null) =>
+    String(status || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_');
 
+  const pendingApprovals = tasks.filter((task) => {
+    const status = normalizeTaskStatus(task.status);
+    return status === 'waiting_manager_approval' || status === 'waiting_for_manager_approval';
+  });
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [overviewRes, tasksRes, obsRes, cropsRes, livestockRes] = await Promise.all([
+        const [overviewRes, tasksRes, obsRes, cropsRes, livestockRes, attendanceRes] = await Promise.all([
           fetch(`${API_BASE_URL}/api/dashboard/overview`),
           fetch(`${API_BASE_URL}/api/tasks/manager`, { headers: getAuthHeaders() }),
           fetch(`${API_BASE_URL}/api/crop-observations/recent`, { headers: getAuthHeaders() }),
           fetch(`${API_BASE_URL}/api/crops`, { headers: getAuthHeaders() }),
           fetch(`${API_BASE_URL}/api/livestock`, { headers: getAuthHeaders() }),
+          fetch(`${API_BASE_URL}/api/dashboard/workforce-attendance`, { headers: getAuthHeaders() }),
         ]);
 
         if (overviewRes.ok) {
@@ -71,6 +83,11 @@ export default function FarmManagerDashboard() {
         if (obsRes.ok) setRecentUpdates(await obsRes.json());
         if (cropsRes.ok) setCrops(await cropsRes.json());
         if (livestockRes.ok) setLivestock(await livestockRes.json());
+        if (attendanceRes.ok) {
+          const attendanceData = await attendanceRes.json();
+          setRecentAttendance(attendanceData.recentAttendance || []);
+          setRecentPayrolls(attendanceData.recentPayrolls || []);
+        }
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
       }
@@ -114,14 +131,81 @@ export default function FarmManagerDashboard() {
                   <span className="text-xs text-slate-400">{task.assigned_to_name || t('Unassigned')}</span>
                 </div>
                 <div className="mt-3 flex items-center justify-between">
-                  <span className={`text-xs px-2 py-1 rounded-full ${task.status === 'done' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                    {task.status.replace('_', ' ')}
+                  <span className={`text-xs px-2 py-1 rounded-full ${
+                    normalizeTaskStatus(task.status) === 'completed' || normalizeTaskStatus(task.status) === 'approved'
+                      ? 'bg-emerald-500/20 text-emerald-400'
+                      : normalizeTaskStatus(task.status) === 'waiting_manager_approval' || normalizeTaskStatus(task.status) === 'waiting_for_manager_approval'
+                        ? 'bg-violet-500/20 text-violet-300'
+                        : 'bg-blue-500/20 text-blue-400'
+                  }`}>
+                    {String(task.status || '').replace(/_/g, ' ')}
                   </span>
                   <span className="text-xs text-slate-500">{task.due_date ? new Date(task.due_date).toLocaleDateString() : t('No due date')}</span>
                 </div>
               </div>
             ))}
           </div>
+        </Card>
+        <Card title={t("Pending Approvals")} subtitle={t("Tasks waiting for manager review")}>
+          {pendingApprovals.length === 0 ? (
+            <p className="text-sm text-slate-500">{t("No pending approvals.")}</p>
+          ) : (
+            <div className="space-y-3">
+              {pendingApprovals.slice(0, 4).map((task) => (
+                <div key={task.id} className="flex items-center justify-between gap-4 rounded-2xl border border-violet-500/15 bg-violet-500/5 p-4">
+                  <div>
+                    <p className="font-semibold text-slate-100">{task.title}</p>
+                    <p className="text-xs text-slate-400">
+                      {task.assigned_to_name || t('Unassigned')} · {task.crop_name || task.livestock_name || t('N/A')}
+                    </p>
+                  </div>
+                  <Button type="button" variant="ghost" onClick={() => navigate('/dashboard/farm-manager/recent-updates')}>
+                    {t("View Details")}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+        <Card title={t("Attendance & Wages")} subtitle={t("Latest approved task attendance with farmer names")}>
+          {recentAttendance.length === 0 ? (
+            <p className="text-sm text-slate-500">{t("No attendance records yet.")}</p>
+          ) : (
+            <div className="space-y-3">
+              {recentAttendance.slice(0, 5).map((record) => (
+                <div key={record.id} className="rounded-2xl border border-white/10 bg-slate-900/50 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-semibold text-slate-100">{record.farmer_name || t('Unassigned')}</p>
+                      <p className="text-xs text-slate-400">{record.task_title || t('Task Session')} · {record.session || t('N/A')}</p>
+                    </div>
+                    <span className="text-xs text-slate-400">{record.date ? new Date(record.date).toLocaleDateString() : t('N/A')}</span>
+                  </div>
+                <div className="mt-3 grid gap-2 text-xs text-slate-300 sm:grid-cols-2">
+                  <div>{t('Hours')}: {Number(record.total_hours || 0).toFixed(2)}</div>
+                  <div>{t('Shift Wage Earned')}: Rs. {Number(record.shift_wage || 0).toFixed(2)}</div>
+                  <div>{t('Overtime Pay')}: Rs. {Number((record as any).overtime_pay || 0).toFixed(2)}</div>
+                  <div>{t('Status')}: {String(record.shift_status || '').replace(/_/g, ' ')}</div>
+                  <div>{t('Check-in')}: {record.check_in_time ? new Date(record.check_in_time).toLocaleTimeString() : t('N/A')}</div>
+                </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {recentPayrolls.length > 0 && (
+            <div className="mt-4 rounded-2xl border border-emerald-500/15 bg-emerald-500/5 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-emerald-300">{t("Latest Payrolls")}</p>
+              <div className="mt-3 space-y-2 text-sm text-slate-200">
+                {recentPayrolls.slice(0, 3).map((payroll) => (
+                  <div key={payroll.id} className="flex items-center justify-between gap-3">
+                    <span>{payroll.farmer_name || t('Unassigned')}</span>
+                    <span>{payroll.payment_month}</span>
+                    <span>Rs. {Number(payroll.net_salary || 0).toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </Card>
         <div className="flex justify-end mb-4">
           <Button onClick={() => navigate('/dashboard/farm-manager/recent-updates')} className="flex items-center gap-2">
@@ -202,4 +286,5 @@ function MiniMetric({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
 

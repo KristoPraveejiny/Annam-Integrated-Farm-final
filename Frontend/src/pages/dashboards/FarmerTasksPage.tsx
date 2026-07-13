@@ -70,32 +70,59 @@ export default function FarmerTasksPage() {
     fetchTasks();
   }, []);
 
+  const normalizeTaskStatus = (status: string | undefined | null) =>
+    String(status || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_');
+
   const updateTaskStatus = async (taskId: string, status: string, cropCycleId?: string) => {
     try {
       const tokenRaw = localStorage.getItem('token');
       const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
-      
-      const res = await fetch(`/api/tasks/${taskId}/status`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ status })
-      });
 
-      if (res.ok) {
-        if (status === 'done' && cropCycleId) {
-          setSelectedTaskId(taskId);
-          setSelectedCropCycleId(cropCycleId);
-          setShowCropModal(true);
-        } else {
+      if (status === 'in_progress') {
+        const res = await fetch(`/api/tasks/${taskId}/start`, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+
+        if (res.ok) {
           fetchTasks();
-          notifySuccess('Task status updated successfully.');
+          notifySuccess('Task started successfully.');
+        } else {
+          notifyError('Failed to start task');
         }
-      } else {
-        notifyError('Failed to update task status');
+        return;
       }
+
+      if (status === 'done') {
+        const res = await fetch(`/api/tasks/${taskId}/evidence`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ notes: 'Completed from worker task dashboard.' })
+        });
+
+        if (res.ok) {
+          if (cropCycleId) {
+            setSelectedTaskId(taskId);
+            setSelectedCropCycleId(cropCycleId);
+            setShowCropModal(true);
+          }
+          fetchTasks();
+          notifySuccess('Task submitted for manager approval.');
+        } else {
+          notifyError('Failed to submit task evidence');
+        }
+        return;
+      }
+
+      notifyError('Unsupported task action');
     } catch (err) {
       console.error('Update status error:', err);
       notifyError('Error updating task');
@@ -171,18 +198,24 @@ export default function FarmerTasksPage() {
                     <td className="px-6 py-4">{task.due_date ? new Date(task.due_date).toLocaleDateString() : t('N/A')}</td>
                     <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
-                        task.status === 'done' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 
-                        task.status === 'in_progress' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 
-                        'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                      }`}>{task.status.replace('_', ' ')}</span>
+                        normalizeTaskStatus(task.status) === 'approved' || normalizeTaskStatus(task.status) === 'completed' || normalizeTaskStatus(task.status) === 'done'
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          : normalizeTaskStatus(task.status) === 'in_progress'
+                            ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                            : normalizeTaskStatus(task.status) === 'waiting_for_manager_approval' || normalizeTaskStatus(task.status) === 'waiting_manager_approval'
+                              ? 'bg-violet-500/10 text-violet-300 border-violet-500/20'
+                              : normalizeTaskStatus(task.status) === 'rejected'
+                                ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                                : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                      }`}>{String(task.status || 'N/A').replace(/_/g, ' ')}</span>
                     </td>
                     <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
-                      {task.status === 'todo' && (
+                      {normalizeTaskStatus(task.status) === 'pending' && (
                         <Button variant="ghost" onClick={() => updateTaskStatus(task.id, 'in_progress')} className="!p-2 text-blue-400 hover:text-blue-300" title="Start Task">
-                          <FiClock className="mr-1 inline" /> {t("Start")}
+                          <FiClock className="mr-1 inline" /> {t("Start Work")}
                         </Button>
                       )}
-                      {(task.status === 'todo' || task.status === 'in_progress') && (
+                      {(normalizeTaskStatus(task.status) === 'pending' || normalizeTaskStatus(task.status) === 'in_progress') && (
                         <Button variant="ghost" onClick={() => updateTaskStatus(task.id, 'done', task.crop_cycle_id)} className="!p-2 text-emerald-400 hover:text-emerald-300" title="Mark Complete">
                           <FiCheckCircle className="mr-1 inline" /> {t("Complete")}
                         </Button>

@@ -267,7 +267,11 @@ function WorkerBlocks() {
 
   const fetchLivestock = async () => {
     try {
-      const response = await fetch('/api/livestock');
+      const tokenRaw = localStorage.getItem('token');
+      const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
+      const response = await fetch('/api/livestock', {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       if (!response.ok) {
         throw new Error('Failed to fetch livestock');
       }
@@ -280,7 +284,11 @@ function WorkerBlocks() {
 
   const fetchGroups = async () => {
     try {
-      const response = await fetch('/api/groups');
+      const tokenRaw = localStorage.getItem('token');
+      const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
+      const response = await fetch('/api/groups', {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
       if (!response.ok) {
         throw new Error('Failed to fetch groups');
       }

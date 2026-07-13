@@ -1,11 +1,349 @@
 import { pool } from '../db.js';
-import { sendTaskAssignedEmail, sendTaskCompletedEmail, sendTaskUpdateEmail } from '../services/emailService.js';
+import { sendEmail, sendTaskAssignedEmail } from '../services/emailService.js';
 import { getDefaultFarmId } from './livestockController.js';
+import { daysInMonth } from '../utils/payrollMath.js';
 
 function normalizeDateInput(value) {
   if (!value) return null;
-  const asString = String(value).slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(asString) ? asString : null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  const asString = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(asString.slice(0, 10))) {
+    return asString.slice(0, 10);
+  }
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  return null;
+}
+
+function normalizeShiftKey(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function normalizeTaskStatus(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+}
+
+function monthKeyForDate(date = new Date()) {
+  const asDate = date instanceof Date ? date : new Date(date);
+  return asDate.toISOString().slice(0, 7);
+}
+
+function monthStartForKey(monthKey) {
+  return `${monthKey}-01`;
+}
+
+async function upsertMonthlyPayrollAfterApproval({ farmId, managerId, workerId, effectiveDate = new Date() }) {
+  const paymentMonth = monthKeyForDate(effectiveDate);
+  const monthStart = monthStartForKey(paymentMonth);
+  const [paymentYear, paymentMonthNumber] = paymentMonth.split('-').map(Number);
+
+  const [attendanceStats, taskStats, workerRes] = await Promise.all([
+    pool.query(`
+      SELECT
+        COUNT(*)::int AS completed_shifts,
+        COUNT(DISTINCT DATE(sa.date))::int AS active_days,
+        COALESCE(SUM(CASE WHEN LOWER(s.shift_name) = 'morning' THEN 1 ELSE 0 END), 0)::int AS morning_shifts,
+        COALESCE(SUM(CASE WHEN LOWER(s.shift_name) = 'afternoon' THEN 1 ELSE 0 END), 0)::int AS afternoon_shifts,
+        COALESCE(SUM(CASE WHEN LOWER(s.shift_name) = 'evening' THEN 1 ELSE 0 END), 0)::int AS evening_shifts,
+        COALESCE(SUM(COALESCE(sa.total_hours, 0)), 0)::numeric AS total_working_hours,
+        COALESCE(SUM(COALESCE(s.base_wage, 0)), 0)::numeric AS shift_wage_earned,
+        COALESCE(SUM(GREATEST(COALESCE(sa.total_hours, 0) - COALESCE(s.standard_hours, 0), 0) * COALESCE(NULLIF(s.base_wage, 0) / NULLIF(s.standard_hours, 0), s.hourly_rate, 0)), 0)::numeric AS overtime_pay
+      FROM shift_attendances sa
+      LEFT JOIN shifts s ON sa.shift_id = s.id
+      WHERE sa.farm_id = $1
+        AND sa.worker_id = $2
+        AND sa.shift_status IN ('Present', 'Approved')
+        AND sa.date >= $3::date
+        AND sa.date < ($3::date + INTERVAL '1 month')
+    `, [farmId, workerId, monthStart]),
+    pool.query(`
+      SELECT COUNT(*)::int AS total_completed_tasks
+      FROM tasks
+      WHERE farm_id = $1
+        AND assigned_to_user_id = $2
+        AND status = 'Completed'
+        AND completed_at >= $3::date
+        AND completed_at < ($3::date + INTERVAL '1 month')
+    `, [farmId, workerId, monthStart]),
+    pool.query('SELECT id FROM app_users WHERE id = $1', [workerId]),
+  ]);
+
+  if (workerRes.rows.length === 0) return;
+
+  const attendance = attendanceStats.rows[0] || {};
+  const tasks = taskStats.rows[0] || {};
+  const equivalentPresentDays = Number((Number(attendance.completed_shifts || 0) / 3).toFixed(2));
+  const attendancePercentage = Number(((Number(attendance.completed_shifts || 0) / Math.max(daysInMonth(paymentMonthNumber, paymentYear) * 3, 1)) * 100).toFixed(2));
+  const attendanceStatus = Number(attendance.completed_shifts || 0) === 0
+    ? 'Absent'
+    : equivalentPresentDays >= 1
+      ? 'Present'
+      : 'Half Day';
+  const shiftWageEarned = Number(attendance.shift_wage_earned || 0);
+  const overtimePay = Number(attendance.overtime_pay || 0);
+  const bonus = 0;
+  const deductions = 0;
+  const gross = Number((shiftWageEarned + overtimePay + bonus - deductions).toFixed(2));
+  const monthDays = daysInMonth(paymentMonthNumber, paymentYear);
+
+  const existing = await pool.query(
+    'SELECT id FROM monthly_salary_payments WHERE farm_id = $1 AND worker_id = $2 AND payment_month = $3 LIMIT 1',
+    [farmId, workerId, paymentMonth]
+  );
+
+  const payload = [
+    farmId,
+    workerId,
+    managerId,
+    paymentMonth,
+    tasks.total_completed_tasks || 0,
+    attendance.active_days || 0,
+    0,
+    Math.max(monthDays - Number(attendance.active_days || 0), 0),
+    attendance.morning_shifts || 0,
+    attendance.afternoon_shifts || 0,
+    attendance.evening_shifts || 0,
+    attendance.total_working_hours || 0,
+    overtimePay,
+    shiftWageEarned,
+    0,
+    bonus,
+    0,
+    deductions,
+    gross,
+    gross,
+  ];
+
+  if (existing.rows.length > 0) {
+    await pool.query(`
+      UPDATE monthly_salary_payments
+      SET manager_id = COALESCE($1, manager_id),
+          total_completed_tasks = $2,
+          total_approved_sessions = $3,
+          present_days = $4,
+          half_days = $5,
+          morning_shifts = $6,
+          afternoon_shifts = $7,
+          evening_shifts = $8,
+          total_working_hours = $9,
+          overtime = $10,
+          base_salary = $11,
+          hourly_wage_total = $12,
+          holiday_wages = $13,
+          weekend_wages = $14,
+          deductions = $15,
+          gross_salary = $16,
+          net_salary = $17,
+          updated_at = NOW()
+      WHERE id = $18
+    `, [
+      managerId,
+      payload[4],
+      payload[5],
+      payload[6],
+      payload[7],
+      payload[8],
+      payload[9],
+      payload[10],
+      payload[11],
+      payload[12],
+      payload[13],
+      payload[14],
+      payload[15],
+      payload[16],
+      payload[17],
+      payload[18],
+      payload[19],
+      existing.rows[0].id
+    ]);
+  } else {
+    await pool.query(`
+      INSERT INTO monthly_salary_payments (
+        farm_id, worker_id, manager_id, payment_month,
+        total_completed_tasks, total_approved_sessions, present_days, half_days,
+        morning_shifts, afternoon_shifts, evening_shifts,
+        total_working_hours, overtime, base_salary, hourly_wage_total,
+        holiday_wages, weekend_wages, deductions, gross_salary, net_salary,
+        payment_status
+      ) VALUES (
+        $1, $2, $3, $4,
+        $5, $6, $7, $8,
+        $9, $10, $11,
+        $12, $13, $14, $15,
+        $16, $17, $18, $19, $20,
+        'Pending'
+      )
+    `, payload);
+  }
+}
+
+async function notifyFarmerOfReview({ workerId, task, action, reason }) {
+  const farmerRes = await pool.query(
+    'SELECT email, phone, full_name FROM app_users WHERE id = $1',
+    [workerId]
+  );
+
+  if (farmerRes.rows.length === 0) return;
+
+  const farmer = farmerRes.rows[0];
+  const humanAction =
+    action === 'Approve' ? 'approved' :
+    action === 'Reject' ? 'rejected' :
+    'sent back for rework';
+
+  const detailNote = reason ? `<p><strong>Reason:</strong> ${reason}</p>` : '';
+  if (farmer.email) {
+    await sendEmail({
+      to: farmer.email,
+      subject: `Task ${humanAction.charAt(0).toUpperCase() + humanAction.slice(1)}`,
+      html: `
+        <h2>Task ${humanAction.charAt(0).toUpperCase() + humanAction.slice(1)}</h2>
+        <p>Your task <strong>${task.title}</strong> has been ${humanAction}.</p>
+        ${detailNote}
+        <p>Please check your dashboard for the latest status.</p>
+      `,
+      text: `Your task ${task.title} has been ${humanAction}. ${reason || ''}`.trim(),
+    });
+  }
+
+  if (farmer.phone) {
+    console.log(`SMS to ${farmer.phone}: Task "${task.title}" has been ${humanAction}. ${reason || ''}`.trim());
+  }
+}
+
+async function resolveShiftForTask(farmId, { shiftId, session }) {
+  if (shiftId) {
+    const byId = await pool.query(
+      'SELECT id, shift_name FROM shifts WHERE id = $1 AND farm_id = $2 LIMIT 1',
+      [shiftId, farmId]
+    );
+
+    if (byId.rows.length > 0) {
+      return byId.rows[0];
+    }
+  }
+
+  const sessionKey = normalizeShiftKey(session);
+  if (sessionKey) {
+    const byName = await pool.query(
+      'SELECT id, shift_name FROM shifts WHERE farm_id = $1 AND LOWER(shift_name) = $2 LIMIT 1',
+      [farmId, sessionKey]
+    );
+
+    if (byName.rows.length > 0) {
+      return byName.rows[0];
+    }
+  }
+
+  return null;
+}
+
+export async function syncAttendanceFromCompletedTasks({ farmId, workerId = null, month = null, year = null, managerId = null } = {}) {
+  const params = [farmId];
+  const filters = [];
+
+  if (workerId) {
+    params.push(workerId);
+    filters.push(`t.assigned_to_user_id = $${params.length}`);
+  }
+
+  if (month && year) {
+    params.push(month, year);
+    filters.push(`EXTRACT(MONTH FROM COALESCE(t.completed_at, t.end_time, t.updated_at)) = $${params.length - 1}`);
+    filters.push(`EXTRACT(YEAR FROM COALESCE(t.completed_at, t.end_time, t.updated_at)) = $${params.length}`);
+  }
+
+  const query = `
+    SELECT
+      t.id,
+      t.assigned_to_user_id AS worker_id,
+      t.shift_id,
+      t.started_at,
+      t.completed_at,
+      t.end_time,
+      t.updated_at,
+      t.working_hours,
+      DATE(COALESCE(t.completed_at, t.end_time, t.updated_at)) AS attendance_date
+    FROM tasks t
+    LEFT JOIN shift_attendances sa
+      ON sa.worker_id = t.assigned_to_user_id
+      AND sa.shift_id = t.shift_id
+      AND DATE_TRUNC('second', sa.check_out_time) = DATE_TRUNC('second', COALESCE(t.completed_at, t.end_time, t.updated_at))
+    WHERE t.farm_id = $1
+      AND t.status = 'Completed'
+      AND t.assigned_to_user_id IS NOT NULL
+      AND COALESCE(t.completed_at, t.end_time, t.updated_at) IS NOT NULL
+      AND sa.id IS NULL
+      ${filters.length > 0 ? `AND ${filters.join(' AND ')}` : ''}
+    ORDER BY t.completed_at DESC, t.updated_at DESC
+  `;
+
+  const result = await pool.query(query, params);
+  const workersToRebuild = new Map();
+
+  for (const task of result.rows) {
+    const attendanceDate = normalizeDateInput(task.attendance_date);
+    if (!attendanceDate) continue;
+
+    const checkInTime = task.started_at || task.updated_at || task.completed_at || null;
+    const checkOutTime = task.completed_at || task.end_time || task.updated_at || null;
+    const hours = Number(task.working_hours || 0);
+
+    const existingAttendance = await pool.query(
+      `SELECT id FROM shift_attendances
+       WHERE worker_id = $1 AND shift_id = $3 AND farm_id = $4
+         AND DATE_TRUNC('second', check_out_time) = DATE_TRUNC('second', $2::timestamptz)
+       LIMIT 1`,
+      [task.worker_id, checkOutTime, task.shift_id, farmId]
+    );
+
+    if (existingAttendance.rows.length > 0) {
+      continue;
+    }
+
+    await pool.query(`
+      INSERT INTO shift_attendances (
+        worker_id, date, shift_id, check_in_time, check_out_time, total_hours, shift_status, farm_id
+      ) VALUES ($1, $2::date, $3, $4, $5, $6, 'Present', $7)
+    `, [
+      task.worker_id,
+      attendanceDate,
+      task.shift_id,
+      checkInTime,
+      checkOutTime,
+      hours,
+      farmId,
+    ]);
+
+    const previous = workersToRebuild.get(task.worker_id);
+    if (!previous || attendanceDate > previous) {
+      workersToRebuild.set(task.worker_id, attendanceDate);
+    }
+  }
+
+  for (const [syncedWorkerId, effectiveDate] of workersToRebuild.entries()) {
+    await upsertMonthlyPayrollAfterApproval({
+      farmId,
+      managerId,
+      workerId: syncedWorkerId,
+      effectiveDate,
+    });
+  }
+
+  return {
+    syncedTasks: result.rows.length,
+    syncedWorkers: workersToRebuild.size,
+  };
 }
 
 async function validateTaskDate(req, res, dueDate) {
@@ -55,11 +393,13 @@ export async function createTask(req, res) {
       priority,
       dueDate,
       livestockGroupId,
+      shiftId,
       session
     } = req.body;
 
-    if (!title || !assignedToUserId) {
-      return res.status(400).json({ error: 'Title and assignedToUserId are required' });
+    const resolvedShift = await resolveShiftForTask(farmId, { shiftId, session });
+    if (!title || !assignedToUserId || !resolvedShift) {
+      return res.status(400).json({ error: 'Title, assignedToUserId, and a valid shift are required' });
     }
 
     const validatedDueDate = await validateTaskDate(req, res, dueDate);
@@ -70,8 +410,8 @@ export async function createTask(req, res) {
     // Insert task
     const result = await pool.query(`
       INSERT INTO tasks 
-      (farm_id, title, description, crop_cycle_id, livestock_group_id, assigned_to_user_id, created_by_user_id, priority, due_date, status, session)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'todo', $10)
+      (farm_id, title, description, crop_cycle_id, livestock_group_id, assigned_to_user_id, created_by_user_id, priority, due_date, status, shift_id, session)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'Pending', $10, $11)
       RETURNING *
     `, [
       farmId,
@@ -83,7 +423,8 @@ export async function createTask(req, res) {
       userId,
       priority || 'medium',
       validatedDueDate || null,
-      session || 'morning'
+      resolvedShift.id,
+      normalizeShiftKey(resolvedShift.shift_name)
     ]);
 
     const task = result.rows[0];
@@ -116,9 +457,27 @@ export async function createTask(req, res) {
 
       // Insert notification
       await pool.query(`
-        INSERT INTO notifications (user_id, farm_id, type, title, message, priority)
-        VALUES ($1, $2, 'TASK_ASSIGNED', 'New Task Assigned', $3, 'high')
-      `, [assignedToUserId, farmId, `You have been assigned a new task: ${title}`]);
+        INSERT INTO notifications (user_id, farm_id, type, title, message, priority, channel)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `, [
+        assignedToUserId,
+        farmId,
+        'TASK_ASSIGNED',
+        'New Task Assigned',
+        `You have been assigned a new task: ${title}`,
+        'high',
+        'Dashboard'
+      ]);
+
+      // Emit Socket.IO Event
+      if (req.io) {
+        req.io.to(assignedToUserId).emit('notification', {
+          title: 'New Task Assigned',
+          message: `You have been assigned a new task: ${title}`,
+          category: 'TASK_ASSIGNED',
+          priority: 'high'
+        });
+      }
     }
 
     res.status(201).json({ message: 'Task created successfully', task });
@@ -142,6 +501,7 @@ export async function updateTaskDetails(req, res) {
       priority,
       dueDate,
       session,
+      shiftId,
     } = req.body;
 
     const validatedDueDate = await validateTaskDate(req, res, dueDate);
@@ -167,6 +527,11 @@ export async function updateTaskDetails(req, res) {
     const nextPriority = priority ?? currentTask.priority;
     const nextDueDate = dueDate ? validatedDueDate : currentTask.due_date;
     const nextSession = session ?? currentTask.session;
+    const resolvedShift = await resolveShiftForTask(farmId, {
+      shiftId: shiftId ?? currentTask.shift_id,
+      session: nextSession,
+    });
+    const nextShiftId = resolvedShift?.id ?? currentTask.shift_id;
 
     const result = await pool.query(`
       UPDATE tasks
@@ -178,8 +543,9 @@ export async function updateTaskDetails(req, res) {
           priority = $6,
           due_date = $7,
           session = $8,
+          shift_id = $9,
           updated_at = NOW()
-      WHERE id = $9 AND farm_id = $10
+      WHERE id = $10 AND farm_id = $11
       RETURNING *
     `, [
       nextTitle,
@@ -190,6 +556,7 @@ export async function updateTaskDetails(req, res) {
       nextPriority,
       nextDueDate,
       nextSession,
+      nextShiftId,
       taskId,
       farmId,
     ]);
@@ -248,157 +615,244 @@ export async function getFarmManagerTasks(req, res) {
   }
 }
 
-export async function updateTaskStatus(req, res) {
+export async function startTask(req, res) {
   try {
     const userId = req.user.userId;
     const farmId = await getDefaultFarmId(userId);
     const taskId = req.params.id;
-    const { status } = req.body;
 
-    if (!['todo', 'in_progress', 'blocked', 'done', 'cancelled'].includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
-    }
-
-    let query = `
+    const result = await pool.query(`
       UPDATE tasks
-      SET status = $1, updated_at = NOW()
-    `;
-    const params = [status, taskId, farmId, userId];
-    
-    if (status === 'in_progress') {
-      query += `, started_at = NOW()`;
-    } else if (status === 'done') {
-      query += `, completed_at = NOW()`;
-    }
-
-    // We only allow the assigned farmer or the farm manager (we just check farm_id for simplicity, assuming auth middleware handles manager check if needed, but here we require assigned_to_user_id or created_by_user_id for now, or just farm_id)
-    query += ` WHERE id = $2 AND farm_id = $3 AND (assigned_to_user_id = $4 OR created_by_user_id = $4) RETURNING *`;
-
-    const result = await pool.query(query, params);
+      SET status = 'In Progress', started_at = NOW(), updated_at = NOW()
+      WHERE id = $1 AND farm_id = $2 AND assigned_to_user_id = $3 AND status = 'Pending'
+      RETURNING *
+    `, [taskId, farmId, userId]);
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Task not found or unauthorized' });
+      return res.status(404).json({ error: 'Task not found, unauthorized, or not in Pending status' });
     }
 
     const task = result.rows[0];
 
-    // Auto-generate attendance when in progress, update when done
-    if (status === 'in_progress' || status === 'done') {
-      if (task.session && task.assigned_to_user_id) {
-        let paymentAmount = 2000;
-        
-        try {
-          if (status === 'in_progress') {
-            await pool.query(`
-              INSERT INTO task_attendances (farm_id, worker_id, task_id, date, session, status, payment_amount, attendance_status, task_status)
-              VALUES ($1, $2, $3, CURRENT_DATE, $4, 'pending', $5, 'Present', 'In Progress')
-              ON CONFLICT ON CONSTRAINT task_attendances_unique DO UPDATE
-              SET attendance_status = 'Present', task_status = 'In Progress'
-            `, [farmId, task.assigned_to_user_id, task.id, task.session, paymentAmount]);
-          } else if (status === 'done') {
-            await pool.query(`
-              INSERT INTO task_attendances (farm_id, worker_id, task_id, date, session, status, payment_amount, attendance_status, task_status)
-              VALUES ($1, $2, $3, CURRENT_DATE, $4, 'pending', $5, 'Completed', 'Completed')
-              ON CONFLICT ON CONSTRAINT task_attendances_unique DO UPDATE
-              SET attendance_status = 'Completed', task_status = 'Completed'
-            `, [farmId, task.assigned_to_user_id, task.id, task.session, paymentAmount]);
-          }
-        } catch (attendErr) {
-          console.error('Error handling task attendance:', attendErr);
-        }
-      }
+    // Notification to manager
+    const managerRes = await pool.query('SELECT created_by_user_id FROM tasks WHERE id = $1', [taskId]);
+    if (managerRes.rows.length > 0) {
+      const managerId = managerRes.rows[0].created_by_user_id;
+      
+      await pool.query(`
+        INSERT INTO notifications (user_id, farm_id, type, title, message, priority, channel)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `, [
+        managerId,
+        farmId,
+        'TASK_STARTED',
+        'Worker Started Task',
+        `Worker has started task: ${task.title}`,
+        'normal',
+        'Dashboard'
+      ]);
 
-      if (status === 'done') {
-        // Get manager and crop details
-        const managerRes = await pool.query('SELECT email FROM app_users WHERE id = $1', [task.created_by_user_id]);
-        const farmerRes = await pool.query('SELECT full_name FROM app_users WHERE id = $1', [userId]);
-        
-        let cropName = 'N/A';
-        if (task.crop_cycle_id) {
-          const cropRes = await pool.query('SELECT crop_name FROM crop_cycles WHERE id = $1', [task.crop_cycle_id]);
-          if (cropRes.rows.length > 0) cropName = cropRes.rows[0].crop_name;
-        }
-
-        const farmerName = farmerRes.rows[0]?.full_name || 'Unknown Farmer';
-
-        if (managerRes.rows.length > 0) {
-          const managerEmail = managerRes.rows[0].email;
-          await sendTaskCompletedEmail(managerEmail, {
-            title: task.title,
-            relatedEntity: cropName,
-            completedBy: farmerName,
-            completedAt: task.completed_at
-          });
-
-          // Add db notification
-          await pool.query(`
-            INSERT INTO notifications (user_id, farm_id, type, title, message, priority)
-            VALUES ($1, $2, 'TASK_COMPLETED', 'Task Completed', $3, 'normal')
-          `, [task.created_by_user_id, farmId, `Task "${task.title}" was completed by ${farmerName}. Pending your approval.`]);
-        }
+      if (req.io) {
+        req.io.to(managerId).emit('notification', {
+          title: 'Worker Started Task',
+          message: `Worker has started task: ${task.title}`,
+          category: 'TASK_STARTED',
+          priority: 'normal'
+        });
       }
     }
 
-    res.json({ message: 'Task updated successfully', task });
+    res.json({ message: 'Task started successfully', task });
   } catch (err) {
-    console.error('Error updating task:', err);
-    res.status(500).json({ error: 'Failed to update task' });
+    console.error('Error starting task:', err);
+    res.status(500).json({ error: 'Failed to start task' });
   }
 }
-// Handle farmer's activity update (notes + optional image)
-export async function createTaskUpdate(req, res) {
+
+export async function submitTaskEvidence(req, res) {
   try {
     const userId = req.user.userId;
+    const farmId = await getDefaultFarmId(userId);
     const taskId = req.params.id;
     const { notes } = req.body;
+    
+    // In a real app we might handle multiple images; for now we use the uploaded file
     const imageUrl = req.file ? `/uploads/activities/${req.file.filename}` : null;
 
-    // Verify task belongs to the same farm
-    const farmId = await getDefaultFarmId(userId);
-    const taskRes = await pool.query('SELECT id FROM tasks WHERE id = $1 AND farm_id = $2', [taskId, farmId]);
-    if (taskRes.rowCount === 0) {
-      return res.status(404).json({ error: 'Task not found or unauthorized' });
+    if (!notes && !imageUrl) {
+        return res.status(400).json({ error: 'Evidence (notes or image) is required' });
     }
 
-    const result = await pool.query(
-      `INSERT INTO task_updates (task_id, farmer_id, notes, image_url) VALUES ($1, $2, $3, $4) RETURNING *`,
+    // End timer
+    const result = await pool.query(`
+      UPDATE tasks
+      SET status = 'Waiting Manager Approval', 
+          completed_at = NOW(), 
+          end_time = NOW(),
+          working_hours = EXTRACT(EPOCH FROM (NOW() - started_at))/3600,
+          updated_at = NOW()
+      WHERE id = $1 AND farm_id = $2 AND assigned_to_user_id = $3 AND status = 'In Progress'
+      RETURNING *
+    `, [taskId, farmId, userId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Task not found, unauthorized, or not In Progress' });
+    }
+
+    const task = result.rows[0];
+
+    await pool.query(
+      `INSERT INTO task_updates (task_id, farmer_id, notes, image_url) VALUES ($1, $2, $3, $4)`,
       [taskId, userId, notes || null, imageUrl]
     );
 
-    // Optionally notify manager about the update
-    const managerQuery = `
-      SELECT u.email, u.id, t.title as task_title, f.full_name as farmer_name
-      FROM tasks t
-      JOIN app_users u ON t.created_by_user_id = u.id
-      JOIN app_users f ON $2 = f.id
-      WHERE t.id = $1
-    `;
-    const managerRes = await pool.query(managerQuery, [taskId, userId]);
-    
-    if (managerRes.rows.length > 0) {
-      const manager = managerRes.rows[0];
-      const updateDetails = {
-        farmerName: manager.farmer_name,
-        taskTitle: manager.task_title,
-        timestamp: new Date().toISOString(),
-        notes: notes,
-        hasImage: !!imageUrl
-      };
-      
-      // Send Email
-      await sendTaskUpdateEmail(manager.email, updateDetails);
+    // Notify manager
+    const managerId = task.created_by_user_id;
+    await pool.query(`
+      INSERT INTO notifications (user_id, farm_id, type, title, message, priority, channel)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `, [
+      managerId,
+      farmId,
+      'TASK_EVIDENCE_SUBMITTED',
+      'Task Evidence Submitted',
+      `Evidence submitted for task: ${task.title}. Waiting for your approval.`,
+      'high',
+      'Dashboard'
+    ]);
 
-      // Add db notification
-      await pool.query(`
-        INSERT INTO notifications (user_id, farm_id, type, title, message, priority)
-        VALUES ($1, $2, 'TASK_UPDATE', 'Farmer Task Update', $3, 'normal')
-      `, [manager.id, farmId, `${manager.farmer_name} submitted an update for task "${manager.task_title}".`]);
+    if (req.io) {
+      req.io.to(managerId).emit('notification', {
+        title: 'Task Evidence Submitted',
+        message: `Evidence submitted for task: ${task.title}. Waiting for your approval.`,
+        category: 'TASK_EVIDENCE_SUBMITTED',
+        priority: 'high'
+      });
     }
 
-    res.status(201).json({ message: 'Task update saved', update: result.rows[0] });
+    res.json({ message: 'Evidence submitted successfully', task });
   } catch (err) {
-    console.error('Error creating task update:', err);
-    res.status(500).json({ error: 'Failed to save task update' });
+    console.error('Error submitting evidence:', err);
+    res.status(500).json({ error: 'Failed to submit evidence' });
+  }
+}
+
+export async function reviewTask(req, res) {
+  try {
+    const userId = req.user.userId;
+    const farmId = await getDefaultFarmId(userId);
+    const taskId = req.params.id;
+    const { action, reason } = req.body; // 'Approve', 'Reject', 'Rework'
+
+    if (!['Approve', 'Reject', 'Rework'].includes(action)) {
+      return res.status(400).json({ error: 'Invalid action' });
+    }
+
+    if ((action === 'Reject' || action === 'Rework') && !String(reason || '').trim()) {
+      return res.status(400).json({ error: 'A reason is required for reject or rework' });
+    }
+
+    let status = 'Completed';
+    if (action === 'Reject') status = 'Rejected';
+    if (action === 'Rework') status = 'Rework Requested';
+
+    const taskLookup = await pool.query(`
+      SELECT *
+      FROM tasks
+      WHERE id = $1 AND farm_id = $2
+      LIMIT 1
+    `, [taskId, farmId]);
+
+    if (taskLookup.rows.length === 0) {
+      return res.status(404).json({ error: 'Task not found, unauthorized, or not Waiting for Approval' });
+    }
+
+    const task = taskLookup.rows[0];
+    const taskStatus = normalizeTaskStatus(task.status);
+    const waitingStatuses = new Set(['waiting_manager_approval', 'waiting_for_manager_approval']);
+    if (!waitingStatuses.has(taskStatus)) {
+      return res.status(404).json({ error: 'Task not found, unauthorized, or not Waiting for Approval' });
+    }
+
+    const result = await pool.query(`
+      UPDATE tasks
+      SET status = $1, updated_at = NOW()
+      WHERE id = $2 AND farm_id = $3
+      RETURNING *
+    `, [status, taskId, farmId]);
+
+    const updatedTask = result.rows[0] || task;
+    const workerId = task.assigned_to_user_id;
+    const attendanceDate = normalizeDateInput(updatedTask.completed_at || updatedTask.end_time || updatedTask.updated_at || new Date()) || new Date().toISOString().slice(0, 10);
+
+    // Insert Audit Log
+    await pool.query(`
+      INSERT INTO audit_logs (user_id, user_role, module, action, record_id, new_value)
+      VALUES ($1, 'Farm Manager', 'Task Management', 'Review Task', $2, $3)
+    `, [userId, taskId, JSON.stringify({ status, reason: reason || null })]);
+
+    // If Approved, Mark Attendance
+    if (status === 'Completed') {
+        const checkInTime = updatedTask.start_time || updatedTask.started_at;
+        const checkOutTime = updatedTask.end_time || updatedTask.completed_at;
+
+        const existingAttendance = await pool.query(
+          `SELECT id FROM shift_attendances
+           WHERE worker_id = $1 AND shift_id = $3
+             AND DATE_TRUNC('second', check_out_time) = DATE_TRUNC('second', $2::timestamptz)
+           LIMIT 1`,
+          [workerId, checkOutTime, updatedTask.shift_id]
+        );
+
+        if (existingAttendance.rows.length > 0) {
+          await pool.query(`
+            UPDATE shift_attendances
+            SET check_in_time = $1,
+                check_out_time = $2,
+                total_hours = $3,
+                shift_status = 'Present',
+                updated_at = NOW()
+            WHERE id = $4
+          `, [checkInTime, checkOutTime, updatedTask.working_hours, existingAttendance.rows[0].id]);
+        } else {
+          await pool.query(`
+            INSERT INTO shift_attendances (worker_id, date, shift_id, check_in_time, check_out_time, total_hours, shift_status, farm_id)
+            VALUES ($1, $2::date, $3, $4, $5, $6, 'Present', $7)
+          `, [workerId, attendanceDate, updatedTask.shift_id, checkInTime, checkOutTime, updatedTask.working_hours, farmId]);
+        }
+
+        await upsertMonthlyPayrollAfterApproval({ farmId, managerId: userId, workerId, effectiveDate: attendanceDate });
+    }
+
+    await notifyFarmerOfReview({ workerId, task: updatedTask, action, reason });
+
+    // Notify worker
+    await pool.query(`
+      INSERT INTO notifications (user_id, farm_id, type, title, message, priority, channel)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `, [
+      workerId,
+      farmId,
+      'TASK_REVIEWED',
+      'Task Review Completed',
+      `Your task "${updatedTask.title}" has been ${status}.`,
+      'high',
+      'Dashboard'
+    ]);
+
+    if (req.io) {
+      req.io.to(workerId).emit('notification', {
+        title: 'Task Review Completed',
+        message: `Your task "${updatedTask.title}" has been ${status}.`,
+        category: 'TASK_REVIEWED',
+        priority: 'high'
+      });
+    }
+
+    res.json({ message: `Task ${status} successfully`, task: updatedTask });
+  } catch (err) {
+    console.error('Error reviewing task:', err);
+    res.status(500).json({ error: 'Failed to review task' });
   }
 }
 
@@ -408,10 +862,17 @@ export async function getRecentTaskUpdates(req, res) {
     const farmId = await getDefaultFarmId(userId);
 
     const query = `
-      SELECT tu.id, tu.notes, tu.image_url, tu.created_at, t.title as task_title, u.full_name as farmer_name
+      SELECT tu.id, tu.notes, tu.image_url, tu.created_at,
+             t.id as task_id, t.title as task_title, t.description as task_description,
+             t.status as task_status, t.started_at, t.completed_at, t.working_hours, t.shift_id,
+             t.crop_cycle_id, t.livestock_group_id,
+             u.id as farmer_id, u.full_name as farmer_name, u.phone as farmer_phone,
+             c.crop_name, l.species as livestock_name
       FROM task_updates tu
       JOIN tasks t ON tu.task_id = t.id
       JOIN app_users u ON tu.farmer_id = u.id
+      LEFT JOIN crop_cycles c ON t.crop_cycle_id = c.id
+      LEFT JOIN livestock_groups l ON t.livestock_group_id = l.id
       WHERE t.farm_id = $1
       ORDER BY tu.created_at DESC
       LIMIT 10
@@ -423,3 +884,4 @@ export async function getRecentTaskUpdates(req, res) {
     res.status(500).json({ error: 'Failed to fetch task updates' });
   }
 }
+

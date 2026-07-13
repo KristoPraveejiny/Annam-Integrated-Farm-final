@@ -1,5 +1,7 @@
 import './loadEnv.js';
 import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes.js';
@@ -22,7 +24,11 @@ import feedScheduleRoutes from './routes/feedScheduleRoutes.js';
 import livestockHealthRoutes from './routes/livestockHealthRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
+import shiftRoutes from './routes/shiftRoutes.js';
+import attendanceRoutes from './routes/attendanceRoutes.js';
+import auditRoutes from './routes/auditRoutes.js';
 import { verifyToken } from './authMiddleware.js';
+
 
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -31,6 +37,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE']
+  }
+});
+
+// Pass io to request object
+app.use((req, res, next) => {
+  req.io = io;
+  next();
+});
 
 app.use(cors());
 app.use(express.json());
@@ -59,9 +78,26 @@ app.use('/api/livestock/feed-schedules', feedScheduleRoutes);
 app.use('/api/livestock/health-events', livestockHealthRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/shifts', shiftRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/audit', auditRoutes);
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+io.on('connection', (socket) => {
+  console.log(`Socket connected: ${socket.id}`);
+  
+  // Example: Client joins their own user room
+  socket.on('join', (userId) => {
+    socket.join(userId);
+    console.log(`User ${userId} joined room`);
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`Socket disconnected: ${socket.id}`);
+  });
+});
+
+server.listen(PORT, () => {
     console.log(`🚀 Backend listening on port ${PORT}`);
 });

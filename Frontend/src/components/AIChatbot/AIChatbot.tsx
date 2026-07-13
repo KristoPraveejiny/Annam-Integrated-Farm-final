@@ -437,14 +437,15 @@ export default function AIChatbot() {
       </section>
       
       <ConfirmDialog
-          isOpen={deleteConfirmOpen}
+          open={deleteConfirmOpen}
           title="Delete Conversation"
-          message="Are you sure you want to delete this conversation? This action cannot be undone."
-          confirmText="Delete"
-          cancelText="Cancel"
+          description="Are you sure you want to delete this conversation? This action cannot be undone."
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
           onConfirm={handleDeleteSession}
           onCancel={() => setDeleteConfirmOpen(false)}
       />
     </div>
   );
 }
+

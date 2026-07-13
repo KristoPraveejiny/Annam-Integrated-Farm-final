@@ -2,17 +2,20 @@ import { useState, useEffect } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
-import { FiPlus, FiCheckCircle } from 'react-icons/fi';
+import { FiPlus } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../utils/apiFetch';
 import { notifyError, notifySuccess, notifyWarning } from '../../utils/notifications';
 
 export default function FarmManagerTasksPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState<any[]>([]);
   const [farmers, setFarmers] = useState<any[]>([]);
   const [crops, setCrops] = useState<any[]>([]);
   const [livestockGroups, setLivestockGroups] = useState<any[]>([]);
+  const [shifts, setShifts] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -29,13 +32,20 @@ export default function FarmManagerTasksPage() {
 
   const todayDate = new Date().toISOString().split('T')[0];
 
+  const normalizeTaskStatus = (status: string | undefined | null) =>
+    String(status || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_');
+
   const fetchData = async () => {
     try {
-      const [tasksRes, cropsRes, workersRes, livestockRes] = await Promise.all([
+      const [tasksRes, cropsRes, workersRes, livestockRes, shiftsRes] = await Promise.all([
         apiFetch('/api/tasks/manager'),
         apiFetch('/api/crops'),
         apiFetch('/api/tasks/workers'),
-        apiFetch('/api/livestock/groups')
+        apiFetch('/api/livestock/groups'),
+        apiFetch('/api/shifts')
       ]);
 
       if (tasksRes.ok) {
@@ -57,6 +67,11 @@ export default function FarmManagerTasksPage() {
         const livestockData = await livestockRes.json();
         setLivestockGroups(livestockData);
       }
+
+      if (shiftsRes.ok) {
+        const shiftsData = await shiftsRes.json();
+        setShifts(shiftsData);
+      }
       
       setLoading(false);
     } catch (err) {
@@ -75,13 +90,23 @@ export default function FarmManagerTasksPage() {
       notifyWarning('Task date cannot be earlier than today.');
       return;
     }
+
+    const selectedShift = shifts.find((shift) => {
+      const shiftName = String(shift.shift_name || '').trim().toLowerCase();
+      return shiftName === formData.session || String(shift.id || '').trim() === formData.session;
+    });
+
     try {
       const res = await apiFetch('/api/tasks', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          ...formData,
+          shiftId: selectedShift?.id,
+          session: String(selectedShift?.shift_name || formData.session).trim().toLowerCase()
+        })
       });
 
       if (res.ok) {
@@ -125,28 +150,44 @@ export default function FarmManagerTasksPage() {
                 <th className="px-6 py-4">{t("Session")}</th>
                 <th className="px-6 py-4">{t("Due Date")}</th>
                 <th className="px-6 py-4">{t("Status")}</th>
+                <th className="px-6 py-4 text-right">{t("Actions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5 bg-slate-950/60">
                {loading ? (
-                 <tr><td colSpan={7} className="px-6 py-4 text-center text-slate-500">Loading tasks...</td></tr>
+                 <tr><td colSpan={8} className="px-6 py-4 text-center text-slate-500">Loading tasks...</td></tr>
                ) : tasks.length === 0 ? (
-                 <tr><td colSpan={7} className="px-6 py-4 text-center text-slate-500">{t("No tasks found")}</td></tr>
+                 <tr><td colSpan={8} className="px-6 py-4 text-center text-slate-500">{t("No tasks found")}</td></tr>
                ) : (
-                tasks.map(t => (
-                  <tr key={t.id} className="hover:bg-white/5 transition-colors">
-                    <td className="px-6 py-4 font-bold text-white">{t.title}</td>
-                    <td className="px-6 py-4">{t.assigned_to_name || 'Unassigned'}</td>
-                    <td className="px-6 py-4">{t.crop_name || t.livestock_name || 'N/A'}</td>
-                    <td className="px-6 py-4 capitalize">{t.priority}</td>
-                    <td className="px-6 py-4 capitalize">{t.session || 'morning'}</td>
-                    <td className="px-6 py-4">{t.due_date ? new Date(t.due_date).toLocaleDateString() : 'N/A'}</td>
+                tasks.map(task => (
+                  <tr key={task.id} className="hover:bg-white/5 transition-colors">
+                    <td className="px-6 py-4 font-bold text-white">{task.title}</td>
+                    <td className="px-6 py-4">{task.assigned_to_name || 'Unassigned'}</td>
+                    <td className="px-6 py-4">{task.crop_name || task.livestock_name || 'N/A'}</td>
+                    <td className="px-6 py-4 capitalize">{task.priority}</td>
+                    <td className="px-6 py-4 capitalize">{task.session || 'morning'}</td>
+                    <td className="px-6 py-4">{task.due_date ? new Date(task.due_date).toLocaleDateString() : 'N/A'}</td>
                     <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
-                        t.status === 'done' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 
-                        t.status === 'in_progress' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 
+                        normalizeTaskStatus(task.status) === 'completed' || normalizeTaskStatus(task.status) === 'approved' || normalizeTaskStatus(task.status) === 'done' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 
+                        normalizeTaskStatus(task.status) === 'in_progress' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 
+                        normalizeTaskStatus(task.status) === 'waiting_manager_approval' || normalizeTaskStatus(task.status) === 'waiting_for_manager_approval' ? 'bg-violet-500/10 text-violet-300 border-violet-500/20' :
                         'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                      }`}>{t.status.replace('_', ' ')}</span>
+                      }`}>{String(task.status || 'N/A').replace(/_/g, ' ')}</span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      {normalizeTaskStatus(task.status) === 'waiting_manager_approval' || normalizeTaskStatus(task.status) === 'waiting_for_manager_approval' ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => navigate('/dashboard/farm-manager/recent-updates', { state: { taskId: task.id } })}
+                          className="!px-3 !py-2 text-slate-200 hover:text-white"
+                        >
+                          {t("View Details")}
+                        </Button>
+                      ) : (
+                        <span className="text-slate-500 text-sm">-</span>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -250,9 +291,20 @@ export default function FarmManagerTasksPage() {
                     onChange={e => setFormData({...formData, session: e.target.value})}
                     className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
                   >
-                    <option value="morning">Morning (Rs. 2000)</option>
-                    <option value="afternoon">Afternoon (Rs. 2000)</option>
-                    <option value="evening">Evening (Rs. 1000)</option>
+                    {shifts.length > 0 ? (
+                      shifts.map((shift) => (
+                        <option key={shift.id} value={String(shift.shift_name || '').trim().toLowerCase()}>
+                          {shift.shift_name}
+                          {shift.start_time && shift.end_time ? ` (${String(shift.start_time).slice(0, 5)} - ${String(shift.end_time).slice(0, 5)})` : ''}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="morning">Morning (Rs. 2000)</option>
+                        <option value="afternoon">Afternoon (Rs. 2000)</option>
+                        <option value="evening">Evening (Rs. 1000)</option>
+                      </>
+                    )}
                   </select>
                 </div>
                 <div>

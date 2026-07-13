@@ -39,7 +39,10 @@ export default function FarmerCropUpdatesPage() {
         const tasksRes = await fetch('/api/tasks/farmer', { headers: { Authorization: `Bearer ${token}` } });
         if (tasksRes.ok) {
           const data = await tasksRes.json();
-          const activeTasks = data.filter((t: any) => t.status !== 'done' && t.crop_cycle_id != null);
+          const activeTasks = data.filter((t: any) => {
+            const status = String(t.status || '').trim().toLowerCase().replace(/\s+/g, '_');
+            return status === 'in_progress' && t.crop_cycle_id != null;
+          });
           setTasks(activeTasks);
         }
 
@@ -95,7 +98,15 @@ export default function FarmerCropUpdatesPage() {
     }
 
     try {
-      const res = await fetch(`/api/tasks/${selectedTaskId}/updates`, {
+      const selectedTask = tasks.find((t) => t.id === selectedTaskId);
+      const status = String(selectedTask?.status || '').trim().toLowerCase().replace(/\s+/g, '_');
+
+      if (status !== 'in_progress') {
+        notifyWarning('Please start the task before submitting activity.');
+        return;
+      }
+
+      const res = await fetch(`/api/tasks/${selectedTaskId}/evidence`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData
