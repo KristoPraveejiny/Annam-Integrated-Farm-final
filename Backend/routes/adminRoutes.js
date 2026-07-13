@@ -10,6 +10,7 @@ import {
   getAdminCrops,
   getAdminLivestock,
   getAdminAIAdvisories,
+  getAdminDiseaseDetections,
   getAdminTasks,
   getAdminSalaries,
   getSystemSettings,
@@ -39,6 +40,7 @@ router.get('/farmers', getAdminFarmers);
 router.get('/crops', getAdminCrops);
 router.get('/livestock', getAdminLivestock);
 router.get('/ai-advisories', getAdminAIAdvisories);
+router.get('/disease-detections', getAdminDiseaseDetections);
 router.get('/tasks', getAdminTasks);
 router.get('/salaries', getAdminSalaries);
 router.get('/system-settings', getSystemSettings);

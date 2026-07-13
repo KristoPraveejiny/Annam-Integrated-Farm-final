@@ -57,6 +57,11 @@ export const getAdminAIAdvisories = async (): Promise<any> => {
   return response.data;
 };
 
+export const getAdminDiseaseDetections = async (): Promise<any> => {
+  const response = await axios.get(`${API_BASE_URL}/disease-detections`, getAuthHeaders());
+  return response.data;
+};
+
 export const getAdminTasks = async (): Promise<any> => {
   const response = await axios.get(`${API_BASE_URL}/tasks`, getAuthHeaders());
   return response.data;

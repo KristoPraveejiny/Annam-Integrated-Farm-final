@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card } from '../../../components/ui/Card';
-import { getAdminAIAdvisories } from '../../../api/admin';
+import { getAdminDiseaseDetections } from '../../../api/admin';
 
 interface DiseaseAdvisory {
   id: string;
   farm_name: string;
-  advisory_kind: string;
-  title: string;
-  summary: string;
+  disease_name: string;
+  ai_recommendation: any;
   confidence: string;
   created_at: string;
 }
@@ -26,9 +25,8 @@ export default function DiseaseDetectionMonitoringPage() {
   const fetchDiseases = async () => {
     try {
       setLoading(true);
-      const data = await getAdminAIAdvisories();
-      const filtered = data.filter((adv: DiseaseAdvisory) => adv.advisory_kind === 'disease');
-      setDiseases(filtered);
+      const data = await getAdminDiseaseDetections();
+      setDiseases(data);
     } catch (err) {
       setError('Failed to load disease detections data.');
     } finally {
@@ -62,10 +60,10 @@ export default function DiseaseDetectionMonitoringPage() {
                 {diseases.map((disease) => (
                   <tr key={disease.id} className="hover:bg-white/5">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-white">{disease.title}</div>
+                      <div className="text-sm font-medium text-white">{disease.disease_name || 'Unknown Disease'}</div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="text-sm text-slate-300 truncate max-w-xs">{disease.summary}</div>
+                      <div className="text-sm text-slate-300 truncate max-w-xs">{typeof disease.ai_recommendation === 'object' ? disease.ai_recommendation?.disease_explanation || 'No recommendation' : disease.ai_recommendation || 'No recommendation'}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
                       {disease.farm_name || 'Unknown Farm'}

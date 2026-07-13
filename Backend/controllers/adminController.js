@@ -273,6 +273,21 @@ export const getAdminAIAdvisories = async (req, res) => {
   }
 };
 
+export const getAdminDiseaseDetections = async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT d.*, f.name as farm_name 
+      FROM disease_detection_history d 
+      LEFT JOIN farms f ON d.farm_id = f.id 
+      ORDER BY d.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching admin disease detections:', error);
+    res.status(500).json({ error: 'Failed to fetch disease detections.' });
+  }
+};
+
 export const getAdminTasks = async (req, res) => {
   try {
     const result = await pool.query(`
