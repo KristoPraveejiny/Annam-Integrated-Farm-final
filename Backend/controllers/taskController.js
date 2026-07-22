@@ -1,7 +1,126 @@
 import { pool } from '../db.js';
+import crypto from 'crypto';
+import fs from 'fs';
 import { sendEmail, sendTaskAssignedEmail } from '../services/emailService.js';
 import { getDefaultFarmId } from './livestockController.js';
 import { daysInMonth } from '../utils/payrollMath.js';
+
+
+function calculateSmartVerification(images, currentHashes, prevHashes, notes, currentTask, timeDiffMins) {
+  let sImage = 0;
+  let sNotes = 0;
+  let sProgress = 0;
+  let sDuration = 0;
+  let sDuplicate = 20;
+
+  const suspiciousFlags = [];
+  const imageStatus = images.map(img => ({ ...img, status: '✓' }));
+
+  // --- NEW METADATA CHECKS ---
+  let hasIdenticalSizes = false;
+  if (images.length > 1) {
+    const sizes = images.map(i => i.size).filter(s => s != null).sort((a,b) => a - b);
+    let identicalCount = 0;
+    for (let i = 0; i < sizes.length - 1; i++) {
+      if (Math.abs(sizes[i] - sizes[i+1]) < 1024 * 50) { // within 50KB
+        identicalCount++;
+      }
+    }
+    if (identicalCount > 0 && identicalCount >= sizes.length - 1) {
+      hasIdenticalSizes = true;
+      suspiciousFlags.push('All images have almost identical file sizes & resolutions');
+      sDuplicate = Math.max(0, sDuplicate - 10);
+    }
+  }
+
+  // 1. Image Check (max 20)
+  if (images.length === 1) {
+    suspiciousFlags.push('Only One Image');
+    sImage = 10;
+  } else if (images.length >= 2) {
+    sImage = 20;
+  }
+
+  // 2. Notes Check (max 20)
+  if (!notes || notes.trim().length < 20) {
+    suspiciousFlags.push('Very Short Notes');
+    sNotes = 5;
+  } else if (notes.trim().length > 50) {
+    sNotes = 20;
+  } else {
+    sNotes = 15;
+  }
+
+  // 3. Progress Updates (max 20)
+  const updatesCount = parseInt(currentTask.total_updates, 10) || 0;
+  if (updatesCount === 0) {
+    suspiciousFlags.push('No Previous Progress Updates');
+    sProgress = 10;
+  } else {
+    sProgress = 20;
+  }
+
+  // 4. Time Check (max 20)
+  if (timeDiffMins !== null) {
+    if (timeDiffMins < 5) {
+      suspiciousFlags.push('Task completion time is suspiciously short (< 5 mins) or rapid updates');
+      sDuration = 0;
+    } else if (timeDiffMins > 480) { // > 8 hours gap
+      suspiciousFlags.push('Large Time Gap');
+      sDuration = 10;
+    } else {
+      sDuration = 20;
+    }
+  } else {
+    sDuration = 20; // Default if not applicable
+  }
+
+  // 5. Duplicate Check (max 20)
+  let hasDuplicate = false;
+  // Check within current batch
+  const seenHashes = new Set();
+  currentHashes.forEach((hash, idx) => {
+    if (seenHashes.has(hash) || prevHashes.includes(hash)) {
+      suspiciousFlags.push('Exact Duplicate Image Detected (SHA-256 Match)');
+      hasDuplicate = true;
+      imageStatus[idx].status = '⚠ Duplicate';
+      sDuplicate = 0;
+    } else if (hasIdenticalSizes) {
+      if (imageStatus[idx].status === '✓') {
+        imageStatus[idx].status = '⚠ Suspicious Size';
+      }
+    }
+    seenHashes.add(hash);
+  });
+
+  const totalScore = sImage + sNotes + sProgress + sDuration + sDuplicate;
+
+  let riskLevel = '🔴 High Risk';
+  let recommendation = 'Manual Review Highly Recommended';
+  if (totalScore >= 90) {
+    riskLevel = '🟢 Low Risk';
+    recommendation = 'Looks Good for Approval';
+  } else if (totalScore >= 75) {
+    riskLevel = '🟡 Medium Risk';
+    recommendation = 'Manual Review Recommended';
+  }
+
+  return {
+    score: totalScore,
+    details: {
+      'Image Count': sImage,
+      'Notes Quality': sNotes,
+      'Progress Updates': sProgress,
+      'Task Duration': sDuration,
+      'Duplicate Check': sDuplicate
+    },
+    flags: suspiciousFlags,
+    riskLevel,
+    recommendation,
+    imagesWithStatus: imageStatus,
+    hasDuplicate
+  };
+}
 
 function normalizeDateInput(value) {
   if (!value) return null;
@@ -674,66 +793,129 @@ export async function submitTaskEvidence(req, res) {
     const userId = req.user.userId;
     const farmId = await getDefaultFarmId(userId);
     const taskId = req.params.id;
-    const { notes } = req.body;
+    const { notes, activityType, deviceInfo, networkStatus } = req.body;
     
-    // In a real app we might handle multiple images; for now we use the uploaded file
-    const imageUrl = req.file ? `/uploads/activities/${req.file.filename}` : null;
+    // Process images & Hashes
+    const images = [];
+    const currentHashes = [];
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        const fileBuffer = fs.readFileSync(file.path);
+        const hashSum = crypto.createHash('sha256');
+        hashSum.update(fileBuffer);
+        const hex = hashSum.digest('hex');
+        
+        images.push({
+          url: `/uploads/activities/${file.filename}`,
+          fileName: file.originalname,
+          size: file.size,
+          uploadTime: new Date().toISOString()
+        });
+        currentHashes.push(hex);
+      }
+    }
 
-    if (!notes && !imageUrl) {
+    if (!notes && images.length === 0) {
         return res.status(400).json({ error: 'Evidence (notes or image) is required' });
     }
 
-    // End timer
+    const taskLookup = await pool.query('SELECT started_at, total_updates, title, created_by_user_id FROM tasks WHERE id = $1 AND farm_id = $2 AND assigned_to_user_id = $3 AND status = \'In Progress\'', [taskId, farmId, userId]);
+    if (taskLookup.rows.length === 0) {
+      return res.status(404).json({ error: 'Task not found, unauthorized, or not In Progress' });
+    }
+    const currentTask = taskLookup.rows[0];
+
+    const prevUpdates = await pool.query('SELECT image_hashes FROM task_updates WHERE task_id = $1', [taskId]);
+    let prevHashes = [];
+    prevUpdates.rows.forEach(row => {
+      if (Array.isArray(row.image_hashes)) prevHashes.push(...row.image_hashes);
+    });
+
+    let durationMins = null;
+    if (currentTask.started_at) {
+      durationMins = (new Date() - new Date(currentTask.started_at)) / 1000 / 60;
+    }
+
+    const verification = calculateSmartVerification(images, currentHashes, prevHashes, notes, currentTask, durationMins);
+
+    // If duplicate found and user didn't explicitly override (we can use a flag from frontend like forceSubmit=true later, but for now we warn in response)
+    if (verification.hasDuplicate && req.body.forceSubmit !== 'true') {
+        return res.status(400).json({ 
+            error: 'Duplicate images detected', 
+            duplicateWarning: true,
+            message: 'Duplicate Image Detected. Please remove duplicate images before submitting, or confirm to proceed anyway.',
+            images: verification.imagesWithStatus
+        });
+    }
+
+    const needsManagerReview = verification.flags.length > 0;
+
     const result = await pool.query(`
       UPDATE tasks
       SET status = 'Waiting Manager Approval', 
           completed_at = NOW(), 
           end_time = NOW(),
           working_hours = EXTRACT(EPOCH FROM (NOW() - started_at))/3600,
-          updated_at = NOW()
+          completion_percentage = 100,
+          total_updates = total_updates + 1,
+          updated_at = NOW(),
+          verification_score = $4,
+          suspicious_flags = $5::jsonb,
+          needs_manager_review = $6
       WHERE id = $1 AND farm_id = $2 AND assigned_to_user_id = $3 AND status = 'In Progress'
       RETURNING *
-    `, [taskId, farmId, userId]);
+    `, [taskId, farmId, userId, verification.score, JSON.stringify(verification.flags), needsManagerReview]);
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Task not found, unauthorized, or not In Progress' });
-    }
-
-    const task = result.rows[0];
+    const countRes = await pool.query('SELECT COUNT(*) FROM task_updates WHERE task_id = $1', [taskId]);
+    const updateNumber = parseInt(countRes.rows[0].count, 10) + 1;
 
     await pool.query(
-      `INSERT INTO task_updates (task_id, farmer_id, notes, image_url) VALUES ($1, $2, $3, $4)`,
-      [taskId, userId, notes || null, imageUrl]
+      `INSERT INTO task_updates (task_id, farmer_id, notes, activity_type, progress_percentage, device_info, network_status, is_final, images, update_number, image_hashes, verification_score_details, risk_level, status) 
+       VALUES ($1, $2, $3, $4, 100, $5, $6, true, $7::jsonb, $8, $9::jsonb, $10::jsonb, $11, 'Waiting for Review')`,
+      [taskId, userId, notes || null, activityType || 'Final Submission', deviceInfo, networkStatus, JSON.stringify(verification.imagesWithStatus), updateNumber, JSON.stringify(currentHashes), JSON.stringify(verification.details), verification.riskLevel]
     );
 
-    // Notify manager
+    const task = result.rows[0] || currentTask;
     const managerId = task.created_by_user_id;
+
     await pool.query(`
       INSERT INTO notifications (user_id, farm_id, type, title, message, priority, channel)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
     `, [
-      managerId,
-      farmId,
-      'TASK_EVIDENCE_SUBMITTED',
-      'Task Evidence Submitted',
-      `Evidence submitted for task: ${task.title}. Waiting for your approval.`,
-      'high',
-      'Dashboard'
+      managerId, farmId, 'TASK_EVIDENCE_SUBMITTED', 'Task Ready for Review',
+      `Final submission for task: ${task.title}. Waiting for your approval.`, 'high', 'Dashboard'
     ]);
 
-    if (req.io) {
-      req.io.to(managerId).emit('notification', {
-        title: 'Task Evidence Submitted',
-        message: `Evidence submitted for task: ${task.title}. Waiting for your approval.`,
-        category: 'TASK_EVIDENCE_SUBMITTED',
-        priority: 'high'
-      });
-    }
-
-    res.json({ message: 'Evidence submitted successfully', task });
+    res.json({ message: 'Task submitted successfully', task, verification });
   } catch (err) {
     console.error('Error submitting evidence:', err);
     res.status(500).json({ error: 'Failed to submit evidence' });
+  }
+}
+
+export async function getTaskReviews(req, res) {
+  try {
+    const taskId = req.params.id;
+    const farmId = await getDefaultFarmId(req.user.userId);
+    
+    // Verify task belongs to farm
+    const taskCheck = await pool.query('SELECT id FROM tasks WHERE id = $1 AND farm_id = $2', [taskId, farmId]);
+    if (taskCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+
+    const reviews = await pool.query(`
+      SELECT tr.*, u.full_name as manager_name
+      FROM task_reviews tr
+      JOIN app_users u ON tr.manager_id = u.id
+      WHERE tr.task_id = $1
+      ORDER BY tr.created_at DESC
+    `, [taskId]);
+    
+    res.json(reviews.rows);
+  } catch (err) {
+    console.error('Error fetching task reviews:', err);
+    res.status(500).json({ error: 'Failed to fetch reviews' });
   }
 }
 
@@ -742,54 +924,66 @@ export async function reviewTask(req, res) {
     const userId = req.user.userId;
     const farmId = await getDefaultFarmId(userId);
     const taskId = req.params.id;
-    const { action, reason } = req.body; // 'Approve', 'Reject', 'Rework'
+    const { action, reason } = req.body; // 'Approve', 'Approve & Comment', 'Request Evidence', 'Reject'
 
-    if (!['Approve', 'Reject', 'Rework'].includes(action)) {
+    if (!['Approve', 'Approve & Comment', 'Request Evidence', 'Reject', 'Rework'].includes(action)) {
       return res.status(400).json({ error: 'Invalid action' });
     }
 
-    if ((action === 'Reject' || action === 'Rework') && !String(reason || '').trim()) {
-      return res.status(400).json({ error: 'A reason is required for reject or rework' });
+    if (['Reject', 'Request Evidence', 'Rework', 'Approve & Comment'].includes(action) && !String(reason || '').trim()) {
+      return res.status(400).json({ error: 'A comment/reason is required for this action' });
     }
 
     let status = 'Completed';
     if (action === 'Reject') status = 'Rejected';
-    if (action === 'Rework') status = 'Rework Requested';
+    if (action === 'Request Evidence' || action === 'Rework') status = 'Rework Requested';
 
-    const taskLookup = await pool.query(`
-      SELECT *
-      FROM tasks
-      WHERE id = $1 AND farm_id = $2
-      LIMIT 1
-    `, [taskId, farmId]);
+    const taskLookup = await pool.query(`SELECT * FROM tasks WHERE id = $1 AND farm_id = $2 LIMIT 1`, [taskId, farmId]);
 
     if (taskLookup.rows.length === 0) {
-      return res.status(404).json({ error: 'Task not found, unauthorized, or not Waiting for Approval' });
+      return res.status(404).json({ error: 'Task not found or unauthorized' });
     }
 
     const task = taskLookup.rows[0];
-    const taskStatus = normalizeTaskStatus(task.status);
-    const waitingStatuses = new Set(['waiting_manager_approval', 'waiting_for_manager_approval']);
-    if (!waitingStatuses.has(taskStatus)) {
-      return res.status(404).json({ error: 'Task not found, unauthorized, or not Waiting for Approval' });
+    
+    // Calculate Score if Approving
+    let activityScore = task.activity_score || 0;
+    if (status === 'Completed') {
+      const updatesRes = await pool.query('SELECT COUNT(*) as count, SUM(jsonb_array_length(images)) as img_count FROM task_updates WHERE task_id = $1', [taskId]);
+      const updatesCount = parseInt(updatesRes.rows[0].count, 10) || 0;
+      const imgCount = parseInt(updatesRes.rows[0].img_count, 10) || 0;
+      
+      let sImage = Math.min(imgCount * 10, 20); 
+      let sUpdate = Math.min(updatesCount * 5, 20);
+      let sNotes = 20; // assuming final notes exist
+      let sProgress = task.completion_percentage === 100 ? 20 : 0;
+      let sReview = 20; // base score for approval
+      
+      activityScore = sImage + sUpdate + sNotes + sProgress + sReview;
     }
 
     const result = await pool.query(`
       UPDATE tasks
-      SET status = $1, updated_at = NOW()
-      WHERE id = $2 AND farm_id = $3
+      SET status = $1, activity_score = $2, updated_at = NOW()
+      WHERE id = $3 AND farm_id = $4
       RETURNING *
-    `, [status, taskId, farmId]);
+    `, [status, activityScore, taskId, farmId]);
 
     const updatedTask = result.rows[0] || task;
     const workerId = task.assigned_to_user_id;
     const attendanceDate = normalizeDateInput(updatedTask.completed_at || updatedTask.end_time || updatedTask.updated_at || new Date()) || new Date().toISOString().slice(0, 10);
 
+    // Save to task_reviews history
+    await pool.query(`
+      INSERT INTO task_reviews (task_id, manager_id, action, comments)
+      VALUES ($1, $2, $3, $4)
+    `, [taskId, userId, action, reason || null]);
+
     // Insert Audit Log
     await pool.query(`
-      INSERT INTO audit_logs (user_id, user_role, module, action, record_id, new_value)
-      VALUES ($1, 'Farm Manager', 'Task Management', 'Review Task', $2, $3)
-    `, [userId, taskId, JSON.stringify({ status, reason: reason || null })]);
+      INSERT INTO audit_logs (actor_user_id, action, entity_type, entity_id, after_state)
+      VALUES ($1, 'Review Task', 'Task', $2, $3::jsonb)
+    `, [userId, taskId, JSON.stringify({ status, reason: reason || null, activityScore })]);
 
     // If Approved, Mark Attendance
     if (status === 'Completed') {
@@ -797,22 +991,13 @@ export async function reviewTask(req, res) {
         const checkOutTime = updatedTask.end_time || updatedTask.completed_at;
 
         const existingAttendance = await pool.query(
-          `SELECT id FROM shift_attendances
-           WHERE worker_id = $1 AND shift_id = $3
-             AND DATE_TRUNC('second', check_out_time) = DATE_TRUNC('second', $2::timestamptz)
-           LIMIT 1`,
+          `SELECT id FROM shift_attendances WHERE worker_id = $1 AND shift_id = $3 AND DATE_TRUNC('second', check_out_time) = DATE_TRUNC('second', $2::timestamptz) LIMIT 1`,
           [workerId, checkOutTime, updatedTask.shift_id]
         );
 
         if (existingAttendance.rows.length > 0) {
           await pool.query(`
-            UPDATE shift_attendances
-            SET check_in_time = $1,
-                check_out_time = $2,
-                total_hours = $3,
-                shift_status = 'Present',
-                updated_at = NOW()
-            WHERE id = $4
+            UPDATE shift_attendances SET check_in_time = $1, check_out_time = $2, total_hours = $3, shift_status = 'Present', updated_at = NOW() WHERE id = $4
           `, [checkInTime, checkOutTime, updatedTask.working_hours, existingAttendance.rows[0].id]);
         } else {
           await pool.query(`
@@ -829,16 +1014,8 @@ export async function reviewTask(req, res) {
     // Notify worker
     await pool.query(`
       INSERT INTO notifications (user_id, farm_id, type, title, message, priority, channel)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-    `, [
-      workerId,
-      farmId,
-      'TASK_REVIEWED',
-      'Task Review Completed',
-      `Your task "${updatedTask.title}" has been ${status}.`,
-      'high',
-      'Dashboard'
-    ]);
+      VALUES ($1, $2, $3, $4, $5, 'high', 'Dashboard')
+    `, [workerId, farmId, 'TASK_REVIEWED', 'Task Review Completed', `Your task "${updatedTask.title}" has been ${status}.`]);
 
     if (req.io) {
       req.io.to(workerId).emit('notification', {
@@ -862,10 +1039,11 @@ export async function getRecentTaskUpdates(req, res) {
     const farmId = await getDefaultFarmId(userId);
 
     const query = `
-      SELECT tu.id, tu.notes, tu.image_url, tu.created_at,
+      SELECT tu.id, tu.notes, tu.images, tu.image_url, tu.activity_type, tu.progress_percentage, tu.is_final, tu.created_at, tu.update_number, tu.status as update_status, tu.manager_comment, tu.verification_score_details, tu.risk_level,
              t.id as task_id, t.title as task_title, t.description as task_description,
              t.status as task_status, t.started_at, t.completed_at, t.working_hours, t.shift_id,
              t.crop_cycle_id, t.livestock_group_id,
+             t.verification_score, t.suspicious_flags, t.needs_manager_review,
              u.id as farmer_id, u.full_name as farmer_name, u.phone as farmer_phone,
              c.crop_name, l.species as livestock_name
       FROM task_updates tu
@@ -885,3 +1063,189 @@ export async function getRecentTaskUpdates(req, res) {
   }
 }
 
+
+
+export async function addActivityUpdate(req, res) {
+  try {
+    const userId = req.user.userId;
+    const farmId = await getDefaultFarmId(userId);
+    const taskId = req.params.id;
+    const { notes, activityType, progressPercentage, deviceInfo, networkStatus } = req.body;
+    
+    if (!notes || notes.length < 20) {
+      return res.status(400).json({ error: 'Description must be at least 20 characters.' });
+    }
+    
+    const images = [];
+    const currentHashes = [];
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        const fileBuffer = fs.readFileSync(file.path);
+        const hashSum = crypto.createHash('sha256');
+        hashSum.update(fileBuffer);
+        const hex = hashSum.digest('hex');
+        
+        images.push({
+          url: `/uploads/activities/${file.filename}`,
+          fileName: file.originalname,
+          size: file.size,
+          uploadTime: new Date().toISOString()
+        });
+        currentHashes.push(hex);
+      }
+    }
+    
+    if (images.length < 1 || images.length > 5) {
+      return res.status(400).json({ error: 'Please upload between 1 and 5 images.' });
+    }
+    
+    const taskLookup = await pool.query('SELECT started_at, total_updates, title, created_by_user_id FROM tasks WHERE id = $1 AND farm_id = $2 AND assigned_to_user_id = $3', [taskId, farmId, userId]);
+    if (taskLookup.rows.length === 0) {
+      return res.status(404).json({ error: 'Task not found or unauthorized' });
+    }
+    const currentTask = taskLookup.rows[0];
+
+    const lastUpdateRes = await pool.query(
+      'SELECT created_at, notes, image_hashes FROM task_updates WHERE task_id = $1 ORDER BY created_at DESC',
+      [taskId]
+    );
+    
+    let timeDiffMins = null;
+    let prevHashes = [];
+    if (lastUpdateRes.rows.length > 0) {
+      const lastUpdate = lastUpdateRes.rows[0];
+      timeDiffMins = (new Date() - new Date(lastUpdate.created_at)) / 1000 / 60;
+      
+      if (timeDiffMins < 10) {
+        return res.status(400).json({ error: 'You recently submitted an update. Please wait at least 10 minutes before submitting another.' });
+      }
+      
+      lastUpdateRes.rows.forEach(row => {
+        if (Array.isArray(row.image_hashes)) prevHashes.push(...row.image_hashes);
+      });
+    } else if (currentTask.started_at) {
+      timeDiffMins = (new Date() - new Date(currentTask.started_at)) / 1000 / 60;
+    }
+
+    const verification = calculateSmartVerification(images, currentHashes, prevHashes, notes, currentTask, timeDiffMins);
+
+    if (verification.hasDuplicate && req.body.forceSubmit !== 'true') {
+        return res.status(400).json({ 
+            error: 'Duplicate images detected', 
+            duplicateWarning: true,
+            message: 'Duplicate Image Detected. Please remove duplicate images before submitting, or confirm to proceed anyway.',
+            images: verification.imagesWithStatus
+        });
+    }
+    
+    const countRes = await pool.query('SELECT COUNT(*) FROM task_updates WHERE task_id = $1', [taskId]);
+    const updateNumber = parseInt(countRes.rows[0].count, 10) + 1;
+    
+    const insertRes = await pool.query(
+      `INSERT INTO task_updates (task_id, farmer_id, notes, activity_type, progress_percentage, device_info, network_status, is_final, images, update_number, image_hashes, verification_score_details, risk_level, status) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, false, $8::jsonb, $9, $10::jsonb, $11::jsonb, $12, 'Waiting for Review') RETURNING *`,
+      [taskId, userId, notes, activityType, parseInt(progressPercentage, 10) || 0, deviceInfo, networkStatus, JSON.stringify(verification.imagesWithStatus), updateNumber, JSON.stringify(currentHashes), JSON.stringify(verification.details), verification.riskLevel]
+    );
+    
+    await pool.query(
+      'UPDATE tasks SET completion_percentage = GREATEST(completion_percentage, $1), total_updates = total_updates + 1, updated_at = NOW() WHERE id = $2 AND farm_id = $3',
+      [parseInt(progressPercentage, 10) || 0, taskId, farmId]
+    );
+    
+    if (currentTask.created_by_user_id) {
+       await pool.query(`
+          INSERT INTO notifications (user_id, farm_id, type, title, message, priority, channel)
+          VALUES ($1, $2, $3, $4, $5, 'normal', 'Dashboard')
+       `, [currentTask.created_by_user_id, farmId, 'ACTIVITY_UPDATE', 'New Activity Update', `New update (${progressPercentage}%) for task: ${currentTask.title}`]);
+       
+       if (req.io) {
+          req.io.to(currentTask.created_by_user_id).emit('notification', {
+            title: 'New Activity Update',
+            message: `New update (${progressPercentage}%) for task: ${currentTask.title}`,
+            category: 'ACTIVITY_UPDATE',
+            priority: 'normal'
+          });
+       }
+    }
+    
+    res.status(201).json({ message: 'Activity update submitted successfully', update: insertRes.rows[0], verification });
+  } catch (err) {
+    console.error('Error adding activity update:', err);
+    res.status(500).json({ error: 'Failed to add activity update' });
+  }
+}
+
+
+export async function reviewTaskUpdate(req, res) {
+  try {
+    const userId = req.user.userId;
+    const farmId = await getDefaultFarmId(userId);
+    const updateId = req.params.updateId;
+    const { action, reason, priority, remainingPercentage, approvedPercentage } = req.body; 
+
+    if (!['Approve', 'Request Rework', 'Reject Update'].includes(action)) {
+      return res.status(400).json({ error: 'Invalid action' });
+    }
+
+    if (['Request Rework', 'Reject Update'].includes(action) && !String(reason || '').trim()) {
+      return res.status(400).json({ error: 'A reason is required for this action' });
+    }
+
+    const updateLookup = await pool.query(`
+      SELECT tu.*, t.id as task_id, t.title as task_title, t.task_wage, t.assigned_to_user_id
+      FROM task_updates tu
+      JOIN tasks t ON tu.task_id = t.id
+      WHERE tu.id = $1 AND t.farm_id = $2 LIMIT 1
+    `, [updateId, farmId]);
+
+    if (updateLookup.rows.length === 0) {
+      return res.status(404).json({ error: 'Update not found or unauthorized' });
+    }
+
+    const update = updateLookup.rows[0];
+    let newStatus = 'Approved';
+    if (action === 'Request Rework') newStatus = 'Rework Required';
+    if (action === 'Reject Update') newStatus = 'Rejected';
+
+    await pool.query(`
+      UPDATE task_updates
+      SET status = $1, manager_comment = $2, updated_at = NOW()
+      WHERE id = $3
+    `, [newStatus, reason || null, updateId]);
+
+    if (newStatus === 'Approved') {
+      const prog = approvedPercentage !== undefined ? parseInt(approvedPercentage, 10) : parseInt(update.progress_percentage || 0, 10);
+      const earnedAmount = (Number(update.task_wage || 0) * prog) / 100;
+      
+      await pool.query(`
+        UPDATE task_updates SET approved_progress = $1 WHERE id = $2
+      `, [prog, updateId]);
+
+      await pool.query(`
+        UPDATE tasks 
+        SET approved_progress = approved_progress + $1,
+            earned_salary = earned_salary + $2,
+            completion_percentage = GREATEST(completion_percentage, $1)
+        WHERE id = $3
+      `, [prog, earnedAmount, update.task_id]);
+
+      // Create Ledger Entry
+      await pool.query(`
+        INSERT INTO salary_ledger (farm_id, worker_id, task_id, task_update_id, approved_progress, amount)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `, [farmId, update.assigned_to_user_id, update.task_id, updateId, prog, earnedAmount]);
+      
+      // We don't call upsertMonthlyPayrollAfterApproval directly here because dynamic payroll runs off salary_ledger
+      // But we can trigger a worker notification
+    }
+
+    if (newStatus === 'Rework Required') {
+      // Create a rework child update row if needed, or UI handles it by referencing the parent update
+    }
+
+    res.json({ message: `Update ${newStatus} successfully` });
+  } catch (err) {
+    console.error('Error reviewing task update:', err);
+    res.status(500).json({ error: 'Failed to review task update' });
+  }
+}

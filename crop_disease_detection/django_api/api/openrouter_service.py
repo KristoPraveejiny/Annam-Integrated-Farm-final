@@ -122,6 +122,19 @@ def get_farm_context(user_id):
             tasks_str = ", ".join([f"{t[0]} ({t[1]})" for t in tasks])
             context.append(f"Pending/Active Tasks: {tasks_str}.")
 
+        cursor.execute("""
+            SELECT ff.field_name, ff.soil_type, ff.soil_ph
+            FROM farm_fields ff
+            JOIN farms f ON ff.farm_id = f.id
+            LEFT JOIN farm_memberships fm ON f.id = fm.farm_id
+            WHERE (f.owner_user_id = %s OR fm.user_id = %s)
+            LIMIT 5
+        """, [user_id, user_id])
+        fields = cursor.fetchall()
+        if fields:
+            fields_str = ", ".join([f"{f[0]} (Soil: {f[1] or 'Unknown'}, pH: {f[2] if f[2] is not None else 'Unknown'})" for f in fields])
+            context.append(f"Fields: {fields_str}.")
+
     return "\n".join(context)
 
 
@@ -194,6 +207,7 @@ Limit answer to around 300 words.
     weather = get_live_weather()
     forecast = get_weather_forecast()
     disease_detection = get_latest_disease_detection(user_id)
+    farm_context_str = get_farm_context(user_id)
 
     # Format Weather block
     if weather:
@@ -233,6 +247,14 @@ LATEST DISEASE DETECTION
 Crop: {disease_detection['crop']}
 Disease: {disease_detection['disease']}
 Confidence: {disease_detection['confidence']}%
+"""
+
+    if farm_context_str:
+        formatted_user_message += f"""
+-----------------------------------
+FARM CONTEXT
+-----------------------------------
+{farm_context_str}
 """
 
     formatted_user_message += f"""

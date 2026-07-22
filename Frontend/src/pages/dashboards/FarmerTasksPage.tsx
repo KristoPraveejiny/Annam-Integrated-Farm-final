@@ -6,8 +6,11 @@ import { FiCheckCircle, FiClock, FiMessageSquare } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 
+import { useNavigate } from 'react-router-dom';
+
 export default function FarmerTasksPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -76,6 +79,14 @@ export default function FarmerTasksPage() {
       .toLowerCase()
       .replace(/\s+/g, '_');
 
+  const getDisplayStatus = (task: any) => {
+    const status = normalizeTaskStatus(task.status);
+    if ((status === 'completed' || status === 'done' || status === 'approved' || status === 'waiting_for_manager_approval' || status === 'waiting_manager_approval') && task.completion_percentage < 100) {
+      return 'in_progress';
+    }
+    return status;
+  };
+
   const updateTaskStatus = async (taskId: string, status: string, cropCycleId?: string) => {
     try {
       const tokenRaw = localStorage.getItem('token');
@@ -98,27 +109,8 @@ export default function FarmerTasksPage() {
         return;
       }
 
-      if (status === 'done') {
-        const res = await fetch(`/api/tasks/${taskId}/evidence`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify({ notes: 'Completed from worker task dashboard.' })
-        });
-
-        if (res.ok) {
-          if (cropCycleId) {
-            setSelectedTaskId(taskId);
-            setSelectedCropCycleId(cropCycleId);
-            setShowCropModal(true);
-          }
-          fetchTasks();
-          notifySuccess('Task submitted for manager approval.');
-        } else {
-          notifyError('Failed to submit task evidence');
-        }
+      if (status === 'done' || status === 'update') {
+        navigate(`/dashboard/farmer-worker/tasks/${taskId}/activity`);
         return;
       }
 
@@ -192,33 +184,44 @@ export default function FarmerTasksPage() {
                     <td className="px-6 py-4 font-bold text-white">
                       {t(task.title)}
                       {task.description && <p className="text-xs text-slate-400 font-normal mt-1">{task.description}</p>}
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                          <div className="h-full bg-emerald-500" style={{ width: `${task.completion_percentage || 0}%` }} />
+                        </div>
+                        <span className="text-xs text-slate-400">{task.completion_percentage || 0}%</span>
+                      </div>
                     </td>
                     <td className="px-6 py-4">{task.crop_name || t('N/A')}</td>
                     <td className="px-6 py-4 capitalize">{t(task.priority)}</td>
                     <td className="px-6 py-4">{task.due_date ? new Date(task.due_date).toLocaleDateString() : t('N/A')}</td>
                     <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
-                        normalizeTaskStatus(task.status) === 'approved' || normalizeTaskStatus(task.status) === 'completed' || normalizeTaskStatus(task.status) === 'done'
+                        getDisplayStatus(task) === 'approved' || getDisplayStatus(task) === 'completed' || getDisplayStatus(task) === 'done'
                           ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                          : normalizeTaskStatus(task.status) === 'in_progress'
+                          : getDisplayStatus(task) === 'in_progress'
                             ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                            : normalizeTaskStatus(task.status) === 'waiting_for_manager_approval' || normalizeTaskStatus(task.status) === 'waiting_manager_approval'
+                            : getDisplayStatus(task) === 'waiting_for_manager_approval' || getDisplayStatus(task) === 'waiting_manager_approval'
                               ? 'bg-violet-500/10 text-violet-300 border-violet-500/20'
-                              : normalizeTaskStatus(task.status) === 'rejected'
+                              : getDisplayStatus(task) === 'rejected'
                                 ? 'bg-red-500/10 text-red-400 border-red-500/20'
                                 : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                      }`}>{String(task.status || 'N/A').replace(/_/g, ' ')}</span>
+                      }`}>{String(getDisplayStatus(task)).replace(/_/g, ' ')}</span>
                     </td>
                     <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
-                      {normalizeTaskStatus(task.status) === 'pending' && (
+                      {getDisplayStatus(task) === 'pending' && (
                         <Button variant="ghost" onClick={() => updateTaskStatus(task.id, 'in_progress')} className="!p-2 text-blue-400 hover:text-blue-300" title="Start Task">
                           <FiClock className="mr-1 inline" /> {t("Start Work")}
                         </Button>
                       )}
-                      {(normalizeTaskStatus(task.status) === 'pending' || normalizeTaskStatus(task.status) === 'in_progress') && (
-                        <Button variant="ghost" onClick={() => updateTaskStatus(task.id, 'done', task.crop_cycle_id)} className="!p-2 text-emerald-400 hover:text-emerald-300" title="Mark Complete">
-                          <FiCheckCircle className="mr-1 inline" /> {t("Complete")}
-                        </Button>
+                      {(getDisplayStatus(task) === 'in_progress') && (
+                        <>
+                          <Button variant="ghost" onClick={() => updateTaskStatus(task.id, 'update')} className="!p-2 text-blue-400 hover:text-blue-300" title="Update Progress">
+                            <FiCheckCircle className="mr-1 inline" /> {t("Update")}
+                          </Button>
+                          <Button variant="ghost" onClick={() => updateTaskStatus(task.id, 'done')} className="!p-2 text-emerald-400 hover:text-emerald-300" title="Mark Complete">
+                            <FiCheckCircle className="mr-1 inline" /> {t("Complete")}
+                          </Button>
+                        </>
                       )}
                     </td>
                   </tr>

@@ -6,15 +6,22 @@ export async function addField(req, res) {
   try {
     const userId = req.user.userId;
     const resolvedFarmId = await getDefaultFarmId(userId);
-    const { field_name, field_code, area, soil_type, irrigation_type, location, status } = req.body;
+    const { field_name, field_code, area, soil_type, irrigation_type, location, status, soil_ph, soil_fertility_level, drainage_quality } = req.body;
     
     if (!field_name) {
       return res.status(400).json({ error: 'field_name is required' });
     }
     
+    if (soil_ph !== undefined && soil_ph !== null) {
+      const ph = parseFloat(soil_ph);
+      if (isNaN(ph) || ph < 0 || ph > 14) {
+        return res.status(400).json({ error: 'soil_ph must be a number between 0.0 and 14.0' });
+      }
+    }
+    
     const result = await pool.query(
-      `INSERT INTO farm_fields (farm_id, field_name, field_code, area, soil_type, irrigation_type, location, status) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      `INSERT INTO farm_fields (farm_id, field_name, field_code, area, soil_type, irrigation_type, location, status, soil_ph, soil_fertility_level, drainage_quality) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
       [
         resolvedFarmId, 
         field_name, 
@@ -23,7 +30,10 @@ export async function addField(req, res) {
         soil_type || null, 
         irrigation_type || null, 
         location || null, 
-        status || 'Active'
+        status || 'Active',
+        soil_ph || null,
+        soil_fertility_level || null,
+        drainage_quality || null
       ]
     );
     res.status(201).json({ message: 'Field created', field: result.rows[0] });
@@ -128,7 +138,14 @@ export async function updateField(req, res) {
     const { id } = req.params;
     const userId = req.user.userId;
     const resolvedFarmId = await getDefaultFarmId(userId);
-    const { field_name, field_code, area, soil_type, irrigation_type, location, status } = req.body;
+    const { field_name, field_code, area, soil_type, irrigation_type, location, status, soil_ph, soil_fertility_level, drainage_quality } = req.body;
+
+    if (soil_ph !== undefined && soil_ph !== null) {
+      const ph = parseFloat(soil_ph);
+      if (isNaN(ph) || ph < 0 || ph > 14) {
+        return res.status(400).json({ error: 'soil_ph must be a number between 0.0 and 14.0' });
+      }
+    }
 
     const result = await pool.query(
       `UPDATE farm_fields 
@@ -139,9 +156,12 @@ export async function updateField(req, res) {
            irrigation_type = COALESCE($5, irrigation_type),
            location = COALESCE($6, location),
            status = COALESCE($7, status),
+           soil_ph = COALESCE($8, soil_ph),
+           soil_fertility_level = COALESCE($9, soil_fertility_level),
+           drainage_quality = COALESCE($10, drainage_quality),
            updated_at = now()
-       WHERE id = $8 AND farm_id = $9 RETURNING *`,
-      [field_name, field_code, area, soil_type, irrigation_type, location, status, id, resolvedFarmId]
+       WHERE id = $11 AND farm_id = $12 RETURNING *`,
+      [field_name, field_code, area, soil_type, irrigation_type, location, status, soil_ph, soil_fertility_level, drainage_quality, id, resolvedFarmId]
     );
 
     if (result.rowCount === 0) {

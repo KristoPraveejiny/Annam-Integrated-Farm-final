@@ -8,9 +8,16 @@ import {
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 
+interface TopPrediction {
+  disease: string;
+  confidence: number;
+}
+
 interface AnalysisResult {
   disease: string;
   confidence: number;
+  top_3?: TopPrediction[];
+  image_url?: string;
   crop_name?: string; // dynamic fallback
   weatherSummary?: {
     temperature: number;
@@ -43,6 +50,7 @@ const SUPPORTED_CROPS = [
   { name: 'Tomato', emoji: '🍅', diseases: 8 },
   { name: 'Beans', emoji: '🫘', diseases: 5 },
   { name: 'Papaya', emoji: '🥭', diseases: 6 },
+  { name: 'Mango', emoji: '🥭', diseases: 8 },
   { name: 'Brinjal', emoji: '🍆', diseases: 5 },
   { name: 'Coconut', emoji: '🥥', diseases: 4 },
   { name: 'Paddy', emoji: '🌾', diseases: 7 },
@@ -169,6 +177,15 @@ export default function DiseaseDetectionPage() {
     // Get Image Resolution
     const img = new Image();
     img.onload = () => {
+      if (img.naturalWidth < 200 || img.naturalHeight < 200) {
+        setError(`Image resolution is too low (${img.naturalWidth}x${img.naturalHeight}). Please upload a clearer image (at least 200x200 pixels).`);
+        setFile(null);
+        URL.revokeObjectURL(objectUrl);
+        setPreviewUrl(null);
+        setResolution('N/A');
+        setFileSize('N/A');
+        return;
+      }
       setResolution(`${img.naturalWidth} x ${img.naturalHeight}`);
     };
     img.src = objectUrl;
@@ -294,13 +311,22 @@ export default function DiseaseDetectionPage() {
   const getConfidenceColor = (conf: number) => {
     if (conf >= 90) return 'bg-[#00C853]';
     if (conf >= 70) return 'bg-[#FFC107]';
+    if (conf >= 60) return 'bg-orange-400';
     return 'bg-[#FF5252]';
   };
 
   const getConfidenceTextColor = (conf: number) => {
     if (conf >= 90) return 'text-[#00C853]';
     if (conf >= 70) return 'text-[#FFC107]';
+    if (conf >= 60) return 'text-orange-400';
     return 'text-[#FF5252]';
+  };
+
+  const getStatusBadge = (conf: number) => {
+    if (conf >= 90) return { label: 'Highly Confident', icon: '🟢', textClass: 'text-[#00C853]' };
+    if (conf >= 70) return { label: 'Moderate Confidence', icon: '🟡', textClass: 'text-[#FFC107]' };
+    if (conf >= 60) return { label: 'Acceptable Confidence', icon: '🟠', textClass: 'text-orange-400' };
+    return { label: 'Low Confidence', icon: '🔴', textClass: 'text-[#FF5252]' };
   };
 
   return (
@@ -557,10 +583,89 @@ export default function DiseaseDetectionPage() {
               <div className="h-0.5 bg-emerald-950/80 w-full mt-2" />
             </div>
 
+            
+            {result.confidence < 60 ? (
+              <div className="space-y-6">
+                <div className="bg-[#112D2B] border border-red-500/40 p-6 md:p-8 rounded-2xl shadow-md space-y-6">
+                  <div className="flex flex-col items-center text-center space-y-4">
+                    <div className="p-4 bg-red-500/20 text-[#FF5252] rounded-full">
+                      <FiAlertCircle size={48} />
+                    </div>
+                    <h3 className="text-2xl font-bold text-white">⚠ Low Confidence Prediction</h3>
+                    <p className="text-[#B0BEC5] max-w-2xl text-lg">
+                      The AI model could not confidently identify the disease from this image ({result.confidence.toFixed(2)}%).
+                    </p>
+                  </div>
+                  
+                  <div className="grid md:grid-cols-2 gap-6 bg-[#081C15] p-6 rounded-xl border border-emerald-950">
+                    <div>
+                      <h4 className="text-[#FFC107] font-bold mb-3 flex items-center gap-2"><FiInfo /> Possible Reasons:</h4>
+                      <ul className="list-disc pl-5 space-y-2 text-sm text-[#B0BEC5]">
+                        <li>Poor image quality or blurry image</li>
+                        <li>Multiple leaves in one image</li>
+                        <li>Poor lighting or heavy shadows</li>
+                        <li>Disease not clearly visible</li>
+                        <li>Disease not included in the trained dataset</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <h4 className="text-[#00C853] font-bold mb-3 flex items-center gap-2"><FiCheckCircle /> Suggestions:</h4>
+                      <ul className="list-disc pl-5 space-y-2 text-sm text-[#B0BEC5]">
+                        <li>Capture <span className="text-white font-bold">one infected leaf</span> only</li>
+                        <li>Use natural daylight</li>
+                        <li>Keep the camera close and in focus</li>
+                        <li>Upload another image</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-center pt-4 space-y-3">
+                    <p className="text-[#B0BEC5] font-medium text-sm">Not satisfied with this prediction?</p>
+                    <button
+                      onClick={() => navigate('/dashboard/farm-manager/ai-chat', { state: { crop: result.crop_name || selectedCrop, predictedDisease: result.disease, confidence: result.confidence, top_3: result.top_3, imageUrl: result.image_url } })}
+                      className="px-8 py-4 bg-gradient-to-r from-emerald-600 via-[#00C853] to-emerald-400 hover:from-emerald-500 hover:to-emerald-300 text-[#081C15] font-extrabold text-lg rounded-2xl transition-all shadow-xl tracking-wider uppercase flex items-center gap-3"
+                    >
+                      <FiMessageSquare size={24} />
+                      Consult AI Farm Advisor
+                    </button>
+                  </div>
+                </div>
+                
+            
+            {result.top_3 && result.top_3.length > 0 && (
+              <div className="bg-[#112D2B] border border-emerald-900/40 p-6 rounded-xl shadow-md space-y-4">
+                <h3 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
+                  <span>🎯</span> Top AI Predictions
+                </h3>
+                <div className="space-y-4">
+                  {result.top_3.map((pred, idx) => (
+                    <div key={idx} className="space-y-1">
+                      <div className="flex justify-between text-xs font-semibold">
+                        <span className="text-[#B0BEC5]">{idx + 1}. {pred.disease}</span>
+                        <span className={getConfidenceTextColor(pred.confidence)}>{pred.confidence.toFixed(2)}%</span>
+                      </div>
+                      <div className="w-full bg-[#081C15] h-2 rounded-full overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.min(pred.confidence, 100)}%` }}
+                          transition={{ duration: 0.8, delay: idx * 0.2 }}
+                          className={`h-full rounded-full ${getConfidenceColor(pred.confidence)}`}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+              </div>
+            ) : (
+              <>
+
             {/* Results Grid */}
             <div className="flex justify-end w-full mb-4">
                <button
-                 onClick={() => navigate('/dashboard/farm-manager/ai-chat', { state: { crop: result.crop_name || selectedCrop, predictedDisease: result.disease, confidence: result.confidence } })}
+                 onClick={() => navigate('/dashboard/farm-manager/ai-chat', { state: { crop: result.crop_name || selectedCrop, predictedDisease: result.disease, confidence: result.confidence, top_3: result.top_3, imageUrl: result.image_url } })}
                  className="px-6 py-2.5 bg-[#00C853] hover:bg-[#00E676] text-[#081C15] font-extrabold text-sm rounded-xl transition-colors shadow-lg flex items-center gap-2"
                >
                  <FiMessageSquare size={16} />
@@ -605,12 +710,12 @@ export default function DiseaseDetectionPage() {
 
               {/* Card 4: Detection Status */}
               <div className="bg-[#112D2B] border border-emerald-900/50 p-4 rounded-xl shadow-md flex items-center gap-4">
-                <div className="p-3 bg-emerald-950/30 text-[#00C853] rounded-lg">
-                  <FiCheckCircle size={22} />
+                <div className={`p-3 rounded-lg ${getStatusBadge(result.confidence).label === 'Highly Confident' ? 'bg-emerald-950/30 text-[#00C853]' : getStatusBadge(result.confidence).label === 'Moderate Confidence' ? 'bg-amber-950/30 text-[#FFC107]' : 'bg-orange-950/30 text-orange-400'}`}>
+                  <span className="text-xl">{getStatusBadge(result.confidence).icon}</span>
                 </div>
                 <div>
                   <p className="text-[10px] text-[#B0BEC5] uppercase font-bold tracking-wider">Status</p>
-                  <p className="text-base font-bold text-[#00C853] mt-0.5">Detected</p>
+                  <p className={`text-xs md:text-sm font-bold mt-0.5 ${getStatusBadge(result.confidence).textClass}`}>{getStatusBadge(result.confidence).label}</p>
                 </div>
               </div>
             </div>
@@ -632,13 +737,47 @@ export default function DiseaseDetectionPage() {
                 />
               </div>
               <div className="flex justify-between text-[10px] text-[#B0BEC5] font-bold">
-                <span className="text-[#FF5252]">High Risk (&lt;70%)</span>
+                <span className="text-[#FF5252]">High Risk (&lt;60%)</span>
+                <span className="text-orange-400">Acceptable (60%-69%)</span>
                 <span className="text-[#FFC107]">Warning (70%-89%)</span>
                 <span className="text-[#00C853]">High Confidence (&gt;=90%)</span>
               </div>
             </div>
 
-            {/* 8. AI Recommendation Section */}
+            {/* Top AI Predictions */}
+            {result.top_3 && result.top_3.length > 0 && (
+              <div className="bg-[#112D2B] border border-emerald-900/40 p-6 rounded-xl shadow-md space-y-4">
+                <h3 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
+                  <span>🎯</span> Top AI Predictions
+                </h3>
+                <div className="space-y-4">
+                  {result.top_3.map((pred, idx) => (
+                    <div key={idx} className="space-y-1">
+                      <div className="flex justify-between text-xs font-semibold">
+                        <span className="text-[#B0BEC5]">{idx + 1}. {pred.disease}</span>
+                        <span className={getConfidenceTextColor(pred.confidence)}>{pred.confidence.toFixed(2)}%</span>
+                      </div>
+                      <div className="w-full bg-[#081C15] h-2 rounded-full overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.min(pred.confidence, 100)}%` }}
+                          transition={{ duration: 0.8, delay: idx * 0.2 }}
+                          className={`h-full rounded-full ${getConfidenceColor(pred.confidence)}`}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            
+              </>
+            )}
+            
+            {result.confidence >= 60 && (
+<>
+{/* 8. AI Recommendation Section */}
             {result.aiRecommendation && (
               <div className="space-y-4">
                 <div>
@@ -814,6 +953,9 @@ export default function DiseaseDetectionPage() {
                 <span className="text-2xl font-black tracking-widest">{suitableSp}</span>
               </div>
             </div>
+</>
+)}
+
           </motion.div>
         )}
       </AnimatePresence>

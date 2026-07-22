@@ -13,6 +13,9 @@ export function AddFieldModal({ isOpen, onClose, onAdd }: AddFieldModalProps) {
     soil_type: '',
     irrigation_type: '',
     location: '',
+    soil_ph: '',
+    soil_fertility_level: '',
+    drainage_quality: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -29,7 +32,8 @@ export function AddFieldModal({ isOpen, onClose, onAdd }: AddFieldModalProps) {
     try {
       await onAdd({
         ...formData,
-        area: parseFloat(formData.area),
+        area: formData.area ? parseFloat(formData.area) : null,
+        soil_ph: formData.soil_ph ? parseFloat(formData.soil_ph) : null,
       });
       setFormData({
         field_name: '',
@@ -37,6 +41,9 @@ export function AddFieldModal({ isOpen, onClose, onAdd }: AddFieldModalProps) {
         soil_type: '',
         irrigation_type: '',
         location: '',
+        soil_ph: '',
+        soil_fertility_level: '',
+        drainage_quality: '',
       });
       onClose();
     } catch (err) {
@@ -93,6 +100,53 @@ export function AddFieldModal({ isOpen, onClose, onAdd }: AddFieldModalProps) {
               className="w-full border rounded-md px-3 py-2" 
               placeholder="e.g. Loamy Soil"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Soil pH</label>
+            <input 
+              type="number" 
+              step="0.1"
+              min="0"
+              max="14"
+              name="soil_ph"
+              value={formData.soil_ph}
+              onChange={handleChange}
+              className="w-full border rounded-md px-3 py-2" 
+              placeholder="e.g. 6.5"
+            />
+            <p className="text-xs text-gray-500 mt-1">Soil pH helps improve crop recommendations and AI advisory.</p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Soil Fertility Level</label>
+            <select 
+              name="soil_fertility_level"
+              value={formData.soil_fertility_level}
+              onChange={handleChange}
+              className="w-full border rounded-md px-3 py-2"
+            >
+              <option value="">Select Level (Optional)</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Drainage Quality</label>
+            <select 
+              name="drainage_quality"
+              value={formData.drainage_quality}
+              onChange={handleChange}
+              className="w-full border rounded-md px-3 py-2"
+            >
+              <option value="">Select Quality (Optional)</option>
+              <option value="Excellent">Excellent</option>
+              <option value="Good">Good</option>
+              <option value="Moderate">Moderate</option>
+              <option value="Poor">Poor</option>
+            </select>
           </div>
           
           <div>

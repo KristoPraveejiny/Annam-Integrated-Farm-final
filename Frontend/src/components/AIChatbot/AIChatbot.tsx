@@ -72,7 +72,7 @@ function MessageBubble({ message, onSuggestionClick }: { message: ChatMessage; o
 
 export default function AIChatbot() {
   const location = useLocation();
-  const stateData = location.state as { crop?: string; predictedDisease?: string; confidence?: number } | null;
+  const stateData = location.state as { crop?: string; predictedDisease?: string; confidence?: number; top_3?: any[]; imageUrl?: string } | null;
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -121,11 +121,39 @@ export default function AIChatbot() {
 
   // Handle auto-trigger from Disease Detection module
   useEffect(() => {
-      if (stateData?.predictedDisease && !initializing && !loading) {
-          const autoPrompt = `I need help with my ${stateData.crop} crop. The AI detected ${stateData.predictedDisease} with ${stateData.confidence}% confidence. What should I do?`;
-          void handleNewChat(autoPrompt, stateData.crop, stateData.predictedDisease, stateData.confidence);
-          // clear state to prevent re-triggering
-          window.history.replaceState({}, document.title);
+      if (stateData?.crop && !initializing && !loading) {
+          let autoPrompt = "";
+          if (stateData.confidence !== undefined && stateData.confidence < 60 && stateData.top_3) {
+             const top3Str = stateData.top_3.map((p: any, i: number) => `${i+1}. ${p.disease} (${p.confidence.toFixed(1)}%)`).join(', ');
+             autoPrompt = `I tried to scan an image of my ${stateData.crop} but the AI had low confidence. Its top guesses were: ${top3Str}. Can you help me identify the problem and what I should do?`;
+          } else if (stateData.predictedDisease) {
+             autoPrompt = `I need help with my ${stateData.crop} crop. The AI detected ${stateData.predictedDisease} with ${stateData.confidence}% confidence. What should I do? Please explain what this disease is, what the reasons for it are, and suggest fertilizers or treatments.`;
+          }
+          
+          if (autoPrompt) {
+              const initiateChatWithImage = async () => {
+                  let imageFile: File | undefined = undefined;
+                  if (stateData.imageUrl) {
+                      try {
+                          const urlToFetch = stateData.imageUrl.startsWith('http') || stateData.imageUrl.startsWith('blob') 
+                              ? stateData.imageUrl 
+                              : `http://localhost:5000${stateData.imageUrl}`;
+                          const response = await fetch(urlToFetch);
+                          const blob = await response.blob();
+                          const filename = stateData.imageUrl.split('/').pop() || 'disease_image.jpg';
+                          imageFile = new File([blob], filename, { type: blob.type });
+                      } catch (err) {
+                          console.error("Failed to fetch image for chat", err);
+                      }
+                  }
+                  
+                  await handleNewChat(autoPrompt, stateData.crop, stateData.predictedDisease, stateData.confidence, imageFile);
+                  // clear state to prevent re-triggering
+                  window.history.replaceState({}, document.title);
+              };
+              
+              void initiateChatWithImage();
+          }
       }
   }, [stateData, initializing]);
 
@@ -149,7 +177,7 @@ export default function AIChatbot() {
     }
   };
 
-  const handleNewChat = async (initialText?: string, cropCtx?: string, diseaseCtx?: string, confCtx?: number) => {
+  const handleNewChat = async (initialText?: string, cropCtx?: string, diseaseCtx?: string, confCtx?: number, initialFile?: File) => {
     setActiveSessionId(null);
     setMessages([]);
     setInput('');
@@ -164,7 +192,7 @@ export default function AIChatbot() {
         setActiveSessionId(session.id);
         
         if (initialText) {
-            await sendMessage(initialText, session.id, undefined, cropCtx, diseaseCtx, confCtx);
+            await sendMessage(initialText, session.id, initialFile, cropCtx, diseaseCtx, confCtx);
         } else {
             setLoading(false);
             inputRef.current?.focus();

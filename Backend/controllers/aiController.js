@@ -26,7 +26,7 @@ export async function detectDisease(req, res) {
       return res.status(500).json({ error: e.message || 'Error communicating with AI service' });
     }
 
-    const { crop, disease } = aiResponse;
+    const { crop, disease, top_3 } = aiResponse;
     // Validate and clamp confidence to [0, 100], rounded to 2 decimal places
     const confidence = Math.round(Math.min(100, Math.max(0, Number(aiResponse.confidence))) * 100) / 100;
 
@@ -58,7 +58,7 @@ export async function detectDisease(req, res) {
       `INSERT INTO disease_detection_history 
       (user_id, farm_id, crop_name, disease_name, confidence, uploaded_image, weather_summary, ai_recommendation) 
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [userId, farmId, crop, disease, confidence, dbImagePath, JSON.stringify(weatherSummary), JSON.stringify(aiRecommendation)]
+      [userId, farmId, crop, confidence >= 60 ? disease : 'Low Confidence Prediction', confidence, dbImagePath, JSON.stringify(weatherSummary), JSON.stringify(aiRecommendation)]
     );
 
     // Also store in the disease_detections table for farm management visibility
@@ -74,12 +74,12 @@ export async function detectDisease(req, res) {
         farmId, 
         userId, 
         dbImagePath, 
-        disease, 
+        confidence >= 60 ? disease : 'Low Confidence Prediction', 
         severity, 
         confidence, 
         '1.0', 
         aiRecommendation.disease_explanation || '', 
-        'Detected'
+        confidence >= 60 ? 'Detected' : 'Unconfirmed'
       ]
     );
 
@@ -90,6 +90,7 @@ export async function detectDisease(req, res) {
       crop,
       disease,
       confidence,
+      top_3,
       weatherSummary,
       aiRecommendation,
       image_url: dbImagePath,

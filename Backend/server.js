@@ -27,6 +27,7 @@ import aiRoutes from './routes/aiRoutes.js';
 import shiftRoutes from './routes/shiftRoutes.js';
 import attendanceRoutes from './routes/attendanceRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
+import diseaseReportRoutes from './routes/diseaseReportRoutes.js';
 import { verifyToken } from './authMiddleware.js';
 
 
@@ -65,6 +66,7 @@ app.use('/api/crops', cropRoutes);
 app.use('/api/blocks', blockRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/crop-observations', cropObservationRoutes);
+app.use('/api/disease-reports', diseaseReportRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/salary', salaryRoutes);
 app.use('/api/admin', adminRoutes);
@@ -82,7 +84,7 @@ app.use('/api/shifts', shiftRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/audit', auditRoutes);
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 io.on('connection', (socket) => {
   console.log(`Socket connected: ${socket.id}`);

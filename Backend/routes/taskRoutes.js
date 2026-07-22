@@ -10,7 +10,10 @@ import {
   submitTaskEvidence, 
   reviewTask,
   getWorkers,
-  getRecentTaskUpdates
+  getRecentTaskUpdates,
+  addActivityUpdate,
+  getTaskReviews,
+  reviewTaskUpdate
 } from '../controllers/taskController.js';
 import upload from '../uploadMiddleware.js';
 
@@ -23,12 +26,15 @@ router.post('/', createTask);
 router.get('/farmer', getFarmerTasks);
 router.get('/manager', getFarmManagerTasks);
 router.get('/updates/recent', getRecentTaskUpdates);
+router.get('/:id/reviews', getTaskReviews);
 
 router.put('/:id', updateTaskDetails);
 
 // New workflow routes
 router.put('/:id/start', startTask);
-router.post('/:id/evidence', upload.single('image'), submitTaskEvidence);
+router.post('/:id/activity-update', upload.array('images', 5), addActivityUpdate);
+router.post('/:id/evidence', upload.array('images', 5), submitTaskEvidence);
 router.put('/:id/review', authorizeRole(['farm_manager', 'super_admin']), reviewTask);
+router.put('/update/:updateId/review', authorizeRole(['farm_manager', 'super_admin']), reviewTaskUpdate);
 
 export default router;

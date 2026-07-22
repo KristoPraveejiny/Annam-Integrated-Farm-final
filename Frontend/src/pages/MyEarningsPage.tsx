@@ -30,11 +30,22 @@ interface Summary {
   afternoon_shifts: number;
   evening_shifts: number;
   total_working_hours: number;
+  ledger_earnings: number;
+}
+
+interface LedgerEntry {
+  id: string;
+  date: string;
+  task_title: string;
+  approved_progress: number;
+  amount: string;
+  status: string;
 }
 
 export default function MyEarningsPage() {
   const { t } = useTranslation();
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -50,6 +61,7 @@ export default function MyEarningsPage() {
         });
         const data = await res.json();
         setPayments(data.payments || []);
+        setLedger(data.ledger || []);
         setSummary(data.summary || null);
       } catch (err) {
         console.error('Failed to fetch earnings', err);
@@ -88,6 +100,7 @@ export default function MyEarningsPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <BreakdownStat label={t("Shift Wage Earned")} value={`Rs. ${Number(summary.shift_wage_earned ?? 0).toFixed(2)}`} />
               <BreakdownStat label={t("Overtime Pay")} value={`Rs. ${Number(summary.overtime_pay ?? 0).toFixed(2)}`} />
+              <BreakdownStat label={t("Task Ledger Earnings")} value={`Rs. ${Number(summary.ledger_earnings ?? 0).toFixed(2)}`} />
               <BreakdownStat label={t("Bonuses")} value={`Rs. ${Number(summary.bonus ?? 0).toFixed(2)}`} />
               <BreakdownStat label={t("Deductions")} value={`Rs. ${Number(summary.deductions ?? 0).toFixed(2)}`} />
               <BreakdownStat label={t("Gross Salary")} value={`Rs. ${Number(summary.gross_salary ?? 0).toFixed(2)}`} />
@@ -98,6 +111,43 @@ export default function MyEarningsPage() {
           )}
         </Card>
       </div>
+
+      <Card title={t("Dynamic Task Ledger")} subtitle={t("Approved task updates")} className="mb-6">
+        {loading ? (
+          <p className="text-slate-500">{t("Loading...")}</p>
+        ) : ledger.length === 0 ? (
+          <p className="text-slate-500">{t("No approved tasks yet.")}</p>
+        ) : (
+          <div className="overflow-x-auto rounded-2xl border border-slate-100">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-slate-50 text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">{t("Date")}</th>
+                  <th className="px-4 py-3">{t("Task")}</th>
+                  <th className="px-4 py-3">{t("Progress")}</th>
+                  <th className="px-4 py-3">{t("Amount")}</th>
+                  <th className="px-4 py-3">{t("Status")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {ledger.map((item) => (
+                  <tr key={item.id}>
+                    <td className="px-4 py-3 text-slate-600">{new Date(item.date).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 font-medium text-slate-900">{item.task_title}</td>
+                    <td className="px-4 py-3 text-emerald-600 font-bold">+{item.approved_progress}%</td>
+                    <td className="px-4 py-3 font-medium text-slate-900">Rs. {Number(item.amount).toFixed(2)}</td>
+                    <td className="px-4 py-3">
+                      <span className="capitalize font-medium text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full text-xs">
+                        {t(item.status)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
 
       <Card title={t("Payment History")} subtitle={t("Your monthly salary payments")}>
         {loading ? (

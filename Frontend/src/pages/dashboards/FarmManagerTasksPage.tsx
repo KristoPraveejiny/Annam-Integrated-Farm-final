@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
-import { FiPlus } from 'react-icons/fi';
+import { FiPlus, FiAlertTriangle } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../utils/apiFetch';
@@ -37,6 +37,14 @@ export default function FarmManagerTasksPage() {
       .trim()
       .toLowerCase()
       .replace(/\s+/g, '_');
+
+  const getDisplayStatus = (task: any) => {
+    const status = normalizeTaskStatus(task.status);
+    if ((status === 'completed' || status === 'done' || status === 'approved' || status === 'waiting_for_manager_approval' || status === 'waiting_manager_approval') && task.completion_percentage < 100) {
+      return 'in_progress';
+    }
+    return status;
+  };
 
   const fetchData = async () => {
     try {
@@ -133,6 +141,25 @@ export default function FarmManagerTasksPage() {
         tone="light"
       />
 
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <Card className="bg-emerald-500/10 border-emerald-500/20">
+          <h4 className="text-emerald-400 text-sm font-bold uppercase tracking-wider">Today's Activities</h4>
+          <p className="text-3xl font-black text-white mt-2">{tasks.filter(t => new Date(t.updated_at).toDateString() === new Date().toDateString()).length}</p>
+        </Card>
+        <Card className="bg-violet-500/10 border-violet-500/20">
+          <h4 className="text-violet-400 text-sm font-bold uppercase tracking-wider">Pending Reviews</h4>
+          <p className="text-3xl font-black text-white mt-2">{tasks.filter(t => getDisplayStatus(t) === 'waiting_manager_approval').length}</p>
+        </Card>
+        <Card className="bg-blue-500/10 border-blue-500/20">
+          <h4 className="text-blue-400 text-sm font-bold uppercase tracking-wider">Tasks Completed Today</h4>
+          <p className="text-3xl font-black text-white mt-2">{tasks.filter(t => getDisplayStatus(t) === 'completed' && new Date(t.completed_at).toDateString() === new Date().toDateString()).length}</p>
+        </Card>
+        <Card className="bg-amber-500/10 border-amber-500/20">
+          <h4 className="text-amber-400 text-sm font-bold uppercase tracking-wider">Workers Active</h4>
+          <p className="text-3xl font-black text-white mt-2">{new Set(tasks.filter(t => getDisplayStatus(t) === 'in_progress').map(t => t.assigned_to_user_id)).size}</p>
+        </Card>
+      </div>
+
       <Card title={t("Task List")} subtitle={t("All tasks created for your farm")}>
         <div className="flex justify-end mb-6">
           <Button onClick={() => setShowModal(true)} className="flex items-center gap-2 whitespace-nowrap">
@@ -161,7 +188,20 @@ export default function FarmManagerTasksPage() {
                ) : (
                 tasks.map(task => (
                   <tr key={task.id} className="hover:bg-white/5 transition-colors">
-                    <td className="px-6 py-4 font-bold text-white">{task.title}</td>
+                    <td className="px-6 py-4 font-bold text-white relative">
+                      <div className="flex items-center gap-2">
+                        {task.title}
+                        {task.needs_manager_review && (
+                          <FiAlertTriangle className="text-amber-500" title="Needs Manager Review" />
+                        )}
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                          <div className="h-full bg-emerald-500" style={{ width: `${task.completion_percentage || 0}%` }} />
+                        </div>
+                        <span className="text-xs text-slate-400">{task.completion_percentage || 0}%</span>
+                      </div>
+                    </td>
                     <td className="px-6 py-4">{task.assigned_to_name || 'Unassigned'}</td>
                     <td className="px-6 py-4">{task.crop_name || task.livestock_name || 'N/A'}</td>
                     <td className="px-6 py-4 capitalize">{task.priority}</td>
@@ -169,21 +209,21 @@ export default function FarmManagerTasksPage() {
                     <td className="px-6 py-4">{task.due_date ? new Date(task.due_date).toLocaleDateString() : 'N/A'}</td>
                     <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
-                        normalizeTaskStatus(task.status) === 'completed' || normalizeTaskStatus(task.status) === 'approved' || normalizeTaskStatus(task.status) === 'done' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 
-                        normalizeTaskStatus(task.status) === 'in_progress' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 
-                        normalizeTaskStatus(task.status) === 'waiting_manager_approval' || normalizeTaskStatus(task.status) === 'waiting_for_manager_approval' ? 'bg-violet-500/10 text-violet-300 border-violet-500/20' :
+                        getDisplayStatus(task) === 'completed' || getDisplayStatus(task) === 'approved' || getDisplayStatus(task) === 'done' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 
+                        getDisplayStatus(task) === 'in_progress' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 
+                        getDisplayStatus(task) === 'waiting_manager_approval' || getDisplayStatus(task) === 'waiting_for_manager_approval' ? 'bg-violet-500/10 text-violet-300 border-violet-500/20' :
                         'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                      }`}>{String(task.status || 'N/A').replace(/_/g, ' ')}</span>
+                      }`}>{String(getDisplayStatus(task)).replace(/_/g, ' ')}</span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      {normalizeTaskStatus(task.status) === 'waiting_manager_approval' || normalizeTaskStatus(task.status) === 'waiting_for_manager_approval' ? (
+                      {getDisplayStatus(task) === 'waiting_manager_approval' || getDisplayStatus(task) === 'waiting_for_manager_approval' || getDisplayStatus(task) === 'completed' || task.total_updates > 0 ? (
                         <Button
                           type="button"
                           variant="ghost"
-                          onClick={() => navigate('/dashboard/farm-manager/recent-updates', { state: { taskId: task.id } })}
+                          onClick={() => navigate(`/dashboard/farm-manager/tasks/${task.id}/review`)}
                           className="!px-3 !py-2 text-slate-200 hover:text-white"
                         >
-                          {t("View Details")}
+                          {t("Review Activity")}
                         </Button>
                       ) : (
                         <span className="text-slate-500 text-sm">-</span>

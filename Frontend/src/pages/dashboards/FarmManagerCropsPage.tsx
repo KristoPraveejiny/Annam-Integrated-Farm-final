@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { SectionHeading } from '../../components/ui/SectionHeading';
-import { FiDroplet, FiMapPin, FiEdit2, FiTrash2, FiSearch, FiPlus, FiCheckCircle } from 'react-icons/fi';
+import { FiDroplet, FiMapPin, FiEdit2, FiTrash2, FiSearch, FiPlus, FiCheckCircle, FiAlertTriangle, FiDownload } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import { apiFetch } from '../../utils/apiFetch';
+import { notifySuccess, notifyError } from '../../utils/notifications';
 
 export default function FarmManagerCropsPage() {
   const { t } = useTranslation();
@@ -23,6 +24,13 @@ export default function FarmManagerCropsPage() {
   const [recentUpdates, setRecentUpdates] = useState<any[]>([]);
   const [selectedCrop, setSelectedCrop] = useState<any | null>(null);
   const [editingCropId, setEditingCropId] = useState<string | null>(null);
+
+  // Disease reports states
+  const [diseaseReports, setDiseaseReports] = useState<any[]>([]);
+  const [selectedReport, setSelectedReport] = useState<any | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportStatus, setReportStatus] = useState('Submitted');
+  const [reportNotes, setReportNotes] = useState('');
 
   const growthStageMap: Record<string, string[]> = {
     papaya: ['Seed', 'Seedling', 'Vegetative', 'Flowering', 'Fruiting', 'Harvest'],
@@ -89,6 +97,11 @@ export default function FarmManagerCropsPage() {
         if (updatesRes.ok) {
           setRecentUpdates(await updatesRes.json());
         }
+
+        const reportsRes = await apiFetch('/api/disease-reports');
+        if (reportsRes.ok) {
+          setDiseaseReports(await reportsRes.json());
+        }
       } catch (err) {
         console.warn('API not available, using mock data for crops and fields');
         // Mock data for UI testing
@@ -104,10 +117,35 @@ export default function FarmManagerCropsPage() {
         setRecentUpdates([
           { id: 'obs-1', crop_name: 'Tomato', farmer_name: 'Worker A', notes: 'Height increased', observed_at: new Date().toISOString(), growth_stage: 'Vegetative' },
         ]);
+        setDiseaseReports([
+          { id: '1', farmer_name: 'Worker A', crop_name: 'Tomato', field_name: 'North Field A', title: 'Spots on leaves', description: 'Yellow/black spots observed on bottom leaves.', severity: 'High', status: 'Submitted', reported_at: new Date().toISOString() }
+        ]);
       }
     };
     fetchData();
   }, []);
+
+  const handleSaveReport = async () => {
+    if (!selectedReport) return;
+    try {
+      const res = await apiFetch(`/api/disease-reports/${selectedReport.id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: reportStatus, manager_notes: reportNotes })
+      });
+      if (res.ok) {
+        notifySuccess('Disease report updated successfully!');
+        setDiseaseReports(prev => prev.map(r => r.id === selectedReport.id ? { ...r, status: reportStatus, manager_notes: reportNotes } : r));
+        setShowReportModal(false);
+        setSelectedReport(null);
+      } else {
+        notifyError('Failed to update report status');
+      }
+    } catch (err) {
+      console.error(err);
+      notifyError('Error updating report status');
+    }
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -192,7 +230,7 @@ export default function FarmManagerCropsPage() {
       <SectionHeading eyebrow={t("Crop Management")} title={t("Crops & Fields")} description={t("Manage your crop lifecycle, fields, and growth monitoring.")} tone="light" />
       {/* Tabs */}
       <div className="flex space-x-3 border-b border-white/10 pb-4 overflow-x-auto">
-        {['dashboard', 'crops', 'growth'].map((tab) => (
+        {['dashboard', 'crops', 'growth', 'disease-reports'].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -202,7 +240,7 @@ export default function FarmManagerCropsPage() {
                 : 'bg-slate-900/50 text-slate-300 hover:bg-slate-800 border border-white/5'
             }`}
           >
-            {tab === 'dashboard' ? t('Overview') : t(tab)}
+            {tab === 'dashboard' ? t('Overview') : tab === 'disease-reports' ? t('Disease Reports') : t(tab)}
           </button>
         ))}
       </div>
@@ -533,6 +571,178 @@ export default function FarmManagerCropsPage() {
                 {t("Cancel")}
               </Button>
               <Button onClick={handleSaveCrop}>{editingCropId ? t('Update Crop') : t('Save Crop')}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'disease-reports' && (
+        <Card title={t("Disease Reports")} subtitle={t("Review farmer-submitted disease observations and update statuses")}>
+          {diseaseReports.length === 0 ? (
+            <div className="py-8 text-center text-slate-500">{t("No disease reports found.")}</div>
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-white/10 shadow-xl">
+              <table className="min-w-full text-left text-sm text-slate-300">
+                <thead className="bg-slate-900/90 text-white font-semibold">
+                  <tr>
+                    <th className="px-6 py-4">{t("Crop")}</th>
+                    <th className="px-6 py-4">{t("Field")}</th>
+                    <th className="px-6 py-4">{t("Title")}</th>
+                    <th className="px-6 py-4">{t("Farmer")}</th>
+                    <th className="px-6 py-4">{t("Severity")}</th>
+                    <th className="px-6 py-4">{t("Status")}</th>
+                    <th className="px-6 py-4 text-right">{t("Action")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5 bg-slate-950/60">
+                  {diseaseReports.map((report) => (
+                    <tr key={report.id} className="hover:bg-white/5 transition-colors">
+                      <td className="px-6 py-4 font-bold text-white">{report.crop_name}</td>
+                      <td className="px-6 py-4">{report.field_name}</td>
+                      <td className="px-6 py-4 font-medium text-slate-200">{report.title}</td>
+                      <td className="px-6 py-4 text-slate-400">{report.farmer_name}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
+                          report.severity === 'High' || report.severity === 'Emergency'
+                            ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                            : report.severity === 'Medium'
+                            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                            : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                        }`}>
+                          {report.severity}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                          report.status === 'Resolved'
+                            ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/20'
+                            : report.status === 'Submitted'
+                            ? 'bg-blue-600/20 text-blue-400 border border-blue-500/20'
+                            : 'bg-slate-700/30 text-slate-300 border border-slate-600/20'
+                        }`}>
+                          {report.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <Button 
+                          onClick={() => {
+                            setSelectedReport(report);
+                            setReportStatus(report.status);
+                            setReportNotes(report.manager_notes || '');
+                            setShowReportModal(true);
+                          }} 
+                          className="py-1 px-3 text-xs"
+                        >
+                          {t("Review")}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Disease Report Review Modal */}
+      {showReportModal && selectedReport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]">
+            <h3 className="text-2xl font-bold text-white mb-2">{t('Review Disease Report')}</h3>
+            <p className="text-slate-400 text-sm mb-6">{selectedReport.crop_name} - {selectedReport.field_name}</p>
+
+            <div className="space-y-4">
+              <div>
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">{t("Title")}</span>
+                <p className="text-white font-medium">{selectedReport.title}</p>
+              </div>
+
+              <div>
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">{t("Description")}</span>
+                <p className="text-slate-300 bg-slate-950/40 p-3 rounded-2xl border border-white/5 text-sm whitespace-pre-wrap">{selectedReport.description}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">{t("Severity")}</span>
+                  <span className="text-amber-400 font-bold">{selectedReport.severity}</span>
+                </div>
+                <div>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block">{t("Affected Plants")}</span>
+                  <span className="text-white font-bold">{selectedReport.affected_plants || t("N/A")}</span>
+                </div>
+              </div>
+
+              {selectedReport.image_urls && selectedReport.image_urls.length > 0 && (
+                <div>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block mb-2">{t("Evidence Image")}</span>
+                  <div className="rounded-2xl overflow-hidden border border-white/10 bg-slate-950">
+                    <img 
+                      src={selectedReport.image_urls[0].startsWith('http') || selectedReport.image_urls[0].startsWith('blob:') || selectedReport.image_urls[0].startsWith('data:') ? selectedReport.image_urls[0] : `http://localhost:5000${selectedReport.image_urls[0].startsWith('/') ? '' : '/'}${selectedReport.image_urls[0]}`} 
+                      alt="Disease evidence" 
+                      className="w-full h-auto max-h-60 object-cover"
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    />
+                  </div>
+                  <button
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      const url = selectedReport.image_urls[0].startsWith('http') || selectedReport.image_urls[0].startsWith('blob:') || selectedReport.image_urls[0].startsWith('data:') ? selectedReport.image_urls[0] : `http://localhost:5000${selectedReport.image_urls[0].startsWith('/') ? '' : '/'}${selectedReport.image_urls[0]}`;
+                      try {
+                        const response = await fetch(url);
+                        const blob = await response.blob();
+                        const blobUrl = window.URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = blobUrl;
+                        link.download = `Disease_Report_${selectedReport.crop_name}.jpg`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        window.URL.revokeObjectURL(blobUrl);
+                      } catch (err) {
+                        console.error('Download failed, opening in new tab', err);
+                        window.open(url, '_blank');
+                      }
+                    }}
+                    className="mt-3 inline-flex items-center gap-2 text-sm text-emerald-400 hover:text-emerald-300 font-medium bg-transparent border-none p-0 cursor-pointer"
+                  >
+                    <FiDownload /> {t("Download Image")}
+                  </button>
+                </div>
+              )}
+
+              <div className="border-t border-white/10 my-4 pt-4"></div>
+
+              <div>
+                <label className="block mb-2 text-sm font-semibold text-white/80">{t("Update Status")}</label>
+                <select 
+                  value={reportStatus} 
+                  onChange={e => setReportStatus(e.target.value)}
+                  className="w-full bg-slate-800 border border-white/10 text-white p-2.5 rounded-2xl focus:outline-none focus:border-emerald-500 text-sm font-medium"
+                >
+                  <option value="Submitted">{t("Submitted")}</option>
+                  <option value="Under Review">{t("Under Review")}</option>
+                  <option value="Resolved">{t("Resolved")}</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block mb-2 text-sm font-semibold text-white/80">{t("Manager Notes & Recommendations")}</label>
+                <textarea 
+                  value={reportNotes} 
+                  onChange={e => setReportNotes(e.target.value)}
+                  placeholder={t("Enter treatment recommendation or review comments...")}
+                  className="w-full bg-slate-800 border border-white/10 text-white p-3 rounded-2xl focus:outline-none focus:border-emerald-500 text-sm font-medium min-h-24"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-8">
+              <Button variant="ghost" onClick={() => { setShowReportModal(false); setSelectedReport(null); }}>
+                {t("Cancel")}
+              </Button>
+              <Button onClick={handleSaveReport}>{t("Save Updates")}</Button>
             </div>
           </div>
         </div>

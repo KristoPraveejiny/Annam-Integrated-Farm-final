@@ -123,6 +123,30 @@ export async function sendCropUpdatedEmail(managerEmail, updateDetails) {
   return sendEmail({ to: managerEmail, subject, text: html.replace(/<[^>]+>/g, ''), html });
 }
 
+export async function sendDiseaseReportEmail(managerEmail, reportDetails) {
+  const subject = `New Crop Disease Report: ${reportDetails.title}`;
+  const html = `
+    <h2>New Crop Disease Report</h2>
+    <p>A farmer has submitted a new disease report for review.</p>
+    <ul>
+      <li><strong>Farmer:</strong> ${reportDetails.farmerName}</li>
+      <li><strong>Crop:</strong> ${reportDetails.cropName}</li>
+      <li><strong>Field:</strong> ${reportDetails.fieldName}</li>
+      <li><strong>Severity:</strong> ${reportDetails.severity}</li>
+      <li><strong>Affected Plants:</strong> ${reportDetails.affectedPlants || 'N/A'}</li>
+    </ul>
+    <h3>Title:</h3>
+    <p>${reportDetails.title}</p>
+    <h3>Description:</h3>
+    <p>${reportDetails.description || 'No description provided.'}</p>
+    ${reportDetails.imageUrl ? `<h3>Evidence Image:</h3><p><img src="http://localhost:5000${reportDetails.imageUrl}" alt="Disease Image" style="max-width: 100%; height: auto;"/></p><p><a href="http://localhost:5000${reportDetails.imageUrl}">View/Download Image</a></p>` : ''}
+    <br/>
+    <p>Please log in to your dashboard to review this report and determine recommendations.</p>
+  `;
+
+  return sendEmail({ to: managerEmail, subject, text: html.replace(/<[^>]+>/g, ''), html });
+}
+
 export async function sendTaskUpdateEmail(managerEmail, updateDetails) {
   const subject = 'Task Update Submitted';
   const html = `

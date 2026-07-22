@@ -28,6 +28,18 @@ export default function FarmerCropUpdatesPage() {
   
   const [stageImagePreview, setStageImagePreview] = useState<string | null>(null);
   const [diseaseImagePreview, setDiseaseImagePreview] = useState<string | null>(null);
+  const [diseaseImage, setDiseaseImage] = useState<File | null>(null);
+
+  // Disease Form states
+  const [fields, setFields] = useState<any[]>([]);
+  const [selectedDiseaseField, setSelectedDiseaseField] = useState('');
+  const [diseaseCrops, setDiseaseCrops] = useState<any[]>([]);
+  const [selectedDiseaseCrop, setSelectedDiseaseCrop] = useState('');
+  const [diseaseTitle, setDiseaseTitle] = useState('');
+  const [diseaseDescription, setDiseaseDescription] = useState('');
+  const [diseaseSeverity, setDiseaseSeverity] = useState('Low');
+  const [affectedPlants, setAffectedPlants] = useState('');
+  const [pastReports, setPastReports] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -56,12 +68,38 @@ export default function FarmerCropUpdatesPage() {
              setSelectedCropCycleId(active[0].id);
           }
         }
+        
+        // Fetch fields
+        const fieldsRes = await fetch('/api/fields/farm/default', { headers: { Authorization: `Bearer ${token}` } });
+        if (fieldsRes.ok) {
+          const fieldsData = await fieldsRes.json();
+          setFields(fieldsData);
+        }
+        
+        // Fetch past reports
+        const reportsRes = await fetch('/api/disease-reports', { headers: { Authorization: `Bearer ${token}` } });
+        if (reportsRes.ok) {
+           const reportsData = await reportsRes.json();
+           setPastReports(reportsData);
+        }
       } catch (err) {
         console.error('Failed to fetch data', err);
       }
     };
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (selectedDiseaseField) {
+       const filtered = activeCrops.filter(c => c.field_id === selectedDiseaseField);
+       setDiseaseCrops(filtered);
+       if (filtered.length > 0) setSelectedDiseaseCrop(filtered[0].id);
+       else setSelectedDiseaseCrop('');
+    } else {
+       setDiseaseCrops([]);
+       setSelectedDiseaseCrop('');
+    }
+  }, [selectedDiseaseField, activeCrops]);
 
   const tasksForDate = tasks.filter(t => {
     if (!t.due_date) return false;
@@ -156,6 +194,52 @@ export default function FarmerCropUpdatesPage() {
       }
     } catch(err) {
       notifyError('Error updating crop stage');
+    }
+  };
+
+  const handleDiseaseSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedDiseaseCrop || !selectedDiseaseField) return notifyWarning('Please select a Field and a Crop');
+    if (!diseaseTitle || !diseaseDescription) return notifyWarning('Please provide a title and description');
+
+    const tokenRaw = localStorage.getItem('token');
+    const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
+
+    try {
+      const formData = new FormData();
+      formData.append('field_id', selectedDiseaseField);
+      formData.append('crop_id', selectedDiseaseCrop);
+      formData.append('title', diseaseTitle);
+      formData.append('description', diseaseDescription);
+      formData.append('severity', diseaseSeverity);
+      if (affectedPlants) formData.append('affected_plants', affectedPlants);
+      
+      if (diseaseImage) {
+        formData.append('image', diseaseImage);
+      }
+
+      const res = await fetch('/api/disease-reports', {
+        method: 'POST',
+        headers: { 
+          Authorization: `Bearer ${token}` 
+        },
+        body: formData
+      });
+      if (res.ok) {
+         notifySuccess('Disease report submitted successfully! The Farm Manager will review it shortly.');
+         setDiseaseTitle('');
+         setDiseaseDescription('');
+         setAffectedPlants('');
+         setDiseaseImagePreview(null);
+         setDiseaseImage(null);
+         
+         const reportRes = await fetch('/api/disease-reports', { headers: { Authorization: `Bearer ${token}` } });
+         if (reportRes.ok) setPastReports(await reportRes.json());
+      } else {
+         notifyError('Failed to submit disease report.');
+      }
+    } catch(err) {
+      notifyError('Error submitting disease report');
     }
   };
 
@@ -332,37 +416,155 @@ export default function FarmerCropUpdatesPage() {
       {activeTab === 'disease' && (
         <div className="grid gap-6 xl:grid-cols-2">
           <Card title={t("Report Disease")} subtitle={t("Upload leaf images for AI analysis")}>
-            <label className="block cursor-pointer">
-              <div className="grid place-items-center rounded-2xl border-2 border-dashed border-emerald-500/50 bg-emerald-500/10 p-10 text-center hover:bg-emerald-500/20 transition-colors relative overflow-hidden">
-                {diseaseImagePreview ? (
-                  <img src={diseaseImagePreview} alt="Leaf Preview" className="max-h-64 object-contain rounded-lg" />
-                ) : (
-                  <>
-                    <FiUploadCloud className="text-6xl text-emerald-500" />
-                    <p className="mt-4 text-lg font-bold text-white">{t("Upload leaf photo")}</p>
-                    <p className="mt-2 text-sm text-slate-400">{t("Supported formats: JPG, PNG")}</p>
-                    <Button type="button" className="mt-6 pointer-events-none">{t("Choose File")}</Button>
-                  </>
-                )}
-                <input 
-                  type="file" 
-                  accept="image/jpeg, image/png" 
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      setDiseaseImagePreview(URL.createObjectURL(e.target.files[0]));
-                    }
-                  }}
-                />
+            <form onSubmit={handleDiseaseSubmit} className="space-y-6 mt-4">
+              <div className="grid gap-6 md:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold text-white/80">{t("Select Field")}</span>
+                  <select 
+                    className="farm-input w-full appearance-none"
+                    value={selectedDiseaseField}
+                    onChange={e => setSelectedDiseaseField(e.target.value)}
+                  >
+                    <option value="">{t("Select a field")}</option>
+                    {fields.map(f => (
+                      <option key={f.id} value={f.id}>{f.field_name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold text-white/80">{t("Select Crop")}</span>
+                  <select 
+                    className="farm-input w-full appearance-none"
+                    value={selectedDiseaseCrop}
+                    onChange={e => setSelectedDiseaseCrop(e.target.value)}
+                    disabled={!selectedDiseaseField}
+                  >
+                    <option value="">{t("Select a crop")}</option>
+                    {diseaseCrops.map(c => (
+                      <option key={c.id} value={c.id}>{c.crop_name}</option>
+                    ))}
+                  </select>
+                </label>
               </div>
-            </label>
+              
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold text-white/80">{t("Problem Title")}</span>
+                <input 
+                  type="text" 
+                  className="farm-input w-full" 
+                  placeholder={t("e.g. Yellowing spots on leaves")} 
+                  value={diseaseTitle}
+                  onChange={e => setDiseaseTitle(e.target.value)}
+                  required
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold text-white/80">{t("Problem Description")}</span>
+                <textarea 
+                  className="farm-input w-full min-h-24" 
+                  placeholder={t("Provide more details...")} 
+                  value={diseaseDescription}
+                  onChange={e => setDiseaseDescription(e.target.value)}
+                  required
+                />
+              </label>
+
+              <div className="grid gap-6 md:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold text-white/80">{t("Severity Level")}</span>
+                  <select 
+                    className="farm-input w-full appearance-none"
+                    value={diseaseSeverity}
+                    onChange={e => setDiseaseSeverity(e.target.value)}
+                  >
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
+                    <option value="Emergency">Emergency</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-sm font-semibold text-white/80">{t("Affected Plants (Optional)")}</span>
+                  <input 
+                    type="number" 
+                    className="farm-input w-full" 
+                    placeholder="e.g. 15" 
+                    value={affectedPlants}
+                    onChange={e => setAffectedPlants(e.target.value)}
+                  />
+                </label>
+              </div>
+
+              <label className="block cursor-pointer">
+                <span className="mb-2 block text-sm font-semibold text-white/80">{t("Upload Images (Max 6)")}</span>
+                <div className="grid place-items-center rounded-2xl border-2 border-dashed border-emerald-500/50 bg-emerald-500/10 p-10 text-center hover:bg-emerald-500/20 transition-colors relative overflow-hidden">
+                  {diseaseImagePreview ? (
+                    <img src={diseaseImagePreview} alt="Leaf Preview" className="max-h-64 object-contain rounded-lg" />
+                  ) : (
+                    <>
+                      <FiUploadCloud className="text-6xl text-emerald-500" />
+                      <p className="mt-4 text-lg font-bold text-white">{t("Upload leaf photo")}</p>
+                      <p className="mt-2 text-sm text-slate-400">{t("Supported formats: JPG, PNG")}</p>
+                      <Button type="button" className="mt-6 pointer-events-none">{t("Choose File")}</Button>
+                    </>
+                  )}
+                  <input 
+                    type="file" 
+                    accept="image/jpeg, image/png" 
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setDiseaseImagePreview(URL.createObjectURL(e.target.files[0]));
+                        setDiseaseImage(e.target.files[0]);
+                      }
+                    }}
+                  />
+                </div>
+              </label>
+
+              <Button type="submit" className="w-full">{t("Submit Disease Report")}</Button>
+            </form>
           </Card>
-          <Card title={t("Detection Results")} subtitle={t("AI feedback and recommendations")}>
-            <div className="h-full flex flex-col justify-center items-center text-slate-400 p-6 text-center border-2 border-dashed border-white/10 rounded-2xl bg-white/5">
-              <FiSearch className="text-4xl mb-3 text-slate-500"/>
-              <p>{t("Upload an image to see disease confidence scores and suggested treatments.")}</p>
+          
+          <div className="space-y-6">
+            <h3 className="text-xl font-bold text-white">{t("Disease Reports History")}</h3>
+            <div className="space-y-4 max-h-[800px] overflow-y-auto pr-2">
+              {pastReports.length === 0 ? (
+                <div className="text-center p-8 bg-white/5 rounded-2xl border border-white/10">
+                  <p className="text-slate-400">{t("No past disease reports found.")}</p>
+                </div>
+              ) : (
+                pastReports.map(report => (
+                  <div key={report.id} className="bg-slate-900/80 border border-white/10 p-5 rounded-2xl">
+                    <div className="flex justify-between items-start mb-2">
+                      <h4 className="text-white font-semibold">{report.title}</h4>
+                      <span className={`px-2 py-1 rounded text-xs font-semibold
+                        ${report.status === 'Submitted' ? 'bg-blue-500/20 text-blue-400' :
+                          report.status === 'Under Review' ? 'bg-amber-500/20 text-amber-400' :
+                          report.status === 'Treatment Saved' ? 'bg-purple-500/20 text-purple-400' :
+                          'bg-emerald-500/20 text-emerald-400'
+                        }
+                      `}>
+                        {report.status}
+                      </span>
+                    </div>
+                    <p className="text-sm text-slate-400 mb-2">{report.crop_name} | {report.field_name}</p>
+                    <p className="text-sm text-slate-300 line-clamp-2 mb-3">{report.description}</p>
+                    {report.manager_notes && (
+                      <div className="bg-emerald-900/30 border border-emerald-500/30 p-3 rounded-lg mb-2">
+                        <p className="text-xs text-emerald-400 font-semibold mb-1">Manager Feedback & AI Results:</p>
+                        <p className="text-sm text-slate-300 whitespace-pre-line">{report.manager_notes}</p>
+                      </div>
+                    )}
+                    <div className="text-xs text-slate-500 text-right">
+                      {new Date(report.reported_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
-          </Card>
+          </div>
         </div>
       )}
     </div>

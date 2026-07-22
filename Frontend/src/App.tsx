@@ -21,7 +21,9 @@ import FarmManagerCropsPage from './pages/dashboards/FarmManagerCropsPage';
 import FarmManagerLivestockPage from './pages/dashboards/FarmManagerLivestockPage';
 import FarmManagerWorkforcePage from './pages/dashboards/FarmManagerWorkforcePage';
 import FarmManagerTasksPage from './pages/dashboards/FarmManagerTasksPage';
+import TaskReviewPage from './pages/dashboards/TaskReviewPage';
 import FarmerTasksPage from './pages/dashboards/FarmerTasksPage';
+import TaskActivityPage from './pages/dashboards/TaskActivityPage';
 import FarmerCropUpdatesPage from './pages/dashboards/FarmerCropUpdatesPage';
 import FarmerLivestockPage from './pages/dashboards/FarmerLivestockPage';
 import FarmerLivestockUpdatesPage from './pages/dashboards/FarmerLivestockUpdatesPage';
@@ -222,6 +224,11 @@ export default function App() {
           <FarmManagerTasksPage />
         </AppShell>
       } />
+      <Route path="/dashboard/farm-manager/tasks/:id/review" element={
+        <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
+          <TaskReviewPage />
+        </AppShell>
+      } />
       <Route path="/dashboard/farm-manager/ai-advisory" element={
         <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
           <AIAdvisoryPage />
@@ -276,6 +283,11 @@ export default function App() {
       <Route path="/dashboard/farmer-worker/tasks" element={
         <AppShell role="farmer-worker" items={publicNavItems['farmer-worker']}>
           <FarmerTasksPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/farmer-worker/tasks/:id/activity" element={
+        <AppShell role="farmer-worker" items={publicNavItems['farmer-worker']}>
+          <TaskActivityPage />
         </AppShell>
       } />
       <Route path="/dashboard/farmer-worker/marketplace" element={

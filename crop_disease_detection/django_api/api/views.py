@@ -76,6 +76,17 @@ def _predict_single_bundle(bundle, img_batch):
     predicted_idx = int(np.argmax(predictions))
     confidence_score = float(predictions[predicted_idx])
     predicted_class_name = class_names[predicted_idx] if class_names else f"class_{predicted_idx}"
+    top_3_indices = np.argsort(predictions)[::-1][:3]
+    top_3 = []
+    for idx in top_3_indices:
+        conf = float(predictions[idx])
+        c_perc = round(min(100.0, max(0.0, conf * 100)), 2)
+        c_name = class_names[idx].replace("_", " ").title() if class_names else f"class_{idx}"
+        if c_name.lower() == "healthy": c_name = "Healthy"
+        top_3.append({
+            "disease": c_name,
+            "confidence": c_perc
+        })
 
     return {
         "model_name": bundle.get("name", "model"),
@@ -83,6 +94,7 @@ def _predict_single_bundle(bundle, img_batch):
         "predicted_index": predicted_idx,
         "confidence": round(min(100.0, max(0.0, confidence_score * 100)), 2),
         "raw_confidence": confidence_score,
+        "top_3": top_3
     }
 
 
@@ -196,14 +208,14 @@ def predict_disease_view(request):
             disease_name = final_result["predicted_class"]
             if "_" in disease_name:
                 disease_name = disease_name.replace("_", " ").title()
-
             return JsonResponse({
                 "success": True,
                 "crop": crop,
                 "disease": disease_name,
                 "confidence": confidence_percentage,
                 "selected_model": final_result["model_name"],
-                "model_results": model_results
+                "model_results": model_results,
+                "top_3": final_result.get("top_3", [])
             }, status=200)
 
         # 6. Execute model inference (rescaling is handled inside the model graph)
@@ -221,10 +233,22 @@ def predict_disease_view(request):
 
         confidence_percentage = round(min(100.0, max(0.0, confidence_score * 100)), 2)
         
-        if confidence_percentage < 20.0:
-            print(f"DEBUG: Rejected due to low confidence: {confidence_percentage}%")
+        top_3_indices = np.argsort(predictions_normalized)[::-1][:3]
+        top_3 = []
+        for idx in top_3_indices:
+            conf = float(predictions_normalized[idx])
+            c_perc = round(min(100.0, max(0.0, conf * 100)), 2)
+            c_name = class_names[idx].replace("_", " ").title()
+            if c_name.lower() == "healthy": c_name = "Healthy"
+            top_3.append({
+                "disease": c_name,
+                "confidence": c_perc
+            })
+            
+        if confidence_percentage < 1.0:  # Changed to 1.0 to let frontend handle logic
+            print(f"DEBUG: Rejected due to critically low confidence: {confidence_percentage}%")
             return JsonResponse(
-                {"error": f"Prediction confidence is low ({confidence_percentage}%)."},
+                {"error": f"Prediction confidence is incredibly low ({confidence_percentage}%)."},
                 status=400
             )
 
@@ -239,7 +263,8 @@ def predict_disease_view(request):
             "success": True,
             "crop": crop,
             "disease": disease_name,
-            "confidence": confidence_percentage
+            "confidence": confidence_percentage,
+            "top_3": top_3
         }, status=200)
 
     except Exception as e:

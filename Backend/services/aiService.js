@@ -160,7 +160,7 @@ async function getFarmContext(farmId) {
     ),
     pool.query(
       `
-        SELECT id, field_name, field_code, area, soil_type, irrigation_type, location, status
+        SELECT id, field_name, field_code, area, soil_type, irrigation_type, location, status, soil_ph, soil_fertility_level, drainage_quality
         FROM farm_fields
         WHERE farm_id = $1
         ORDER BY created_at DESC
@@ -279,7 +279,7 @@ function buildSystemPrompt({ language, role, farmContext }) {
     `Farm profile: ${farmContext.farm ? `${farmContext.farm.name || 'Unnamed farm'} (${farmContext.farm.farm_code || 'no farm code'})` : 'No farm record found'}`,
     `User role: ${role}`,
     '',
-    `Fields:\n${asBulletList(farmContext.fields, (field) => `${field.field_name || 'Unnamed field'} | soil: ${field.soil_type || 'Unknown'} | irrigation: ${field.irrigation_type || 'Unknown'} | location: ${field.location || 'Unknown'} | status: ${field.status || 'Unknown'}`)}`,
+    `Fields:\n${asBulletList(farmContext.fields, (field) => `${field.field_name || 'Unnamed field'} | soil: ${field.soil_type || 'Unknown'} | pH: ${field.soil_ph !== null ? field.soil_ph : 'Unknown'} | fertility: ${field.soil_fertility_level || 'Unknown'} | drainage: ${field.drainage_quality || 'Unknown'} | irrigation: ${field.irrigation_type || 'Unknown'} | location: ${field.location || 'Unknown'} | status: ${field.status || 'Unknown'}`)}`,
     '',
     `Crops:\n${asBulletList(farmContext.crops, (crop) => `${crop.crop_name || 'Unknown crop'} | variety: ${crop.variety || 'Unknown'} | stage: ${crop.status || 'Unknown'} | planted: ${crop.planting_date || 'Unknown'} | harvest: ${crop.expected_harvest_date || 'Unknown'} | field: ${crop.field_name || 'Unassigned'}`)}`,
     '',

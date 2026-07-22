@@ -20,6 +20,9 @@ interface Field {
   crop_name?: string;
   growth_stage?: string;
   crop_status?: string;
+  soil_ph?: string | number | null;
+  soil_fertility_level?: string | null;
+  drainage_quality?: string | null;
 }
 
 const SOIL_TYPES = ['Loamy Soil', 'Clay Soil', 'Sandy Soil', 'Silt Soil', 'Peaty Soil', 'Chalky Soil', 'Other'];
@@ -36,7 +39,7 @@ export default function FieldManagementPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldToDelete, setFieldToDelete] = useState<Field | null>(null);
 
-  const emptyForm = { field_name: '', field_code: '', area: '', soil_type: '', irrigation_type: '', location: '', status: 'Active' };
+  const emptyForm = { field_name: '', field_code: '', area: '', soil_type: '', irrigation_type: '', location: '', status: 'Active', soil_ph: '', soil_fertility_level: '', drainage_quality: '' };
   const [formData, setFormData] = useState<any>(emptyForm);
 
   const getToken = () => {
@@ -64,7 +67,7 @@ export default function FieldManagementPage() {
   const openAdd = () => { setEditField(null); setFormData(emptyForm); setIsModalOpen(true); };
   const openEdit = (f: Field) => {
     setEditField(f);
-    setFormData({ field_name: f.field_name, field_code: f.field_code || '', area: f.area || '', soil_type: f.soil_type || '', irrigation_type: f.irrigation_type || '', location: f.location || '', status: f.status || 'Active' });
+    setFormData({ field_name: f.field_name, field_code: f.field_code || '', area: f.area || '', soil_type: f.soil_type || '', irrigation_type: f.irrigation_type || '', location: f.location || '', status: f.status || 'Active', soil_ph: f.soil_ph || '', soil_fertility_level: f.soil_fertility_level || '', drainage_quality: f.drainage_quality || '' });
     setIsModalOpen(true);
   };
 
@@ -77,7 +80,7 @@ export default function FieldManagementPage() {
       const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, area: parseFloat(formData.area) || null })
+        body: JSON.stringify({ ...formData, area: formData.area ? parseFloat(formData.area) : null, soil_ph: formData.soil_ph ? parseFloat(formData.soil_ph) : null })
       });
       if (!res.ok) {
         const e = await res.json();
@@ -294,12 +297,46 @@ export default function FieldManagementPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Location / Notes</label>
-                <input type="text" value={formData.location}
-                  onChange={e => setFormData({ ...formData, location: e.target.value })}
-                  className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
-                  placeholder="e.g. North-east sector near river" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Soil pH</label>
+                  <input type="number" step="0.1" min="0" max="14" value={formData.soil_ph}
+                    onChange={e => setFormData({ ...formData, soil_ph: e.target.value })}
+                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
+                    placeholder="e.g. 6.5" />
+                  <p className="text-xs text-slate-500 mt-1">Improves AI advisory.</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Soil Fertility Level</label>
+                  <select value={formData.soil_fertility_level} onChange={e => setFormData({ ...formData, soil_fertility_level: e.target.value })}
+                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none">
+                    <option value="">Select level (Optional)</option>
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Drainage Quality</label>
+                  <select value={formData.drainage_quality} onChange={e => setFormData({ ...formData, drainage_quality: e.target.value })}
+                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none">
+                    <option value="">Select quality (Optional)</option>
+                    <option value="Excellent">Excellent</option>
+                    <option value="Good">Good</option>
+                    <option value="Moderate">Moderate</option>
+                    <option value="Poor">Poor</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1">Location / Notes</label>
+                  <input type="text" value={formData.location}
+                    onChange={e => setFormData({ ...formData, location: e.target.value })}
+                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
+                    placeholder="e.g. North-east sector" />
+                </div>
               </div>
 
               <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-white/10">

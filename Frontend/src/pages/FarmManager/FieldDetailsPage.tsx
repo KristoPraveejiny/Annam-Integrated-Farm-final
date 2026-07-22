@@ -117,15 +117,13 @@ export default function FieldDetailsPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: Field Info */}
+        {/* Left: Field Info & Soil Info */}
         <div className="lg:col-span-1 space-y-4">
           <div className="bg-slate-900/80 border border-white/10 rounded-2xl p-5">
             <h3 className="text-white font-semibold text-base mb-4 pb-2 border-b border-white/10">Field Information</h3>
             <div className="space-y-3">
               {[
                 { icon: <FiActivity className="text-emerald-400" />, label: 'Area', value: field.area ? `${field.area} Acres` : 'N/A' },
-                { icon: <FiLayers className="text-blue-400" />, label: 'Soil Type', value: field.soil_type || 'N/A' },
-                { icon: <FiDroplet className="text-cyan-400" />, label: 'Irrigation', value: field.irrigation_type || 'N/A' },
                 { icon: <FiMapPin className="text-amber-400" />, label: 'Location', value: field.location || 'N/A' },
               ].map(item => (
                 <div key={item.label} className="flex items-start gap-3">
@@ -142,6 +140,39 @@ export default function FieldDetailsPage() {
                   {field.status || 'Active'}
                 </span>
               </div>
+            </div>
+          </div>
+
+          {/* Soil Information */}
+          <div className="bg-slate-900/80 border border-white/10 rounded-2xl p-5">
+            <h3 className="text-white font-semibold text-base mb-4 pb-2 border-b border-white/10">Soil Information</h3>
+            <div className="space-y-3">
+              {[
+                { icon: <FiLayers className="text-blue-400" />, label: 'Soil Type', value: field.soil_type || 'N/A' },
+                { icon: <FiActivity className="text-amber-400" />, label: 'Soil pH', value: field.soil_ph !== null && field.soil_ph !== undefined ? (() => {
+                  const numPh = parseFloat(field.soil_ph);
+                  if (isNaN(numPh)) return field.soil_ph;
+                  let classification = 'Unknown';
+                  if (numPh < 5.5) classification = '🔴 Strongly Acidic';
+                  else if (numPh < 6.5) classification = '🟡 Slightly Acidic';
+                  else if (numPh < 7.5) classification = '🟢 Neutral (Recommended)';
+                  else if (numPh < 8.5) classification = '🟠 Slightly Alkaline';
+                  else classification = '🔴 Strongly Alkaline';
+                  return `${field.soil_ph} — ${classification}`;
+                })() : 'N/A' },
+                { icon: <FiCheckCircle className="text-green-400" />, label: 'Fertility Level', value: field.soil_fertility_level || 'N/A' },
+                { icon: <FiDroplet className="text-cyan-400" />, label: 'Drainage Quality', value: field.drainage_quality || 'N/A' },
+                { icon: <FiDroplet className="text-blue-500" />, label: 'Irrigation', value: field.irrigation_type || 'N/A' },
+                { icon: <FiClock className="text-slate-400" />, label: 'Last Updated', value: field.updated_at ? new Date(field.updated_at).toLocaleDateString() : (field.created_at ? new Date(field.created_at).toLocaleDateString() : 'N/A') },
+              ].map(item => (
+                <div key={item.label} className="flex items-start gap-3">
+                  <span className="mt-0.5">{item.icon}</span>
+                  <div>
+                    <div className="text-slate-500 text-xs">{item.label}</div>
+                    <div className="text-slate-200 text-sm">{item.value}</div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
