@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
@@ -24,11 +24,12 @@ const ACTIVITY_TYPES = [
 export default function TaskActivityPage() {
   const { id: taskId } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [task, setTask] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  const [isFinal, setIsFinal] = useState(false);
+  const [isFinal, setIsFinal] = useState(location.state?.isFinal || false);
   const [activityType, setActivityType] = useState(ACTIVITY_TYPES[0]);
   const [notes, setNotes] = useState('');
   const [progress, setProgress] = useState(0);
@@ -57,6 +58,9 @@ export default function TaskActivityPage() {
         const data = await res.json();
         const found = data.find((t: any) => t.id === taskId);
         setTask(found);
+        if (found && found.completion_percentage) {
+          setProgress(Number(found.completion_percentage));
+        }
       }
       setLoading(false);
     } catch (err) {
@@ -97,8 +101,7 @@ export default function TaskActivityPage() {
     setErrors([]);
     const newErrors = [];
     if (notes.length < 20) newErrors.push('Description must be at least 20 characters.');
-    if (images.length < 2 && isFinal) newErrors.push('At least 2 images are required for final submission.');
-    if (images.length < 1 && !isFinal) newErrors.push('At least 1 image is required.');
+    if (images.length < 1) newErrors.push('At least 1 image is required.');
     
     if (newErrors.length > 0) {
       setErrors(newErrors);
@@ -112,14 +115,17 @@ export default function TaskActivityPage() {
       
       const formData = new FormData();
       formData.append('notes', notes);
-      formData.append('activityType', activityType);
-      formData.append('progressPercentage', isFinal ? '100' : progress.toString());
+      formData.append('isFinal', isFinal.toString());
       if (forceSubmit) {
         formData.append('forceSubmit', 'true');
       }
+      
+      formData.append('progressPercentage', progress.toString());
+      formData.append('activityType', task?.title || 'Task Update');
+      
       images.forEach(img => formData.append('images', img));
 
-      const endpoint = isFinal ? `/api/tasks/${taskId}/evidence` : `/api/tasks/${taskId}/activity-update`;
+      const endpoint = `/api/tasks/${taskId}/activity-update`;
       
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -128,7 +134,7 @@ export default function TaskActivityPage() {
       });
 
       if (res.ok) {
-        notifySuccess(isFinal ? 'Final task evidence submitted!' : 'Activity update submitted successfully.');
+        notifySuccess('Task evidence submitted successfully!');
         setShowDuplicateModal(false);
         navigate('/dashboard/farmer-worker/tasks');
       } else {
@@ -177,7 +183,7 @@ export default function TaskActivityPage() {
         </div>
       </Card>
 
-      <Card title={isFinal ? "Final Task Submission" : "New Activity Update"}>
+      <Card title="Task Evidence Submission">
         <form onSubmit={e => handleSubmit(e, false)} className="space-y-6 mt-4">
           {errors.length > 0 && (
             <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-red-400 text-sm">
@@ -187,39 +193,25 @@ export default function TaskActivityPage() {
             </div>
           )}
 
-          <div className="flex items-center gap-4 bg-slate-900/50 p-4 rounded-xl border border-white/5">
-            <label className="flex items-center gap-2 text-white cursor-pointer">
-              <input type="radio" checked={!isFinal} onChange={() => setIsFinal(false)} className="accent-emerald-500" />
-              <span>Interim Update</span>
-            </label>
-            <label className="flex items-center gap-2 text-white cursor-pointer">
-              <input type="radio" checked={isFinal} onChange={() => { setIsFinal(true); setProgress(100); }} className="accent-emerald-500" />
-              <span>Final Submission</span>
-            </label>
-          </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">Activity Type</label>
-              <select 
-                value={activityType}
-                onChange={e => setActivityType(e.target.value)}
-                className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
-              >
-                {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
+              <label className="block text-sm font-medium text-slate-300 mb-1">Assigned Task</label>
+              <input 
+                type="text"
+                readOnly
+                value={task?.title || ''}
+                className="w-full bg-slate-950/50 border border-white/5 rounded-xl px-4 py-2 text-white/70 cursor-not-allowed focus:outline-none"
+              />
             </div>
-            {!isFinal && (
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Progress Percentage</label>
-                <input 
-                  type="number" min="0" max="99" 
-                  value={progress}
-                  onChange={e => setProgress(Number(e.target.value))}
-                  className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
-                />
-              </div>
-            )}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-1">Total Progress Percentage (100 = completed)</label>
+              <input 
+                type="number" min="0" max="100" 
+                value={progress}
+                onChange={e => setProgress(Number(e.target.value))}
+                className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
+              />
+            </div>
           </div>
 
           <div>
@@ -273,22 +265,7 @@ export default function TaskActivityPage() {
             )}
           </div>
 
-          {isFinal && (
-            <div className="bg-slate-950 rounded-xl p-4 border border-white/10">
-              <h4 className="text-white font-bold mb-3 flex items-center gap-2"><FiCheckCircle className="text-emerald-500" /> Completion Checklist</h4>
-              <ul className="space-y-2 text-sm text-slate-300">
-                <li className="flex items-center gap-2">
-                  <input type="checkbox" checked={images.length >= 2} readOnly className="accent-emerald-500" /> Images Uploaded (Min 2)
-                </li>
-                <li className="flex items-center gap-2">
-                  <input type="checkbox" checked={notes.length >= 20} readOnly className="accent-emerald-500" /> Notes Added (Min 20 chars)
-                </li>
-                <li className="flex items-center gap-2">
-                  <input type="checkbox" checked={progress === 100} readOnly className="accent-emerald-500" /> Progress 100%
-                </li>
-              </ul>
-            </div>
-          )}
+
 
           <div className="flex justify-end gap-3 border-t border-white/10 pt-4">
             <Button variant="ghost" type="button" onClick={() => navigate('/dashboard/farmer-worker/tasks')}>Cancel</Button>

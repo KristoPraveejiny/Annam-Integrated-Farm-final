@@ -1,14 +1,8 @@
-﻿// Farm Manager Dashboard – extracted from DashboardPage.tsx
-import { useNavigate } from 'react-router-dom';
+// Farm Manager Dashboard – extracted from DashboardPage.tsx
 import { useTranslation } from 'react-i18next';
-import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { ProgressBar } from '../../components/ui/ProgressBar';
 import { SectionHeading } from '../../components/ui/SectionHeading';
-import { ChartPanel } from '../../components/ui/ChartPanel';
-import { FiCheckCircle, FiUsers, FiAlertTriangle, FiActivity } from 'react-icons/fi';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
-import { chartSeries } from '../../data/mock';
+import { FiCheckCircle, FiUsers, FiAlertTriangle, FiActivity, FiSun, FiCloudRain, FiWind } from 'react-icons/fi';
 import { useState, useEffect } from 'react';
 
 type OverviewStats = {
@@ -22,6 +16,15 @@ type OverviewStats = {
     total: number;
     healthy: number;
     feedingDue: number;
+  };
+  harvestAnalytics?: {
+    cropsReady: number;
+    harvestToday: number;
+    harvestWeek: number;
+    harvestMonth: number;
+    harvestOverdue: number;
+    totalArea: number;
+    expectedYield: number;
   };
 };
 
@@ -37,40 +40,30 @@ const emptyOverview: OverviewStats = {
     healthy: 0,
     feedingDue: 0,
   },
+  harvestAnalytics: {
+    cropsReady: 0,
+    harvestToday: 0,
+    harvestWeek: 0,
+    harvestMonth: 0,
+    harvestOverdue: 0,
+    totalArea: 0,
+    expectedYield: 0,
+  }
 };
 
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = '';
 
 export default function FarmManagerDashboard() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [overview, setOverview] = useState<OverviewStats>(emptyOverview);
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [recentUpdates, setRecentUpdates] = useState<any[]>([]);
-  const [crops, setCrops] = useState<any[]>([]);
-  const [livestock, setLivestock] = useState<any[]>([]);
-  const [recentAttendance, setRecentAttendance] = useState<any[]>([]);
-  const [recentPayrolls, setRecentPayrolls] = useState<any[]>([]);
-  const normalizeTaskStatus = (status: string | undefined | null) =>
-    String(status || '')
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, '_');
+  const [weatherData, setWeatherData] = useState<{temp: number | string, condition: string, advisory?: any}>({ temp: '29.0', condition: 'Partly Cloudy' });
 
-  const pendingApprovals = tasks.filter((task) => {
-    const status = normalizeTaskStatus(task.status);
-    return status === 'waiting_manager_approval' || status === 'waiting_for_manager_approval';
-  });
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [overviewRes, tasksRes, obsRes, cropsRes, livestockRes, attendanceRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/dashboard/overview`),
-          fetch(`${API_BASE_URL}/api/tasks/manager`, { headers: getAuthHeaders() }),
-          fetch(`${API_BASE_URL}/api/crop-observations/recent`, { headers: getAuthHeaders() }),
-          fetch(`${API_BASE_URL}/api/crops`, { headers: getAuthHeaders() }),
-          fetch(`${API_BASE_URL}/api/livestock`, { headers: getAuthHeaders() }),
-          fetch(`${API_BASE_URL}/api/dashboard/workforce-attendance`, { headers: getAuthHeaders() }),
+        const [overviewRes, weatherRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/dashboard/overview`, { headers: getAuthHeaders() }),
+          fetch(`http://127.0.0.1:8000/api/weather-advisory/`).catch(() => null)
         ]);
 
         if (overviewRes.ok) {
@@ -79,14 +72,15 @@ export default function FarmManagerDashboard() {
           console.error('Overview request failed:', overviewRes.status, await overviewRes.text());
         }
 
-        if (tasksRes.ok) setTasks(await tasksRes.json());
-        if (obsRes.ok) setRecentUpdates(await obsRes.json());
-        if (cropsRes.ok) setCrops(await cropsRes.json());
-        if (livestockRes.ok) setLivestock(await livestockRes.json());
-        if (attendanceRes.ok) {
-          const attendanceData = await attendanceRes.json();
-          setRecentAttendance(attendanceData.recentAttendance || []);
-          setRecentPayrolls(attendanceData.recentPayrolls || []);
+        if (weatherRes && weatherRes.ok) {
+          const weatherJson = await weatherRes.json();
+          if (weatherJson?.weather?.temperature !== undefined) {
+            setWeatherData({
+              temp: weatherJson.weather.temperature.toFixed(1),
+              condition: weatherJson.weather.condition || 'Partly Cloudy',
+              advisory: weatherJson.advisory
+            });
+          }
         }
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
@@ -107,149 +101,74 @@ export default function FarmManagerDashboard() {
         <StatTile label={t('Orders')} value={formatCount(overview.orders)} />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr] mt-6">
-        <Card title={t("Crop Overview")} subtitle={t("Field health and growth progress")}>
-          <div className="space-y-5">
-            <ProgressBar value={overview.totalFields > 0 ? Math.min(100, Math.max(20, overview.totalFields * 10)) : 0} label={t("Registered Fields")} />
-            <ProgressBar value={crops.length > 0 ? Math.min(100, Math.max(20, crops.length * 15)) : 0} label={t("Active Crops")} />
-            <ProgressBar value={recentUpdates.length > 0 ? Math.min(100, Math.max(20, recentUpdates.length * 12)) : 0} label={t("Recent Updates")} />
-          </div>
-        </Card>
-        <Card title={t("Livestock Overview")} subtitle={t("Health, feed, and production tracking")}>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <MiniMetric label={t("Healthy")} value={formatCount(overview.livestock.healthy)} />
-            <MiniMetric label={t("Feeding due")} value={formatCount(overview.livestock.feedingDue)} />
-            <MiniMetric label={t("Milk yield")} value={`${formatCount(overview.livestock.total * 10)}L`} />
-          </div>
-        </Card>
-        <Card title={t("Task Progress Cards")} subtitle={t("Work allocation across teams")}>
-          <div className="grid gap-4 md:grid-cols-2">
-            {tasks.length === 0 ? <p className="text-sm text-slate-500">{t("No tasks assigned.")}</p> : tasks.map((task) => (
-              <div key={task.id} className="rounded-3xl border border-white/10 p-4 bg-slate-900/50">
-                <div className="flex items-center justify-between">
-                  <p className="font-semibold text-slate-200">{task.title}</p>
-                  <span className="text-xs text-slate-400">{task.assigned_to_name || t('Unassigned')}</span>
-                </div>
-                <div className="mt-3 flex items-center justify-between">
-                  <span className={`text-xs px-2 py-1 rounded-full ${
-                    normalizeTaskStatus(task.status) === 'completed' || normalizeTaskStatus(task.status) === 'approved'
-                      ? 'bg-emerald-500/20 text-emerald-400'
-                      : normalizeTaskStatus(task.status) === 'waiting_manager_approval' || normalizeTaskStatus(task.status) === 'waiting_for_manager_approval'
-                        ? 'bg-violet-500/20 text-violet-300'
-                        : 'bg-blue-500/20 text-blue-400'
-                  }`}>
-                    {String(task.status || '').replace(/_/g, ' ')}
-                  </span>
-                  <span className="text-xs text-slate-500">{task.due_date ? new Date(task.due_date).toLocaleDateString() : t('No due date')}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-        <Card title={t("Pending Approvals")} subtitle={t("Tasks waiting for manager review")}>
-          {pendingApprovals.length === 0 ? (
-            <p className="text-sm text-slate-500">{t("No pending approvals.")}</p>
-          ) : (
-            <div className="space-y-3">
-              {pendingApprovals.slice(0, 4).map((task) => (
-                <div key={task.id} className="flex items-center justify-between gap-4 rounded-2xl border border-violet-500/15 bg-violet-500/5 p-4">
-                  <div>
-                    <p className="font-semibold text-slate-100">{task.title}</p>
-                    <p className="text-xs text-slate-400">
-                      {task.assigned_to_name || t('Unassigned')} · {task.crop_name || task.livestock_name || t('N/A')}
-                    </p>
-                  </div>
-                  <Button type="button" variant="ghost" onClick={() => navigate('/dashboard/farm-manager/recent-updates')}>
-                    {t("View Details")}
-                  </Button>
-                </div>
-              ))}
+
+
+      <div className="grid gap-6 md:grid-cols-2 mt-6">
+        <Card title={t("Weather Forecast")} subtitle={t("Next 5 days")}>
+          <div className="flex justify-between items-center bg-sky-900/40 p-6 rounded-2xl border border-sky-500/20 mb-6">
+            <div>
+              <p className="text-sm font-semibold text-sky-200">{t("TODAY")}</p>
+              <h3 className="text-4xl font-bold text-white mt-2">{weatherData.temp}°C</h3>
+              <p className="text-sky-300">{weatherData.condition}</p>
             </div>
-          )}
-        </Card>
-        <Card title={t("Attendance & Wages")} subtitle={t("Latest approved task attendance with farmer names")}>
-          {recentAttendance.length === 0 ? (
-            <p className="text-sm text-slate-500">{t("No attendance records yet.")}</p>
-          ) : (
-            <div className="space-y-3">
-              {recentAttendance.slice(0, 5).map((record) => (
-                <div key={record.id} className="rounded-2xl border border-white/10 bg-slate-900/50 p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="font-semibold text-slate-100">{record.farmer_name || t('Unassigned')}</p>
-                      <p className="text-xs text-slate-400">{record.task_title || t('Task Session')} · {record.session || t('N/A')}</p>
-                    </div>
-                    <span className="text-xs text-slate-400">{record.date ? new Date(record.date).toLocaleDateString() : t('N/A')}</span>
-                  </div>
-                <div className="mt-3 grid gap-2 text-xs text-slate-300 sm:grid-cols-2">
-                  <div>{t('Hours')}: {Number(record.total_hours || 0).toFixed(2)}</div>
-                  <div>{t('Shift Wage Earned')}: Rs. {Number(record.shift_wage || 0).toFixed(2)}</div>
-                  <div>{t('Overtime Pay')}: Rs. {Number((record as any).overtime_pay || 0).toFixed(2)}</div>
-                  <div>{t('Status')}: {String(record.shift_status || '').replace(/_/g, ' ')}</div>
-                  <div>{t('Check-in')}: {record.check_in_time ? new Date(record.check_in_time).toLocaleTimeString() : t('N/A')}</div>
-                </div>
-                </div>
-              ))}
+            <div className="text-6xl text-amber-400">
+              <FiSun />
             </div>
-          )}
-          {recentPayrolls.length > 0 && (
-            <div className="mt-4 rounded-2xl border border-emerald-500/15 bg-emerald-500/5 p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-emerald-300">{t("Latest Payrolls")}</p>
-              <div className="mt-3 space-y-2 text-sm text-slate-200">
-                {recentPayrolls.slice(0, 3).map((payroll) => (
-                  <div key={payroll.id} className="flex items-center justify-between gap-3">
-                    <span>{payroll.farmer_name || t('Unassigned')}</span>
-                    <span>{payroll.payment_month}</span>
-                    <span>Rs. {Number(payroll.net_salary || 0).toFixed(2)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </Card>
-        <div className="flex justify-end mb-4">
-          <Button onClick={() => navigate('/dashboard/farm-manager/recent-updates')} className="flex items-center gap-2">
-            {t("View Recent Farmer Updates")}
-          </Button>
-        </div>
-        <Card title={t("Calendar View")} subtitle={t("Upcoming field events")}>
-          <div className="grid grid-cols-7 gap-2 text-center text-xs font-semibold text-slate-500">
-            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day) => (
-              <span key={day}>{day}</span>
-            ))}
-            {Array.from({ length: 28 }, (_, i) => i + 1).map((date) => (
-              <div key={date} className={`rounded-2xl p-2 ${date === 18 ? 'bg-emerald-600 text-white' : 'bg-slate-50 text-slate-700'}`}>
-                {date}
-              </div>
-            ))}
           </div>
-        </Card>
-        <Card title={t("Farm Activity Timeline")} subtitle={t("Latest operational updates")}>
-          <div className="space-y-4">
+          <div className="grid grid-cols-5 gap-2 text-center">
             {[
-              ['08:00', 'Irrigation started in Block A'],
-              ['10:15', 'Disease alert reviewed by manager'],
-              ['12:30', 'Harvest batch packed for marketplace'],
-              ['15:20', 'Salary approvals completed'],
-            ].map(([time, text]) => (
-              <div key={time} className="flex gap-4 rounded-2xl border border-slate-100 p-4">
-                <span className="min-w-16 text-sm font-semibold text-emerald-700">{time}</span>
-                <p className="text-sm text-slate-600">{text}</p>
+              { day: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][(new Date().getDay() + 1) % 7], temp: '29°', icon: <FiSun className="text-amber-400" /> },
+              { day: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][(new Date().getDay() + 2) % 7], temp: '27°', icon: <FiCloudRain className="text-sky-400" /> },
+              { day: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][(new Date().getDay() + 3) % 7], temp: '28°', icon: <FiSun className="text-amber-400" /> },
+              { day: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][(new Date().getDay() + 4) % 7], temp: '26°', icon: <FiCloudRain className="text-sky-400" /> },
+              { day: ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][(new Date().getDay() + 5) % 7], temp: '25°', icon: <FiWind className="text-slate-400" /> },
+            ].map((forecast, i) => (
+              <div key={i} className="flex flex-col items-center p-3 bg-slate-900/50 rounded-xl border border-white/5">
+                <span className="text-xs font-semibold text-slate-400 mb-2">{forecast.day}</span>
+                <span className="text-2xl mb-2">{forecast.icon}</span>
+                <span className="text-sm font-bold text-slate-200">{forecast.temp}</span>
               </div>
             ))}
           </div>
         </Card>
-        <ChartPanel title={t("Productivity Chart")}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartSeries}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="month" stroke="#64748b" />
-              <YAxis stroke="#64748b" />
-              <Tooltip />
-              <Bar dataKey="productivity" fill="#16a34a" radius={[10, 10, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartPanel>
+
+        <Card title={t("AI Farming Recommendations")} subtitle={t("Based on live weather and farm conditions")}>
+          {weatherData.advisory ? (
+            <div className="space-y-4">
+              <div className="p-4 bg-emerald-900/20 border border-emerald-500/20 rounded-2xl">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-bold text-emerald-400">💧 {t("Irrigation")}</h4>
+                </div>
+                <p className="text-sm text-slate-300">{weatherData.advisory.irrigation || t("Maintain normal watering schedules.")}</p>
+              </div>
+              
+              <div className="p-4 bg-amber-900/20 border border-amber-500/20 rounded-2xl">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-bold text-amber-400">🌱 {t("Fertilizer")}</h4>
+                </div>
+                <p className="text-sm text-slate-300">{weatherData.advisory.fertilizer || t("Optimal time for nutrient application.")}</p>
+              </div>
+
+              <div className="p-4 bg-rose-900/20 border border-rose-500/20 rounded-2xl">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-bold text-rose-400">🛡️ {t("Pest & Disease")}</h4>
+                </div>
+                <p className="text-sm text-slate-300">{weatherData.advisory.pest_disease || t("Monitor crops for typical seasonal pests.")}</p>
+              </div>
+
+              <div className="p-4 bg-sky-900/20 border border-sky-500/20 rounded-2xl">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-bold text-sky-400">📋 {t("General Activities")}</h4>
+                </div>
+                <p className="text-sm text-slate-300">{weatherData.advisory.activities || t("Focus on crop maintenance and livestock health.")}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex h-full items-center justify-center p-8 text-slate-400">
+              {t("Loading AI Recommendations...")}
+            </div>
+          )}
+        </Card>
       </div>
     </>
   );

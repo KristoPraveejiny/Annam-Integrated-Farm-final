@@ -3,6 +3,7 @@ import { ToastContainer } from 'react-toastify';
 import { publicNavItems, roleDashboards } from './data/mock';
 import AIAdvisoryPage from './pages/AIAdvisoryPage';
 import DashboardPage from './pages/dashboards/DashboardPage';
+import FarmManagerDashboard from './pages/dashboards/FarmManagerDashboard';
 import AboutPage from './pages/AboutPage';
 import DiseaseDetectionPage from './pages/DiseaseDetectionPage';
 import DiseaseHistoryPage from './pages/DiseaseHistoryPage';
@@ -372,6 +373,19 @@ export default function App() {
               element={
                 <AppShell role={dashboard.role} items={publicNavItems[dashboard.role]}>
                   <CustomerDashboard />
+                </AppShell>
+              }
+            />
+          );
+        }
+        if (dashboard.role === 'farm-manager') {
+          return (
+            <Route
+              key={dashboard.slug}
+              path={dashboard.path}
+              element={
+                <AppShell role={dashboard.role} items={publicNavItems[dashboard.role]}>
+                  <FarmManagerDashboard />
                 </AppShell>
               }
             />

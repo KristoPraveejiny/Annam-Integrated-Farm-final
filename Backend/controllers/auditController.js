@@ -7,7 +7,7 @@ export const getAuditLogs = async (req, res) => {
     let query = `
       SELECT a.*, u.full_name as user_name
       FROM audit_logs a
-      LEFT JOIN app_users u ON a.user_id = u.id
+      LEFT JOIN app_users u ON a.actor_user_id = u.id
       WHERE 1=1
     `;
     const params = [];

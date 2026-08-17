@@ -39,30 +39,36 @@ export function calculatePayrollMetrics(rows = [], { month, year, bonus = 0, ded
   let totalWorkingHours = 0;
 
   for (const row of rows) {
-    completedShifts += 1;
-    totalWorkingHours += toNumber(row.total_hours);
+    const isAbsent = String(row.shift_status || '').toLowerCase() === 'absent';
 
-    const shiftName = normalizeShiftName(row.shift_name || row.session);
-    if (shiftName === 'morning') morningShifts += 1;
-    if (shiftName === 'afternoon') afternoonShifts += 1;
-    if (shiftName === 'evening') eveningShifts += 1;
+    if (!isAbsent) {
+      completedShifts += 1;
+      totalWorkingHours += toNumber(row.total_hours);
 
-    const baseWage = toNumber(row.base_wage ?? row.shift_wage_earned);
+      const shiftName = normalizeShiftName(row.shift_name || row.session);
+      if (shiftName === 'morning') morningShifts += 1;
+      if (shiftName === 'afternoon') afternoonShifts += 1;
+      if (shiftName === 'evening') eveningShifts += 1;
+    }
+
+    const baseWage = isAbsent ? 0 : toNumber(row.payable_wage ?? row.base_wage ?? row.shift_wage_earned);
     const standardHours = toNumber(row.standard_hours);
     const derivedHourlyRate = toNumber(
       row.derived_hourly_rate
-      ?? (standardHours > 0 ? baseWage / standardHours : row.hourly_rate)
+      ?? (standardHours > 0 ? (toNumber(row.base_wage ?? row.shift_wage_earned) / standardHours) : row.hourly_rate)
     );
     const overtimeHours = Math.max(toNumber(row.total_hours) - standardHours, 0);
-    const rowOvertimePay = toNumber(row.overtime_pay) || (overtimeHours > 0 ? overtimeHours * derivedHourlyRate : 0);
+    const rowOvertimePay = isAbsent ? 0 : (toNumber(row.overtime_pay) || (overtimeHours > 0 ? overtimeHours * derivedHourlyRate : 0));
 
     shiftWageEarned += baseWage;
     overtimePay += rowOvertimePay;
 
-    const key = dateKey(row.date);
-    if (key) {
-      const existing = dayMap.get(key) || 0;
-      dayMap.set(key, existing + 1);
+    if (!isAbsent) {
+      const key = dateKey(row.date);
+      if (key) {
+        const existing = dayMap.get(key) || 0;
+        dayMap.set(key, existing + 1);
+      }
     }
   }
 

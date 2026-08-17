@@ -132,7 +132,7 @@ export default function FarmerCropUpdatesPage() {
     const formData = new FormData();
     formData.append('notes', activityNotes);
     if (activityImage) {
-      formData.append('image', activityImage);
+      formData.append('images', activityImage);
     }
 
     try {

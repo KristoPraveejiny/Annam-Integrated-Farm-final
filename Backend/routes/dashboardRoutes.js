@@ -6,9 +6,9 @@ import { syncAttendanceFromCompletedTasks } from '../controllers/taskController.
 
 const router = Router();
 
-async function safeCount(queryText, fallbackColumn = 'count') {
+async function safeCount(queryText, fallbackColumn = 'count', params = []) {
   try {
-    const result = await pool.query(queryText);
+    const result = await pool.query(queryText, params);
     return Number(result.rows[0]?.[fallbackColumn] || 0);
   } catch (error) {
     console.error('Overview query failed:', queryText.split('\n')[0], error.message);
@@ -16,20 +16,35 @@ async function safeCount(queryText, fallbackColumn = 'count') {
   }
 }
 
-router.get('/overview', async (req, res) => {
+router.get('/overview', verifyToken, async (req, res) => {
   try {
-    const [fieldsTotal, fieldsActive, fieldsUnderReview, farmers, customers, products, orders, livestockTotal, livestockHealthy, livestockFeedingDue] = await Promise.all([
-      safeCount(`SELECT COUNT(*)::int AS count FROM farm_fields`),
-      safeCount(`SELECT COUNT(*)::int AS count FROM farm_fields WHERE LOWER(COALESCE(status::text, '')) IN ('active', 'open', 'available')`),
-      safeCount(`SELECT COUNT(*)::int AS count FROM farm_fields WHERE LOWER(COALESCE(status::text, '')) NOT IN ('active', 'open', 'available')`),
-      safeCount(`SELECT COUNT(*)::int AS count FROM app_users WHERE LOWER(role::text) IN ('worker', 'farmer')`),
-      safeCount(`SELECT COUNT(*)::int AS count FROM app_users WHERE LOWER(role::text) = 'customer'`),
-      safeCount(`SELECT COUNT(*)::int AS count FROM products`),
-      safeCount(`SELECT COUNT(*)::int AS count FROM orders`),
-      safeCount(`SELECT COUNT(*)::int AS count FROM livestock_animals`),
-      safeCount(`SELECT COUNT(*)::int AS count FROM livestock_animals WHERE LOWER(COALESCE(health_status::text, '')) = 'healthy'`),
-      safeCount(`SELECT COUNT(*)::int AS count FROM livestock_animals WHERE LOWER(COALESCE(health_status::text, '')) IN ('watch', 'treatment')`),
+    const userId = req.user.userId;
+    const farmId = await getDefaultFarmId(userId);
+    const [
+      fieldsTotal, fieldsActive, fieldsUnderReview, farmers, customers, products, orders, livestockTotal, livestockHealthy, livestockFeedingDue,
+      cropsReady, harvestToday, harvestWeek, harvestMonth, harvestOverdue, totalAreaResult, expectedYieldResult
+    ] = await Promise.all([
+      safeCount(`SELECT COUNT(*)::int AS count FROM farm_fields WHERE farm_id = $1`, 'count', [farmId]),
+      safeCount(`SELECT COUNT(*)::int AS count FROM farm_fields WHERE farm_id = $1 AND LOWER(COALESCE(status::text, '')) IN ('active', 'open', 'available')`, 'count', [farmId]),
+      safeCount(`SELECT COUNT(*)::int AS count FROM farm_fields WHERE farm_id = $1 AND LOWER(COALESCE(status::text, '')) NOT IN ('active', 'open', 'available')`, 'count', [farmId]),
+      safeCount(`SELECT COUNT(DISTINCT u.id)::int AS count FROM app_users u JOIN farm_memberships fm ON fm.user_id = u.id WHERE fm.farm_id = $1 AND LOWER(u.role::text) IN ('worker', 'farmer')`, 'count', [farmId]),
+      safeCount(`SELECT COUNT(DISTINCT u.id)::int AS count FROM app_users u JOIN farm_memberships fm ON fm.user_id = u.id WHERE fm.farm_id = $1 AND LOWER(u.role::text) = 'customer'`, 'count', [farmId]),
+      safeCount(`SELECT COUNT(*)::int AS count FROM products WHERE farm_id = $1`, 'count', [farmId]),
+      safeCount(`SELECT COUNT(*)::int AS count FROM orders WHERE farm_id = $1`, 'count', [farmId]),
+      safeCount(`SELECT COUNT(*)::int AS count FROM livestock_animals WHERE farm_id = $1`, 'count', [farmId]),
+      safeCount(`SELECT COUNT(*)::int AS count FROM livestock_animals WHERE farm_id = $1 AND LOWER(COALESCE(health_status::text, '')) = 'healthy'`, 'count', [farmId]),
+      safeCount(`SELECT COUNT(*)::int AS count FROM livestock_animals WHERE farm_id = $1 AND LOWER(COALESCE(health_status::text, '')) IN ('watch', 'treatment')`, 'count', [farmId]),
+      safeCount(`SELECT COUNT(*)::int AS count FROM crop_cycles WHERE farm_id = $1 AND harvest_status = 'Ready for Harvest' AND is_historical = FALSE`, 'count', [farmId]),
+      safeCount(`SELECT COUNT(*)::int AS count FROM crop_cycles WHERE farm_id = $1 AND remaining_days = 0 AND harvest_status != 'Harvested' AND harvest_status != 'Overdue' AND is_historical = FALSE`, 'count', [farmId]),
+      safeCount(`SELECT COUNT(*)::int AS count FROM crop_cycles WHERE farm_id = $1 AND remaining_days > 0 AND remaining_days <= 7 AND is_historical = FALSE`, 'count', [farmId]),
+      safeCount(`SELECT COUNT(*)::int AS count FROM crop_cycles WHERE farm_id = $1 AND remaining_days > 0 AND remaining_days <= 30 AND is_historical = FALSE`, 'count', [farmId]),
+      safeCount(`SELECT COUNT(*)::int AS count FROM crop_cycles WHERE farm_id = $1 AND harvest_status = 'Overdue' AND is_historical = FALSE`, 'count', [farmId]),
+      safeCount(`SELECT SUM(CAST(REGEXP_REPLACE(area, '[^0-9.]', '', 'g') AS NUMERIC)) as sum FROM farm_fields WHERE farm_id = $1 AND status = 'active'`, 'sum', [farmId]),
+      safeCount(`SELECT SUM(expected_yield) as sum FROM crop_cycles WHERE farm_id = $1 AND harvest_status != 'Harvested' AND is_historical = FALSE AND expected_yield IS NOT NULL`, 'sum', [farmId]),
     ]);
+
+    const totalArea = totalAreaResult || 0;
+    const expectedYield = expectedYieldResult || 0;
 
     res.json({
       totalFields: fieldsTotal,
@@ -44,6 +59,15 @@ router.get('/overview', async (req, res) => {
         healthy: livestockHealthy,
         feedingDue: livestockFeedingDue,
       },
+      harvestAnalytics: {
+        cropsReady,
+        harvestToday,
+        harvestWeek,
+        harvestMonth,
+        harvestOverdue,
+        totalArea,
+        expectedYield
+      }
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch dashboard overview.' });

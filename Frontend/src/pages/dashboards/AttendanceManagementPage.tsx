@@ -16,6 +16,9 @@ type AttendanceRow = {
   shift_status?: string | null;
   shift_wage_earned?: number | string | null;
   overtime_pay?: number | string | null;
+  full_shift_wage?: number | string | null;
+  payable_wage?: number | string | null;
+  approved_completion_percentage?: number | string | null;
 };
 
 type WorkerSummary = {
@@ -92,7 +95,7 @@ export default function AttendanceManagementPage() {
 
   const exportCsv = () => {
     const rows = data.attendances || [];
-    const headers = ['Date', 'Worker', 'Shift', 'Task', 'Hours', 'Status', 'Shift Wage', 'Overtime'];
+    const headers = ['Date', 'Worker', 'Shift', 'Task', 'Hours', 'Status', 'Completion %', 'Full Wage', 'Payable Wage', 'Overtime'];
     const csv = [
       headers.join(','),
       ...rows.map((row) => [
@@ -102,7 +105,9 @@ export default function AttendanceManagementPage() {
         escapeCsv(row.task_title || ''),
         Number(row.total_hours || 0).toFixed(2),
         escapeCsv(row.shift_status || ''),
-        Number(row.shift_wage_earned || 0).toFixed(2),
+        `${row.approved_completion_percentage || 0}%`,
+        Number(row.full_shift_wage || 0).toFixed(2),
+        Number(row.payable_wage || row.shift_wage_earned || 0).toFixed(2),
         Number(row.overtime_pay || 0).toFixed(2),
       ].join(',')),
     ].join('\n');
@@ -148,6 +153,28 @@ export default function AttendanceManagementPage() {
     { label: 'Workers Tracked', value: String(data.summary?.total_workers ?? 0) },
   ]), [data.summary]);
 
+  const groupedAttendances = useMemo(() => {
+    const groups: Record<string, {
+      dateStr: string;
+      workerName: string;
+      totalPayable: number;
+      records: any[];
+    }> = {};
+
+    (data.attendances || []).forEach(row => {
+      const dateStr = new Date(row.date).toLocaleDateString();
+      const workerName = row.worker_name;
+      const key = `${dateStr}_${workerName}`;
+      if (!groups[key]) {
+         groups[key] = { dateStr, workerName, totalPayable: 0, records: [] };
+      }
+      groups[key].records.push(row);
+      groups[key].totalPayable += Number(row.payable_wage || row.shift_wage_earned || 0);
+    });
+    
+    return Object.values(groups).sort((a, b) => new Date(b.dateStr).getTime() - new Date(a.dateStr).getTime());
+  }, [data.attendances]);
+
   return (
     <div id="attendance-report" className="space-y-6 pb-10">
       <SectionHeading
@@ -185,34 +212,52 @@ export default function AttendanceManagementPage() {
         <Card title="Daily Attendance" subtitle="Shift level history for the selected month">
           {loading ? (
             <p className="text-slate-500">Loading...</p>
+          ) : groupedAttendances.length === 0 ? (
+            <p className="text-center text-slate-500 py-8">No attendance records found.</p>
           ) : (
-            <div className="overflow-x-auto rounded-2xl border border-slate-100">
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-slate-50 text-slate-500">
-                  <tr>
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Worker</th>
-                    <th className="px-4 py-3">Shift</th>
-                    <th className="px-4 py-3">Task</th>
-                    <th className="px-4 py-3">Hours</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Wage</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {(data.attendances || []).map((row) => (
-                    <tr key={row.id}>
-                      <td className="px-4 py-3 font-medium text-slate-900">{new Date(row.date).toLocaleDateString()}</td>
-                      <td className="px-4 py-3 text-slate-700">{row.worker_name}</td>
-                      <td className="px-4 py-3 text-slate-700">{row.shift_name}</td>
-                      <td className="px-4 py-3 text-slate-600">{row.task_title || 'Task session'}</td>
-                      <td className="px-4 py-3 text-slate-700">{Number(row.total_hours || 0).toFixed(2)}</td>
-                      <td className="px-4 py-3 text-slate-700">{row.shift_status}</td>
-                      <td className="px-4 py-3 text-slate-700">Rs. {Number(row.shift_wage_earned || 0).toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="space-y-6">
+              {groupedAttendances.map((group, idx) => (
+                <div key={idx} className="overflow-hidden rounded-2xl border border-white/10 bg-slate-900/50">
+                  <div className="flex items-center justify-between border-b border-white/5 bg-slate-800/50 px-5 py-4">
+                    <div>
+                      <h4 className="font-bold text-white">{group.workerName}</h4>
+                      <p className="text-sm text-slate-400">{group.dateStr}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Day Salary</p>
+                      <p className="text-xl font-black text-emerald-400">Rs. {group.totalPayable.toFixed(2)}</p>
+                    </div>
+                  </div>
+                  <div className="divide-y divide-white/5">
+                    {group.records.map(row => (
+                      <div key={row.id} className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="font-semibold text-white">{row.task_title || 'Task Session'}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                            <span className="rounded bg-white/5 px-2 py-1 uppercase">{row.shift_name}</span>
+                            <span>{Number(row.total_hours || 0).toFixed(1)} hrs</span>
+                            <span className="capitalize">{row.shift_status}</span>
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-6 sm:text-right">
+                          <div>
+                            <p className="text-xs text-slate-500">Progress</p>
+                            <p className="font-medium text-slate-300">{row.approved_completion_percentage != null ? `${row.approved_completion_percentage}%` : '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500">Full Wage</p>
+                            <p className="font-medium text-slate-300">Rs. {Number(row.full_shift_wage || 0).toFixed(2)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-emerald-500/70">Payable</p>
+                            <p className="font-bold text-emerald-400">Rs. {Number(row.payable_wage || row.shift_wage_earned || 0).toFixed(2)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </Card>

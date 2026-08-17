@@ -28,7 +28,9 @@ import shiftRoutes from './routes/shiftRoutes.js';
 import attendanceRoutes from './routes/attendanceRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 import diseaseReportRoutes from './routes/diseaseReportRoutes.js';
+import importRoutes from './routes/importRoutes.js';
 import { verifyToken } from './authMiddleware.js';
+import './services/workforceCron.js';
 
 
 import path from 'path';
@@ -83,6 +85,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/shifts', shiftRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/import', importRoutes);
 
 const PORT = process.env.PORT || 5001;
 

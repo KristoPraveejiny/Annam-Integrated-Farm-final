@@ -71,10 +71,17 @@ export const getMyAttendance = async (req, res) => {
           sa.shift_status,
           t.title as task_title,
           COALESCE(s.shift_name, t.session::text) as session,
-          ROUND(COALESCE(s.base_wage, 0)::numeric, 2) as shift_wage_earned,
+          sa.full_shift_wage,
+          sa.approved_completion_percentage,
+          sa.payable_wage,
           ROUND(
-            GREATEST(COALESCE(sa.total_hours, 0) - COALESCE(s.standard_hours, 0), 0)
-            * COALESCE(NULLIF(s.base_wage, 0) / NULLIF(s.standard_hours, 0), s.hourly_rate, 0)
+            CASE WHEN LOWER(sa.shift_status) = 'absent' THEN 0
+            ELSE COALESCE(sa.payable_wage, COALESCE(s.base_wage, 0)) END
+          ::numeric, 2) as shift_wage_earned,
+          ROUND(
+            CASE WHEN LOWER(sa.shift_status) = 'absent' THEN 0
+            ELSE GREATEST(COALESCE(sa.total_hours, 0) - COALESCE(s.standard_hours, 0), 0)
+            * COALESCE(NULLIF(s.base_wage, 0) / NULLIF(s.standard_hours, 0), s.hourly_rate, 0) END
           ::numeric, 2) as overtime_pay
         FROM shift_attendances sa
         LEFT JOIN shifts s ON sa.shift_id = s.id
@@ -97,10 +104,14 @@ export const getMyAttendance = async (req, res) => {
           sa.shift_status,
           t.title as task_title,
           COALESCE(s.shift_name, t.session::text) as session,
-          ROUND(COALESCE(s.base_wage, 0)::numeric, 2) as shift_wage_earned,
           ROUND(
-            GREATEST(COALESCE(sa.total_hours, 0) - COALESCE(s.standard_hours, 0), 0)
-            * COALESCE(NULLIF(s.base_wage, 0) / NULLIF(s.standard_hours, 0), s.hourly_rate, 0)
+            CASE WHEN LOWER(sa.shift_status) = 'absent' THEN 0
+            ELSE COALESCE(s.base_wage, 0) END
+          ::numeric, 2) as shift_wage_earned,
+          ROUND(
+            CASE WHEN LOWER(sa.shift_status) = 'absent' THEN 0
+            ELSE GREATEST(COALESCE(sa.total_hours, 0) - COALESCE(s.standard_hours, 0), 0)
+            * COALESCE(NULLIF(s.base_wage, 0) / NULLIF(s.standard_hours, 0), s.hourly_rate, 0) END
           ::numeric, 2) as overtime_pay
         FROM shift_attendances sa
         LEFT JOIN shifts s ON sa.shift_id = s.id
@@ -199,10 +210,17 @@ export const getManagerAttendance = async (req, res) => {
           sa.total_hours,
           sa.shift_status,
           t.title as task_title,
-          ROUND(COALESCE(s.base_wage, 0)::numeric, 2) as shift_wage_earned,
+          sa.full_shift_wage,
+          sa.approved_completion_percentage,
+          sa.payable_wage,
           ROUND(
-            GREATEST(COALESCE(sa.total_hours, 0) - COALESCE(s.standard_hours, 0), 0)
-            * COALESCE(NULLIF(s.base_wage, 0) / NULLIF(s.standard_hours, 0), s.hourly_rate, 0)
+            CASE WHEN LOWER(sa.shift_status) = 'absent' THEN 0
+            ELSE COALESCE(sa.payable_wage, COALESCE(s.base_wage, 0)) END
+          ::numeric, 2) as shift_wage_earned,
+          ROUND(
+            CASE WHEN LOWER(sa.shift_status) = 'absent' THEN 0
+            ELSE GREATEST(COALESCE(sa.total_hours, 0) - COALESCE(s.standard_hours, 0), 0)
+            * COALESCE(NULLIF(s.base_wage, 0) / NULLIF(s.standard_hours, 0), s.hourly_rate, 0) END
           ::numeric, 2) as overtime_pay
         FROM shift_attendances sa
         JOIN app_users u ON sa.worker_id = u.id
@@ -217,12 +235,12 @@ export const getManagerAttendance = async (req, res) => {
         SELECT
           u.id as worker_id,
           u.full_name as worker_name,
-          COUNT(*)::int as completed_shifts,
-          COUNT(DISTINCT DATE(sa.date))::int as active_days,
-          COALESCE(SUM(COALESCE(sa.total_hours, 0)), 0)::numeric as total_working_hours,
-          COALESCE(SUM(CASE WHEN LOWER(COALESCE(s.shift_name, '')) = 'morning' THEN 1 ELSE 0 END), 0)::int as morning_shifts,
-          COALESCE(SUM(CASE WHEN LOWER(COALESCE(s.shift_name, '')) = 'afternoon' THEN 1 ELSE 0 END), 0)::int as afternoon_shifts,
-          COALESCE(SUM(CASE WHEN LOWER(COALESCE(s.shift_name, '')) = 'evening' THEN 1 ELSE 0 END), 0)::int as evening_shifts
+          SUM(CASE WHEN LOWER(COALESCE(sa.shift_status, '')) != 'absent' THEN 1 ELSE 0 END)::int as completed_shifts,
+          COUNT(DISTINCT CASE WHEN LOWER(COALESCE(sa.shift_status, '')) != 'absent' THEN DATE(sa.date) ELSE NULL END)::int as active_days,
+          COALESCE(SUM(CASE WHEN LOWER(COALESCE(sa.shift_status, '')) != 'absent' THEN COALESCE(sa.total_hours, 0) ELSE 0 END), 0)::numeric as total_working_hours,
+          COALESCE(SUM(CASE WHEN LOWER(COALESCE(sa.shift_status, '')) != 'absent' AND LOWER(COALESCE(s.shift_name, '')) = 'morning' THEN 1 ELSE 0 END), 0)::int as morning_shifts,
+          COALESCE(SUM(CASE WHEN LOWER(COALESCE(sa.shift_status, '')) != 'absent' AND LOWER(COALESCE(s.shift_name, '')) = 'afternoon' THEN 1 ELSE 0 END), 0)::int as afternoon_shifts,
+          COALESCE(SUM(CASE WHEN LOWER(COALESCE(sa.shift_status, '')) != 'absent' AND LOWER(COALESCE(s.shift_name, '')) = 'evening' THEN 1 ELSE 0 END), 0)::int as evening_shifts
         FROM shift_attendances sa
         JOIN app_users u ON sa.worker_id = u.id
         LEFT JOIN shifts s ON sa.shift_id = s.id
@@ -263,27 +281,27 @@ export const getManagerAttendance = async (req, res) => {
       deductions: 0,
     });
 
-      console.log('getManagerAttendance request:', { farmId, month, year, search, filters, params });
-      
-      const summaryPayload = {
-        ...metrics,
-        total_workers: totalWorkersRes.rows[0]?.total_workers || 0,
-        completed_tasks: completedTasksRes.rows[0]?.total_completed_tasks || 0,
-        total_days_in_month: daysInMonth(month, year),
-      };
-      console.log('getManagerAttendance summary:', summaryPayload);
-      
-      res.json({
-        summary: summaryPayload,
-        attendances: attendanceRes.rows,
-        workers: workersRes.rows,
-        calendar: calendarRes.rows,
-      });
-    } catch (err) {
-      console.error('Error fetching manager attendance:', err);
-      res.status(500).json({ error: 'Failed to fetch attendance management data' });
-    }
-  };
+    console.log('getManagerAttendance request:', { farmId, month, year, search, filters, params });
+
+    const summaryPayload = {
+      ...metrics,
+      total_workers: totalWorkersRes.rows[0]?.total_workers || 0,
+      completed_tasks: completedTasksRes.rows[0]?.total_completed_tasks || 0,
+      total_days_in_month: daysInMonth(month, year),
+    };
+    console.log('getManagerAttendance summary:', summaryPayload);
+
+    res.json({
+      summary: summaryPayload,
+      attendances: attendanceRes.rows,
+      workers: workersRes.rows,
+      calendar: calendarRes.rows,
+    });
+  } catch (err) {
+    console.error('Error fetching manager attendance:', err);
+    res.status(500).json({ error: 'Failed to fetch attendance management data' });
+  }
+};
 
 export const getWorkerAttendanceProfile = async (req, res) => {
   try {
@@ -304,7 +322,7 @@ export const getWorkerAttendanceProfile = async (req, res) => {
     `;
 
     const result = await pool.query(query, [workerId, farmId]);
-    
+
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Error fetching worker profile:', err);

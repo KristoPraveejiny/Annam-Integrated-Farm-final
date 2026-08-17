@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getCrops, addCrop } from '../controllers/cropController.js';
+import { getCrops, addCrop, deleteCrop } from '../controllers/cropController.js';
 import { verifyToken } from '../authMiddleware.js';
 
 const router = Router();
@@ -12,5 +12,8 @@ router.get('/', getCrops);
 
 // Register a new crop cycle
 router.post('/', addCrop);
+
+// Delete a crop cycle
+router.delete('/:id', deleteCrop);
 
 export default router;

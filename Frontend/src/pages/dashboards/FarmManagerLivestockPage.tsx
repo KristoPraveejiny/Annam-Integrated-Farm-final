@@ -3,20 +3,25 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
-import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiMapPin, FiHeart, FiDroplet, FiCheckCircle } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiMapPin, FiHeart, FiDroplet, FiCheckCircle, FiDownload, FiMessageCircle, FiFileText } from 'react-icons/fi';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { deleteFeedRequirement, getFeedRequirements, upsertFeedRequirement, type FeedRequirement } from '../../api/livestock';
+import { deleteFeedRequirement, getFeedRequirements, upsertFeedRequirement, getFeedSchedules, createFeedSchedule, getFeedLogs, getFeedSummary, completeFeedSchedule, type FeedRequirement, type FeedSchedule, type FeedLog } from '../../api/livestock';
 import { createLivestockHealthEvent, getLivestockHealthEvents, type LivestockHealthEvent } from '../../api/livestockHealth';
+import html2pdf from 'html2pdf.js';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 
 export default function FarmManagerLivestockPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [livestock, setLivestock] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
   const [feedConfigs, setFeedConfigs] = useState<FeedRequirement[]>([]);
   const [healthEvents, setHealthEvents] = useState<LivestockHealthEvent[]>([]);
-  const [feedSchedules, setFeedSchedules] = useState<any[]>([]);
+  const [feedSchedules, setFeedSchedules] = useState<FeedSchedule[]>([]);
+  const [feedLogs, setFeedLogs] = useState<FeedLog[]>([]);
+  const [feedSummary, setFeedSummary] = useState<any>({});
   const [showModal, setShowModal] = useState(false);
   const [showFeedModal, setShowFeedModal] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -24,6 +29,7 @@ export default function FarmManagerLivestockPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingFeedId, setEditingFeedId] = useState<string | null>(null);
   const [animalToDelete, setAnimalToDelete] = useState<any | null>(null);
+  const [revealedTreatments, setRevealedTreatments] = useState<Record<string, boolean>>({});
 
   // Form State
   const [formData, setFormData] = useState({
@@ -63,6 +69,15 @@ export default function FarmManagerLivestockPage() {
     amount: '',
     water: '',
     time: 'Morning',
+    assignedWorkerId: '',
+  });
+  const [selectedSchedule, setSelectedSchedule] = useState<FeedSchedule | null>(null);
+  const [completionForm, setCompletionForm] = useState({
+    feedGiven: '',
+    waterGiven: '',
+    appetite: 'Good',
+    healthObservation: 'Normal',
+    notes: '',
   });
 
   const fetchLivestock = async () => {
@@ -89,20 +104,25 @@ export default function FarmManagerLivestockPage() {
 }  
   };
 
+  const handleExportPDF = (record: any) => {
+    const element = document.getElementById(`treatment-review-${record.id}`);
+    if (element) {
+      const opt = {
+  margin: 10,
+  filename: `treatment_review_${record.animalTag || record.livestockId}.pdf`,
+  image: { type: 'jpeg' as const, quality: 0.98 },
+  html2canvas: { scale: 2, useCORS: true },
+  jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
+};
+      html2pdf().set(opt).from(element).save();
+    }
+  };
+
   const fetchGroups = async () => {
     try {
       const tokenRaw = localStorage.getItem('token');
-      console.log('Fetched token for groups:', tokenRaw);
       const token = tokenRaw && tokenRaw.startsWith('"') && tokenRaw.endsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
-      if (!token) {
-        console.warn('No auth token found, using fallback groups');
-        setGroups([
-          { id: 'default-cow', group_code: 'COW', species: 'Cattle' },
-          { id: 'default-hen', group_code: 'HEN', species: 'Poultry' },
-          { id: 'default-duck', group_code: 'DUCK', species: 'Poultry' }
-        ]);
-        return;
-      }
+      
       const res = await fetch('/api/livestock/groups', {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -147,6 +167,33 @@ export default function FarmManagerLivestockPage() {
     }
   };
 
+  const fetchFeedSchedules = async () => {
+    try {
+      const data = await getFeedSchedules();
+      setFeedSchedules(data);
+    } catch (error) {
+      console.error('Failed to fetch feed schedules:', error);
+    }
+  };
+
+  const fetchFeedLogs = async () => {
+    try {
+      const data = await getFeedLogs();
+      setFeedLogs(data);
+    } catch (error) {
+      console.error('Failed to fetch feed logs:', error);
+    }
+  };
+
+  const fetchFeedSummary = async () => {
+    try {
+      const data = await getFeedSummary();
+      setFeedSummary(data);
+    } catch (error) {
+      console.error('Failed to fetch feed summary:', error);
+    }
+  };
+
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
@@ -154,6 +201,9 @@ export default function FarmManagerLivestockPage() {
       await fetchLivestock();
       await fetchFeedConfigs();
       await fetchHealthEvents();
+      await fetchFeedSchedules();
+      await fetchFeedLogs();
+      await fetchFeedSummary();
       setLoading(false);
     };
     loadData();
@@ -323,18 +373,48 @@ export default function FarmManagerLivestockPage() {
 
   const handleScheduleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    const animal = livestock.find((item) => (item.dbId || item.id) === scheduleForm.animalId);
-    const nextSchedule = {
-      id: `schedule-${Date.now()}`,
-      animalLabel: animal ? `${animal.id} • ${animal.pen}` : 'Unknown animal',
+    createFeedSchedule({
+      livestockId: scheduleForm.animalId,
       feedType: scheduleForm.feedType,
-      amount: scheduleForm.amount,
-      water: scheduleForm.water,
-      time: scheduleForm.time,
-      status: t('Planned'),
-    };
-    setFeedSchedules((prev) => [nextSchedule, ...prev]);
-    setScheduleForm({ animalId: '', feedType: '', amount: '', water: '', time: 'Morning' });
+      feedAmount: scheduleForm.amount,
+      waterRequirement: scheduleForm.water,
+      scheduledTime: scheduleForm.time,
+      session: scheduleForm.time,
+      assignedWorkerId: scheduleForm.assignedWorkerId || null,
+    })
+      .then((saved) => {
+        setFeedSchedules((prev) => [saved, ...prev]);
+        setScheduleForm({ animalId: '', feedType: '', amount: '', water: '', time: 'Morning', assignedWorkerId: '' });
+        notifySuccess('Feed schedule created successfully.');
+        fetchFeedSummary();
+      })
+      .catch((error) => {
+        console.error('Failed to create feed schedule:', error);
+        notifyError('Failed to create feed schedule.');
+      });
+  };
+
+  const handleCompleteSchedule = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedSchedule) return;
+    try {
+      const result = await completeFeedSchedule(selectedSchedule.id, {
+        feedGiven: completionForm.feedGiven,
+        waterGiven: completionForm.waterGiven,
+        appetite: completionForm.appetite,
+        healthObservation: completionForm.healthObservation,
+        notes: completionForm.notes,
+      });
+      setFeedLogs((prev) => [result.log, ...prev]);
+      setFeedSchedules((prev) => prev.map((schedule) => schedule.id === selectedSchedule.id ? { ...schedule, status: 'Completed' } : schedule));
+      setSelectedSchedule(null);
+      setCompletionForm({ feedGiven: '', waterGiven: '', appetite: 'Good', healthObservation: 'Normal', notes: '' });
+      fetchFeedSummary();
+      notifySuccess('Feeding completed and logged.');
+    } catch (error) {
+      console.error('Failed to complete feeding:', error);
+      notifyError('Failed to complete feeding.');
+    }
   };
 
   return (
@@ -477,6 +557,19 @@ export default function FarmManagerLivestockPage() {
 
       {activeTab === 'feed' && (
         <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            {[
+              ['Animals Fed Today', feedSummary.animalsFedToday ?? 0],
+              ['Pending Feedings', feedSummary.pendingFeedings ?? 0],
+              ['Missed Feedings', feedSummary.missedFeedings ?? 0],
+              ['Completion %', `${feedSummary.completionPercentage ?? 0}%`],
+              ['Feed Used Today', `${feedSummary.actualFeed ?? 0} kg`],
+            ].map(([label, value]) => (
+              <Card key={label as string} title={label as string}>
+                <p className="mt-2 text-4xl font-black text-white">{value as string}</p>
+              </Card>
+            ))}
+          </div>
           <Card title={t("Feed Management")} subtitle={t("View feeding requirements and edit feed settings per animal type")}>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {feedConfigs.map((config) => (
@@ -577,18 +670,47 @@ export default function FarmManagerLivestockPage() {
                   <div key={schedule.id} className="rounded-3xl border border-white/10 bg-slate-950/35 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-sm font-semibold text-white">{schedule.animalLabel}</p>
+                        <p className="text-sm font-semibold text-white">{schedule.animalTag || schedule.livestockId}</p>
                         <p className="mt-1 text-xs text-slate-400">{schedule.feedType}</p>
                       </div>
-                      <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">{schedule.time}</span>
+                      <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">{schedule.scheduledTime}</span>
                     </div>
                     <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
-                      <span>{t("Feed")}: {schedule.amount}</span>
-                      <span>{t("Water")}: {schedule.water}</span>
+                      <span>{t("Feed")}: {schedule.feedAmount}</span>
+                      <span>{t("Water")}: {schedule.waterRequirement}</span>
+                    </div>
+                    <div className="mt-4 flex justify-end">
+                      <Button variant="ghost" type="button" onClick={() => setSelectedSchedule(schedule)}>
+                        Complete Feeding
+                      </Button>
                     </div>
                   </div>
                 ))
               )}
+            </div>
+          </Card>
+
+          <Card title="Feeding Logs" subtitle="Completed feedings and differences">
+            <div className="space-y-3">
+              {feedLogs.length === 0 ? (
+                <p className="text-sm text-slate-400">No feeding logs yet.</p>
+              ) : feedLogs.slice(0, 6).map((log) => (
+                <div key={log.id} className="rounded-3xl border border-white/10 bg-slate-950/35 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">{log.animalTag || log.livestock_id}</p>
+                      <p className="mt-1 text-xs text-slate-400">{log.feeding_session}</p>
+                    </div>
+                    <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">{log.status}</span>
+                  </div>
+                  <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
+                    <span>Feed: {log.feed_given}/{log.feed_required}</span>
+                    <span>Water: {log.water_given}/{log.water_required}</span>
+                    <span>Difference: {log.difference_feed} kg</span>
+                    <span>Worker: {log.workerName || '-'}</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </Card>
         </div>
@@ -612,22 +734,88 @@ export default function FarmManagerLivestockPage() {
                     </div>
                     {/* @ts-ignore */}
                     {record.imageUrl && (
-                      <div className="mt-3">
+                      <div className="mt-3 relative group">
                         {/* @ts-ignore */}
                         <img src={record.imageUrl} alt="Health condition" className="h-32 w-full object-cover rounded-xl" />
+                        {/* @ts-ignore */}
+                        <a href={record.imageUrl} download="health_condition.jpg" className="absolute top-2 right-2 p-2 bg-black/50 hover:bg-black/70 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                          <FiDownload size={16} />
+                        </a>
                       </div>
                     )}
                     <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
                       <span>{t("Symptoms")}: {record.symptoms || '-'}</span>
-                      <span>{t("Diagnosis")}: {record.diagnosis || '-'}</span>
-                      <span>{t("Treatment")}: {record.treatment || '-'}</span>
                       <span>{t("Vaccination")}: {record.vaccinationDetails || '-'}</span>
                     </div>
+                    
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button 
+                        onClick={() => navigate('/dashboard/farm-manager/ai-chat', { state: { livestockSymptoms: record.symptoms, animal: record.animalTag || record.livestockId, imageUrl: record.imageUrl } })}
+                        className="bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 text-xs py-1"
+                      >
+                        <FiMessageCircle className="mr-1 inline" /> AI Assist
+                      </Button>
+                      <Button 
+                        onClick={() => setRevealedTreatments(prev => ({ ...prev, [record.id!]: !prev[record.id!] }))}
+                        className="bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs py-1"
+                      >
+                        <FiFileText className="mr-1 inline" /> {revealedTreatments[record.id!] ? "Hide Review" : "Review Treatment"}
+                      </Button>
+                    </div>
+
+                    {revealedTreatments[record.id!] && (
+                      <div id={`treatment-review-${record.id}`} className="mt-3 rounded-xl bg-slate-900/80 p-3 border border-slate-700/50">
+                        <div className="mb-2 flex items-center justify-between text-emerald-400 font-medium text-xs">
+                          <div className="flex items-center gap-2">
+                            <FiFileText /> Treatment Review
+                          </div>
+                          <button 
+                            onClick={() => handleExportPDF(record)} 
+                            className="flex items-center gap-1 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 px-2 py-1 rounded transition-colors"
+                          >
+                            <FiDownload /> PDF
+                          </button>
+                        </div>
+                        <div className="grid gap-2 text-xs text-slate-300 sm:grid-cols-2">
+                          <span><strong>{t("Diagnosis")}:</strong> {record.diagnosis || '-'}</span>
+                          <span><strong>{t("Treatment")}:</strong> {record.treatment || '-'}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))
               )}
             </div>
           </Card>
+        </div>
+      )}
+
+      {selectedSchedule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-2xl">
+            <h3 className="mb-2 text-2xl font-bold text-white">Complete Feeding</h3>
+            <p className="mb-6 text-sm text-slate-400">{selectedSchedule.animalTag || selectedSchedule.livestockId} • {selectedSchedule.scheduledTime}</p>
+            <form onSubmit={handleCompleteSchedule} className="grid gap-4 md:grid-cols-2">
+              <input className="farm-input" value={completionForm.feedGiven} onChange={(e) => setCompletionForm((prev) => ({ ...prev, feedGiven: e.target.value }))} placeholder="Feed given (kg)" />
+              <input className="farm-input" value={completionForm.waterGiven} onChange={(e) => setCompletionForm((prev) => ({ ...prev, waterGiven: e.target.value }))} placeholder="Water given (L)" />
+              <select className="farm-input" value={completionForm.appetite} onChange={(e) => setCompletionForm((prev) => ({ ...prev, appetite: e.target.value }))}>
+                <option>Excellent</option>
+                <option>Good</option>
+                <option>Average</option>
+                <option>Poor</option>
+              </select>
+              <select className="farm-input" value={completionForm.healthObservation} onChange={(e) => setCompletionForm((prev) => ({ ...prev, healthObservation: e.target.value }))}>
+                <option>Normal</option>
+                <option>Weak</option>
+                <option>Sick</option>
+              </select>
+              <textarea className="farm-input md:col-span-2" rows={3} value={completionForm.notes} onChange={(e) => setCompletionForm((prev) => ({ ...prev, notes: e.target.value }))} placeholder="Remarks" />
+              <div className="md:col-span-2 flex justify-end gap-3">
+                <Button type="button" variant="ghost" onClick={() => setSelectedSchedule(null)}>Cancel</Button>
+                <Button type="submit">Complete Task</Button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

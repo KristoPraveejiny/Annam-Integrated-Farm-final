@@ -1,190 +1,178 @@
-// FarmerLivestockUpdatesPage.tsx – similar to FarmerCropUpdatesPage but for livestock tasks
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
-import { FiUploadCloud, FiSearch } from 'react-icons/fi';
-import { useTranslation } from 'react-i18next';
+import { completeFeedSchedule, getFeedSchedules, getFeedSummary, type FeedSchedule } from '../../api/livestock';
 import { notifyError, notifySuccess, notifyWarning } from '../../utils/notifications';
+import { FiCalendar, FiCheckCircle, FiDroplet } from 'react-icons/fi';
 
 export default function FarmerLivestockUpdatesPage() {
-  const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState('activities');
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [selectedTaskId, setSelectedTaskId] = useState<string>('');
+  const [schedules, setSchedules] = useState<FeedSchedule[]>([]);
+  const [summary, setSummary] = useState<any>({});
+  const [selectedScheduleId, setSelectedScheduleId] = useState('');
+  const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().slice(0, 10));
+  const [feedGiven, setFeedGiven] = useState('');
+  const [waterGiven, setWaterGiven] = useState('');
+  const [appetite, setAppetite] = useState('Good');
+  const [healthObservation, setHealthObservation] = useState('Normal');
+  const [notes, setNotes] = useState('');
 
-  // Form state
-  const [activityDate, setActivityDate] = useState(new Date().toISOString().split('T')[0]);
-  const [activityNotes, setActivityNotes] = useState('');
-  const [activityImage, setActivityImage] = useState<File | null>(null);
+  const selectedSchedule = useMemo(
+    () => schedules.find((schedule) => schedule.id === selectedScheduleId) || null,
+    [schedules, selectedScheduleId],
+  );
 
-  // Fetch tasks assigned to the farmer (including livestock tasks)
-  useEffect(() => {
-    const fetchTasks = async () => {
-      try {
-        const tokenRaw = localStorage.getItem('token');
-        const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
-        const res = await fetch('/api/tasks/farmer', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const active = data.filter((t: any) => {
-            const status = String(t.status || '').trim().toLowerCase().replace(/\s+/g, '_');
-            return status === 'in_progress' && t.crop_cycle_id == null;
-          });
-          setTasks(active);
-        }
-      } catch (err) {
-        console.error('Failed to fetch tasks', err);
-      }
-    };
-    fetchTasks();
-  }, []);
-
-  // Filter tasks for the selected date (due_date stored in UTC)
-  const tasksForDate = tasks.filter((t) => {
-    if (!t.due_date) return false;
-    const d = new Date(t.due_date);
-    const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    return local === activityDate;
-  });
-
-  // Keep a selected task if available
-  useEffect(() => {
-    if (tasksForDate.length > 0 && !tasksForDate.find((t) => t.id === selectedTaskId)) {
-      setSelectedTaskId(tasksForDate[0].id);
-    } else if (tasksForDate.length === 0) {
-      setSelectedTaskId('');
-    }
-  }, [tasksForDate, selectedTaskId]);
-
-  const selectedTask = tasks.find((t) => t.id === selectedTaskId);
-
-  const handleActivitySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedTaskId) return notifyWarning('No task selected');
-    const tokenRaw = localStorage.getItem('token');
-    const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
-    const formData = new FormData();
-    formData.append('notes', activityNotes);
-    if (activityImage) formData.append('image', activityImage);
+  const loadData = async () => {
     try {
-    const selectedTask = tasks.find((t) => t.id === selectedTaskId);
-    const status = String(selectedTask?.status || '').trim().toLowerCase().replace(/\s+/g, '_');
-    if (status !== 'in_progress') {
-      notifyWarning('Please start the task before submitting activity.');
+      const [scheduleResult, summaryResult] = await Promise.allSettled([getFeedSchedules(), getFeedSummary()]);
+      if (scheduleResult.status === 'fulfilled') {
+        setSchedules(scheduleResult.value);
+        if (!selectedScheduleId && scheduleResult.value[0]) {
+          setSelectedScheduleId(scheduleResult.value[0].id);
+        }
+      }
+      if (summaryResult.status === 'fulfilled') {
+        setSummary(summaryResult.value);
+      }
+      if (scheduleResult.status === 'rejected' && summaryResult.status === 'rejected') {
+        throw scheduleResult.reason ?? summaryResult.reason;
+      }
+    } catch (error) {
+      console.error('Failed to load livestock updates:', error);
+      notifyError('Failed to load livestock updates.');
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [scheduleDate]);
+
+  const handleComplete = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedSchedule) {
+      notifyWarning('Please select a feeding task.');
       return;
     }
 
-    const res = await fetch(`/api/tasks/${selectedTaskId}/evidence`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData,
-    });
-      if (res.ok) {
-        notifySuccess('Livestock activity updated!');
-        setActivityNotes('');
-        setActivityImage(null);
-      } else {
-        notifyError('Failed to update activity');
-      }
-    } catch (err) {
-      console.error(err);
-      notifyError('Error updating activity');
+    try {
+      await completeFeedSchedule(selectedSchedule.id, {
+        feedGiven,
+        waterGiven,
+        appetite,
+        healthObservation,
+        notes,
+      });
+      notifySuccess('Feeding completed successfully.');
+      setFeedGiven('');
+      setWaterGiven('');
+      setAppetite('Good');
+      setHealthObservation('Normal');
+      setNotes('');
+      await loadData();
+    } catch (error) {
+      console.error('Failed to complete feeding:', error);
+      notifyError('Failed to complete feeding.');
     }
   };
 
   return (
     <div className="space-y-6 pb-20">
-      <SectionHeading eyebrow={t("Livestock Updates")} title={t("Livestock Management")} description={t("Record daily livestock tasks, feedings, and health notes.")} tone="light" />
+      <SectionHeading
+        eyebrow="Livestock Updates"
+        title="Livestock Feeding"
+        description="Review assigned feeding tasks and submit the actual feed and water given."
+        tone="light"
+      />
 
-      {/* Tabs – for now we only need the activities tab */}
-      <div className="flex space-x-3 border-b border-white/10 pb-4 overflow-x-auto">
-        {['activities'].map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-5 py-2 rounded-xl text-sm font-semibold capitalize transition-all whitespace-nowrap ${
-              activeTab === tab ? 'bg-emerald-600 text-white shadow-[0_4px_20px_rgba(16,185,129,0.3)]' : 'bg-slate-900/50 text-slate-300 hover:bg-slate-800 border border-white/5'
-            }`}
-          >
-            {tab === 'activities' ? t('Daily Activities') : t(tab)}
-          </button>
-        ))}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <Card title="Animals Fed Today"><p className="mt-2 text-4xl font-black text-white">{summary.animalsFedToday ?? 0}</p></Card>
+        <Card title="Pending Feedings"><p className="mt-2 text-4xl font-black text-white">{summary.pendingFeedings ?? 0}</p></Card>
+        <Card title="Missed Feedings"><p className="mt-2 text-4xl font-black text-white">{summary.missedFeedings ?? 0}</p></Card>
+        <Card title="Feed Used Today"><p className="mt-2 text-4xl font-black text-white">{summary.actualFeed ?? 0} kg</p></Card>
+        <Card title="Water Used Today"><p className="mt-2 text-4xl font-black text-white">{summary.actualWater ?? 0} L</p></Card>
       </div>
 
-      {activeTab === 'activities' && (
-        <Card title={t("Record Livestock Activity")} subtitle={t("Log feeding, health checks, and other field work")}>
-          <form className="space-y-6 mt-4" onSubmit={handleActivitySubmit}>
-            <div className="grid gap-6 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-white/80">{t("Activity Type (Today's Tasks)")}</span>
-                <select
-                  className="farm-input w-full appearance-none"
-                  value={selectedTaskId}
-                  onChange={(e) => setSelectedTaskId(e.target.value)}
-                >
-                  {tasksForDate.length === 0 ? (
-                    <option value="">{t("No livestock tasks for selected date")}</option>
-                  ) : (
-                    tasksForDate.map((t) => (
-                      <option key={t.id} value={t.id}>{t.title}</option>
-                    ))
-                  )}
-                </select>
-              </label>
+      <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <Card title="Feeding Tasks" subtitle="Select one task to complete">
+          <div className="mb-4 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+            <FiCalendar className="text-emerald-300" />
+            <input className="w-full bg-transparent text-white outline-none" type="date" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} />
+          </div>
 
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-white/80">{t("Livestock / Pen")}</span>
-                <input
-                  type="text"
-                  readOnly
-                  value={selectedTask?.livestock_name || selectedTask?.livestock_tag || selectedTask?.pen || 'N/A'}
-                  className="farm-input w-full bg-white/5 cursor-not-allowed text-white/50"
-                />
-              </label>
-            </div>
-
-            <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Date")}</span>
-              <input type="date" className="farm-input w-full" value={activityDate} onChange={(e) => setActivityDate(e.target.value)} />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Manager's Instructions")}</span>
-              <textarea
-                className="farm-input w-full min-h-24 bg-white/5 cursor-not-allowed text-white/50"
-                placeholder={t("Details from manager...")}
-                readOnly
-                value={selectedTask?.description || t('No instructions provided.')}
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Farmer's Notes")}</span>
-              <textarea
-                className="farm-input w-full min-h-24"
-                placeholder={t("Describe what you actually did...")}
-                value={activityNotes}
-                onChange={(e) => setActivityNotes(e.target.value)}
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Upload Image of Work")}</span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => e.target.files && setActivityImage(e.target.files[0])}
-                className="block w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-500/10 file:text-emerald-500 hover:file:bg-emerald-500/20 transition-all cursor-pointer"
-              />
-            </label>
-
-            <Button type="submit" className="w-full sm:w-auto" disabled={!selectedTaskId}>{t("Save Activity")}</Button>
-          </form>
+          <div className="space-y-3">
+            {schedules.length === 0 ? (
+              <p className="text-sm text-slate-400">No feed schedules found.</p>
+            ) : schedules.map((schedule) => (
+              <button
+                key={schedule.id}
+                onClick={() => setSelectedScheduleId(schedule.id)}
+                className={`w-full rounded-3xl border p-4 text-left transition ${
+                  selectedScheduleId === schedule.id ? 'border-emerald-500 bg-emerald-500/10' : 'border-white/10 bg-slate-950/35 hover:bg-white/5'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-white">{schedule.animalTag || schedule.livestockId}</p>
+                    <p className="mt-1 text-xs text-slate-400">{schedule.feedType}</p>
+                  </div>
+                  <span className="rounded-full bg-sky-500/10 px-3 py-1 text-xs font-semibold text-sky-300">{schedule.scheduledTime}</span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-400">
+                  <span>{schedule.feedAmount}</span>
+                  <span>{schedule.waterRequirement}</span>
+                  <span className="rounded-full bg-white/5 px-2 py-1">{schedule.status}</span>
+                </div>
+              </button>
+            ))}
+          </div>
         </Card>
-      )}
+
+        <Card title="Complete Feeding" subtitle="Enter actual feed and water values">
+          {selectedSchedule ? (
+            <form onSubmit={handleComplete} className="grid gap-4 md:grid-cols-2">
+              <div className="md:col-span-2 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-white">{selectedSchedule.animalTag || selectedSchedule.livestockId}</p>
+                    <p className="text-xs text-slate-400">{selectedSchedule.feedType} • {selectedSchedule.scheduledTime}</p>
+                  </div>
+                  <FiDroplet className="text-2xl text-emerald-300" />
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div className="rounded-2xl bg-slate-950/45 p-3 text-sm text-slate-300">Feed Required: <span className="font-semibold text-white">{selectedSchedule.feedAmount}</span></div>
+                  <div className="rounded-2xl bg-slate-950/45 p-3 text-sm text-slate-300">Water Required: <span className="font-semibold text-white">{selectedSchedule.waterRequirement}</span></div>
+                </div>
+              </div>
+
+              <input className="farm-input" placeholder="Feed given (kg)" value={feedGiven} onChange={(e) => setFeedGiven(e.target.value)} />
+              <input className="farm-input" placeholder="Water given (L)" value={waterGiven} onChange={(e) => setWaterGiven(e.target.value)} />
+              <select className="farm-input" value={appetite} onChange={(e) => setAppetite(e.target.value)}>
+                <option>Excellent</option>
+                <option>Good</option>
+                <option>Average</option>
+                <option>Poor</option>
+              </select>
+              <select className="farm-input" value={healthObservation} onChange={(e) => setHealthObservation(e.target.value)}>
+                <option>Normal</option>
+                <option>Weak</option>
+                <option>Sick</option>
+              </select>
+              <textarea className="farm-input md:col-span-2 min-h-28" placeholder="Remarks" value={notes} onChange={(e) => setNotes(e.target.value)} />
+
+              <div className="md:col-span-2 flex justify-end gap-3">
+                <Button type="button" variant="ghost" onClick={() => setSelectedScheduleId('')}>
+                  Cancel
+                </Button>
+                <Button type="submit" className="flex items-center gap-2">
+                  <FiCheckCircle /> Complete Task
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <div className="rounded-3xl border border-white/10 bg-slate-950/35 p-6 text-slate-400">Select a feeding task to complete it.</div>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }

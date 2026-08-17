@@ -171,12 +171,13 @@ async function getFarmContext(farmId) {
     pool.query(
       `
         SELECT c.id, c.crop_name, c.variety, c.planting_date, c.expected_harvest_date, c.status,
+               c.harvest_status, c.remaining_days, c.is_historical,
                c.season, c.expected_yield, c.yield_unit, c.notes,
                f.field_name, f.soil_type AS field_soil_type, f.location AS field_location
         FROM crop_cycles c
         LEFT JOIN farm_fields f ON f.id = c.field_id
-        WHERE c.farm_id = $1
-        ORDER BY c.created_at DESC
+        WHERE c.farm_id = $1 AND c.is_historical = FALSE
+        ORDER BY c.remaining_days ASC NULLS LAST
         LIMIT 10
       `,
       [farmId],
@@ -281,7 +282,7 @@ function buildSystemPrompt({ language, role, farmContext }) {
     '',
     `Fields:\n${asBulletList(farmContext.fields, (field) => `${field.field_name || 'Unnamed field'} | soil: ${field.soil_type || 'Unknown'} | pH: ${field.soil_ph !== null ? field.soil_ph : 'Unknown'} | fertility: ${field.soil_fertility_level || 'Unknown'} | drainage: ${field.drainage_quality || 'Unknown'} | irrigation: ${field.irrigation_type || 'Unknown'} | location: ${field.location || 'Unknown'} | status: ${field.status || 'Unknown'}`)}`,
     '',
-    `Crops:\n${asBulletList(farmContext.crops, (crop) => `${crop.crop_name || 'Unknown crop'} | variety: ${crop.variety || 'Unknown'} | stage: ${crop.status || 'Unknown'} | planted: ${crop.planting_date || 'Unknown'} | harvest: ${crop.expected_harvest_date || 'Unknown'} | field: ${crop.field_name || 'Unassigned'}`)}`,
+    `Crops:\n${asBulletList(farmContext.crops, (crop) => `${crop.crop_name || 'Unknown crop'} | variety: ${crop.variety || 'Unknown'} | stage: ${crop.status || 'Unknown'} | planted: ${crop.planting_date || 'Unknown'} | harvest: ${crop.expected_harvest_date || 'Unknown'} (in ${crop.remaining_days} days) | harvest_status: ${crop.harvest_status} | field: ${crop.field_name || 'Unassigned'}`)}`,
     '',
     `Livestock:\n${asBulletList(farmContext.livestock, (animal) => `${animal.tag_code || 'Unknown tag'} | ${animal.species || 'Unknown species'} | breed: ${animal.breed || 'Unknown'} | health: ${animal.health_status || 'Unknown'} | weight: ${animal.current_weight_kg ?? 'N/A'}`)}`,
     '',

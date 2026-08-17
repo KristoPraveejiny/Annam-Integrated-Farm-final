@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react';
 import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
-import { FiSearch } from 'react-icons/fi';
+import { FiSearch, FiDownload, FiMessageCircle, FiFileText } from 'react-icons/fi';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import { deleteFeedRequirement, getFeedRequirements, type FeedRequirement } from '../../api/livestock';
 import { createLivestockHealthEvent, getLivestockHealthEvents, type LivestockHealthEvent } from '../../api/livestockHealth';
+import html2pdf from 'html2pdf.js';
 
 export default function FarmerLivestockPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   const [livestock, setLivestock] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
@@ -16,6 +20,7 @@ export default function FarmerLivestockPage() {
   const [feedSchedules, setFeedSchedules] = useState<any[]>([]);
   const [healthEvents, setHealthEvents] = useState<LivestockHealthEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [revealedTreatments, setRevealedTreatments] = useState<Record<string, boolean>>({});
   
   const [healthForm, setHealthForm] = useState({
     livestockId: '',
@@ -51,6 +56,20 @@ export default function FarmerLivestockPage() {
     } catch (err) {
       console.error('Failed to fetch livestock:', err);
     }  
+  };
+
+  const handleExportPDF = (record: any) => {
+    const element = document.getElementById(`treatment-review-${record.id}`);
+    if (element) {
+      const opt = {
+        margin:       10,
+        filename:     `treatment_review_${record.animalTag || record.livestockId}.pdf`,
+        image:        { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
+      };
+      html2pdf().set(opt).from(element).save();
+    }
   };
 
   const fetchGroups = async () => {
@@ -291,17 +310,54 @@ export default function FarmerLivestockPage() {
                     </div>
                     {/* @ts-ignore */}
                     {record.imageUrl && (
-                      <div className="mt-3">
+                      <div className="mt-3 relative group">
                         {/* @ts-ignore */}
                         <img src={record.imageUrl} alt="Health condition" className="h-32 w-full object-cover rounded-xl" />
+                        {/* @ts-ignore */}
+                        <a href={record.imageUrl} download="health_condition.jpg" className="absolute top-2 right-2 p-2 bg-black/50 hover:bg-black/70 rounded-full text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                          <FiDownload size={16} />
+                        </a>
                       </div>
                     )}
                     <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
                       <span>{t("Symptoms")}: {record.symptoms || '-'}</span>
-                      <span>{t("Diagnosis")}: {record.diagnosis || '-'}</span>
-                      <span>{t("Treatment")}: {record.treatment || '-'}</span>
                       <span>{t("Vaccination")}: {record.vaccinationDetails || '-'}</span>
                     </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button 
+                        onClick={() => navigate('/dashboard/farmer-worker/ai-chat', { state: { livestockSymptoms: record.symptoms, animal: record.animalTag || record.livestockId, imageUrl: record.imageUrl, eventId: record.id } })}
+                        className="bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 text-xs py-1"
+                      >
+                        <FiMessageCircle className="mr-1 inline" /> AI Assist
+                      </Button>
+                      <Button 
+                        onClick={() => setRevealedTreatments(prev => ({ ...prev, [record.id!]: !prev[record.id!] }))}
+                        className="bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs py-1"
+                      >
+                        <FiFileText className="mr-1 inline" /> {revealedTreatments[record.id!] ? "Hide Review" : "Review Treatment"}
+                      </Button>
+                    </div>
+
+                    {revealedTreatments[record.id!] && (
+                      <div id={`treatment-review-${record.id}`} className="mt-3 rounded-xl bg-slate-900/80 p-3 border border-slate-700/50">
+                        <div className="mb-2 flex items-center justify-between text-emerald-400 font-medium text-xs">
+                          <div className="flex items-center gap-2">
+                            <FiFileText /> Treatment Review
+                          </div>
+                          <button 
+                            onClick={() => handleExportPDF(record)} 
+                            className="flex items-center gap-1 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 px-2 py-1 rounded transition-colors"
+                          >
+                            <FiDownload /> PDF
+                          </button>
+                        </div>
+                        <div className="grid gap-2 text-xs text-slate-300 sm:grid-cols-2">
+                          <span><strong>{t("Diagnosis")}:</strong> {record.diagnosis || '-'}</span>
+                          <span><strong>{t("Treatment")}:</strong> {record.treatment || '-'}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))
               )}

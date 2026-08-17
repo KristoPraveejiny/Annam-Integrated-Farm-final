@@ -1,23 +1,17 @@
-import { pool } from './db.js';
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: 'postgres://postgres:Kristo%4018@localhost:5432/annam_integrated_farm' });
 
-async function fix() {
+async function run() {
   try {
-    const farms = await pool.query("SELECT id FROM farms LIMIT 1");
-    if (farms.rows.length === 0) return;
-    const farmId = farms.rows[0].id;
+    const res1 = await pool.query("SELECT id, title, status, completion_percentage, updated_at FROM tasks WHERE title = 'irrigate to the farm' ORDER BY updated_at DESC LIMIT 5");
+    console.log('Tasks:', res1.rows);
     
-    const users = await pool.query("SELECT id, role FROM app_users");
-    for (const u of users.rows) {
-      if (u.role === 'worker' || u.role === 'farm_manager') {
-        const memRole = u.role === 'farm_manager' ? 'manager' : 'worker';
-        await pool.query("INSERT INTO farm_memberships (farm_id, user_id, member_role, status) VALUES ($1, $2, $3, 'active') ON CONFLICT DO NOTHING", [farmId, u.id, memRole]);
-      }
-    }
-    console.log("Fixed memberships!");
-  } catch(e) {
-    console.error(e);
+    const res2 = await pool.query("SELECT task_id, progress_percentage, is_final, status, created_at FROM task_updates ORDER BY created_at DESC LIMIT 5");
+    console.log('Updates:', res2.rows);
+  } catch (err) {
+    console.error(err);
   } finally {
-    process.exit(0);
+    pool.end();
   }
 }
-fix();
+run();

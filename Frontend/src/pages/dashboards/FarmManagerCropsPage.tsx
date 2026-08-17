@@ -1,22 +1,72 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { SectionHeading } from '../../components/ui/SectionHeading';
-import { FiDroplet, FiMapPin, FiEdit2, FiTrash2, FiSearch, FiPlus, FiCheckCircle, FiAlertTriangle, FiDownload } from 'react-icons/fi';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { FiDroplet, FiMapPin, FiEdit2, FiTrash2, FiSearch, FiPlus, FiCheckCircle, FiAlertTriangle, FiDownload, FiChevronLeft, FiChevronRight, FiCalendar, FiList, FiGrid, FiClock, FiMap, FiTag, FiFilter, FiPrinter, FiEye, FiFileText, FiTrendingUp } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import { apiFetch } from '../../utils/apiFetch';
 import { notifySuccess, notifyError } from '../../utils/notifications';
+import { EnterpriseHarvestCalendar } from './EnterpriseHarvestCalendar';
+import { useNavigate } from 'react-router-dom';
+import { generateTextPDF } from '../../utils/pdfGenerator';
+import { BarChart, Bar, CartesianGrid, Cell, Legend, PieChart, Pie, ResponsiveContainer, Tooltip, XAxis, YAxis, LineChart, Line, AreaChart, Area } from 'recharts';
+
+type CalendarView = 'month' | 'week' | 'day' | 'agenda';
+
+const HARVEST_STATUS_STYLES: Record<string, { label: string; dot: string; bg: string; border: string; text: string }> = {
+  ready: { label: 'Ready for Harvest', dot: 'bg-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-300' },
+  due: { label: 'Harvest This Week', dot: 'bg-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20', text: 'text-yellow-300' },
+  today: { label: 'Harvest Today', dot: 'bg-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/20', text: 'text-orange-300' },
+  overdue: { label: 'Overdue', dot: 'bg-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/20', text: 'text-rose-300' },
+  harvested: { label: 'Harvested', dot: 'bg-slate-400', bg: 'bg-slate-500/10', border: 'border-slate-500/20', text: 'text-slate-300' },
+  growing: { label: 'Growing', dot: 'bg-sky-400', bg: 'bg-sky-500/10', border: 'border-sky-500/20', text: 'text-sky-300' },
+};
+
+const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+const formatDateKey = (date: Date) => date.toISOString().slice(0, 10);
+const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+const addDays = (date: Date, days: number) => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+};
+const startOfWeek = (date: Date) => {
+  const copy = startOfDay(date);
+  const day = copy.getDay();
+  const diff = (day + 6) % 7;
+  return addDays(copy, -diff);
+};
+const endOfWeek = (date: Date) => addDays(startOfWeek(date), 6);
+const daysBetween = (a: Date, b: Date) => Math.round((startOfDay(b).getTime() - startOfDay(a).getTime()) / 86400000);
 
 export default function FarmManagerCropsPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [calendarView, setCalendarView] = useState<CalendarView>('month');
+  const [calendarCursor, setCalendarCursor] = useState(() => new Date());
+  const [calendarYear, setCalendarYear] = useState(() => new Date().getFullYear());
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date().getMonth());
+  const [selectedCalendarEvent, setSelectedCalendarEvent] = useState<any | null>(null);
+  const [hoveredEventId, setHoveredEventId] = useState<string | null>(null);
+  const [calendarFilters, setCalendarFilters] = useState({
+    crop: [] as string[],
+    field: [] as string[],
+    status: [] as string[],
+    month: [] as string[],
+    season: [] as string[],
+    variety: [] as string[],
+  });
   const [crops, setCrops] = useState<any[]>([]);
   const [fields, setFields] = useState<any[]>([]);
   const [showCropModal, setShowCropModal] = useState(false);
   const [showGrowthModal, setShowGrowthModal] = useState(false);
-  const [newCrop, setNewCrop] = useState<any>({ 
-    crop_name: '', variety: '', block_id: '', planting_date: '', expected_harvest_date: '', 
-    season: '', expected_yield: '', yield_unit: 'kg', notes: '' 
+  const [newCrop, setNewCrop] = useState<any>({
+    crop_name: '', variety: '', block_id: '', planting_date: '', expected_harvest_date: '',
+    season: '', expected_yield: '', yield_unit: 'kg', notes: ''
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [fieldFilter, setFieldFilter] = useState('all');
@@ -24,6 +74,7 @@ export default function FarmManagerCropsPage() {
   const [recentUpdates, setRecentUpdates] = useState<any[]>([]);
   const [selectedCrop, setSelectedCrop] = useState<any | null>(null);
   const [editingCropId, setEditingCropId] = useState<string | null>(null);
+  const [cropToDelete, setCropToDelete] = useState<any | null>(null);
 
   // Disease reports states
   const [diseaseReports, setDiseaseReports] = useState<any[]>([]);
@@ -31,6 +82,8 @@ export default function FarmManagerCropsPage() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportStatus, setReportStatus] = useState('Submitted');
   const [reportNotes, setReportNotes] = useState('');
+  const [reportPdfFile, setReportPdfFile] = useState<File | null>(null);
+  const [reportPdfUrl, setReportPdfUrl] = useState<string | null>(null);
 
   const growthStageMap: Record<string, string[]> = {
     papaya: ['Seed', 'Seedling', 'Vegetative', 'Flowering', 'Fruiting', 'Harvest'],
@@ -42,8 +95,8 @@ export default function FarmManagerCropsPage() {
     const key = cropName?.toLowerCase().includes('papaya')
       ? 'papaya'
       : cropName?.toLowerCase().includes('paddy') || cropName?.toLowerCase().includes('rice')
-      ? 'paddy'
-      : 'default';
+        ? 'paddy'
+        : 'default';
     return growthStageMap[key];
   };
 
@@ -59,9 +112,9 @@ export default function FarmManagerCropsPage() {
 
   const getStage = (crop: any) => {
     if (crop.current_stage) return crop.current_stage;
-    if (crop.status === 'Harvesting') return 'Harvest';
+    if (crop.harvest_status === 'Harvested' || crop.status === 'Harvesting') return 'Harvest';
     if (crop.status === 'Growing') return 'Vegetative';
-    if (crop.status === 'Planned') return 'Seed';
+    if (crop.status === 'Planned' || crop.status === 'planned') return 'Seed';
     return 'Seed';
   };
 
@@ -70,10 +123,185 @@ export default function FarmManagerCropsPage() {
     const cropMatch = cropFilter === 'all' || c.crop_name === cropFilter;
     const fieldMatch = fieldFilter === 'all' || String(c.field_id) === String(fieldFilter);
     return cropMatch && fieldMatch && (
-      c.crop_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      c.crop_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       fieldName.toLowerCase().includes(searchQuery.toLowerCase())
     );
   });
+
+  const calendarEvents = useMemo(() => {
+    const today = startOfDay(new Date());
+    return crops
+      .filter((crop) => !crop.is_historical)
+      .filter((crop) => crop.expected_harvest_date || crop.planting_date)
+      .map((crop) => {
+        const field = fields.find((item) => String(item.id) === String(crop.field_id));
+        const plantingDate = crop.planting_date ? startOfDay(new Date(crop.planting_date)) : null;
+        const expectedHarvestDate = crop.expected_harvest_date ? startOfDay(new Date(crop.expected_harvest_date)) : null;
+        const remainingDays = typeof crop.remaining_days === 'number' ? crop.remaining_days : expectedHarvestDate ? daysBetween(today, expectedHarvestDate) : null;
+        const progress = typeof crop.harvest_progress === 'number' ? crop.harvest_progress : getGrowthProgress(crop);
+        const statusKey =
+          crop.harvest_status === 'Harvested' || crop.status === 'harvested' || crop.status === 'completed'
+            ? 'harvested'
+            : remainingDays != null && remainingDays < 0
+              ? 'overdue'
+              : remainingDays === 0
+                ? 'today'
+                : remainingDays != null && remainingDays <= 7
+                  ? 'due'
+                  : progress >= 70
+                    ? 'ready'
+                    : 'growing';
+        return {
+          id: crop.id,
+          crop,
+          field,
+          title: crop.crop_name || 'Crop',
+          subtitle: field?.field_name || 'Unassigned Field',
+          variety: crop.variety || '-',
+          season: crop.season || '-',
+          date: expectedHarvestDate || plantingDate || today,
+          plantingDate,
+          expectedHarvestDate,
+          remainingDays,
+          progress,
+          statusKey,
+          color: HARVEST_STATUS_STYLES[statusKey],
+        };
+      })
+      .filter((event) => {
+        const monthLabel = monthNames[event.date.getMonth()];
+        const matches = (values: string[], value: string) => values.length === 0 || values.includes(value);
+        return (
+          matches(calendarFilters.crop, event.title) &&
+          matches(calendarFilters.field, event.subtitle) &&
+          matches(calendarFilters.status, event.statusKey) &&
+          matches(calendarFilters.month, monthLabel) &&
+          matches(calendarFilters.season, event.season) &&
+          matches(calendarFilters.variety, event.variety)
+        );
+      })
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [crops, fields, calendarFilters]);
+
+  const currentMonthEvents = calendarEvents.filter((event) => event.date.getMonth() === calendarMonth && event.date.getFullYear() === calendarYear);
+  const currentWeekStart = startOfWeek(calendarCursor);
+  const currentWeekEnd = endOfWeek(calendarCursor);
+  const weekEvents = calendarEvents.filter((event) => event.date >= currentWeekStart && event.date <= currentWeekEnd);
+  const dayEvents = calendarEvents.filter((event) => formatDateKey(event.date) === formatDateKey(calendarCursor));
+  const agendaEvents = calendarEvents;
+
+  const stats = useMemo(() => {
+    const today = startOfDay(new Date());
+    const inSeven = addDays(today, 7);
+    const inMonth = addDays(today, 30);
+    return {
+      ready: calendarEvents.filter((event) => event.statusKey === 'ready').length,
+      week: calendarEvents.filter((event) => event.expectedHarvestDate && event.expectedHarvestDate >= today && event.expectedHarvestDate <= inSeven).length,
+      month: calendarEvents.filter((event) => event.expectedHarvestDate && event.expectedHarvestDate >= today && event.expectedHarvestDate <= inMonth).length,
+      overdue: calendarEvents.filter((event) => event.statusKey === 'overdue').length,
+      harvested: calendarEvents.filter((event) => event.statusKey === 'harvested').length,
+      yield: crops.reduce((total, crop) => total + (Number(crop.expected_yield) || 0), 0),
+      active: calendarEvents.filter((event) => event.statusKey !== 'harvested').length,
+    };
+  }, [calendarEvents, crops]);
+
+  const calendarChartData = useMemo(() => {
+    const monthly = Array.from({ length: 12 }, (_, index) => ({
+      month: monthNames[index].slice(0, 3),
+      forecast: calendarEvents.filter((event) => event.date.getMonth() === index).length,
+      completed: calendarEvents.filter((event) => event.statusKey === 'harvested' && event.date.getMonth() === index).length,
+    }));
+    const cropMap = Object.values(calendarEvents.reduce<Record<string, number>>((acc, event) => {
+      acc[event.title] = (acc[event.title] || 0) + 1;
+      return acc;
+    }, {})).map(() => 0);
+    return { monthly, cropMap };
+  }, [calendarEvents]);
+
+  const yearOptions = useMemo(() => {
+    const current = new Date().getFullYear();
+    return Array.from({ length: 6 }, (_, index) => current - 2 + index);
+  }, []);
+
+  const uniqueValues = (key: 'crop' | 'field' | 'status' | 'month' | 'season' | 'variety') => {
+    const values = new Set<string>();
+    calendarEvents.forEach((event) => {
+      if (key === 'crop') values.add(event.title);
+      if (key === 'field') values.add(event.subtitle);
+      if (key === 'status') values.add(event.statusKey);
+      if (key === 'month') values.add(monthNames[event.date.getMonth()]);
+      if (key === 'season') values.add(event.season);
+      if (key === 'variety') values.add(event.variety);
+    });
+    return Array.from(values);
+  };
+
+  const toggleCalendarFilter = (key: keyof typeof calendarFilters, value: string) => {
+    setCalendarFilters((prev) => {
+      const exists = prev[key].includes(value);
+      return { ...prev, [key]: exists ? prev[key].filter((item) => item !== value) : [...prev[key], value] };
+    });
+  };
+
+  const clearCalendarFilters = () => setCalendarFilters({ crop: [], field: [], status: [], month: [], season: [], variety: [] });
+
+  const moveCalendar = (direction: number) => {
+    const next = new Date(calendarCursor);
+    if (calendarView === 'month') next.setMonth(next.getMonth() + direction);
+    else if (calendarView === 'week') next.setDate(next.getDate() + 7 * direction);
+    else if (calendarView === 'day') next.setDate(next.getDate() + direction);
+    else next.setMonth(next.getMonth() + direction);
+    setCalendarCursor(next);
+    setCalendarMonth(next.getMonth());
+    setCalendarYear(next.getFullYear());
+  };
+
+  const todayCalendar = () => {
+    const today = new Date();
+    setCalendarCursor(today);
+    setCalendarMonth(today.getMonth());
+    setCalendarYear(today.getFullYear());
+  };
+
+  const eventBadge = (event: any) => {
+    if (event.statusKey === 'overdue') return '🔥 Overdue';
+    if (event.statusKey === 'today') return '🌾 Ready Today';
+    if (event.statusKey === 'due') return '⚠ Harvest Tomorrow';
+    return '';
+  };
+
+  const renderEventCard = (event: any, compact = false) => (
+    <motion.button
+      key={event.id}
+      type="button"
+      layout
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      onMouseEnter={() => setHoveredEventId(event.id)}
+      onMouseLeave={() => setHoveredEventId(null)}
+      onClick={() => setSelectedCalendarEvent(event)}
+      className={`group relative w-full overflow-hidden rounded-2xl border ${event.color.border} ${event.color.bg} p-${compact ? '3' : '4'} text-left shadow-lg transition-all`}
+    >
+      <div className={`absolute inset-y-0 left-0 w-1 ${event.color.dot}`} />
+      <div className="flex items-start justify-between gap-3 pl-2">
+        <div className="min-w-0">
+          <p className="truncate font-semibold text-white">{event.title}</p>
+          <p className="mt-1 truncate text-xs text-slate-300">{event.subtitle}</p>
+          <p className="mt-2 text-xs text-slate-400">{event.date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</p>
+        </div>
+        <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.2em] ${event.color.text} bg-black/20`}>
+          {event.statusKey}
+        </span>
+      </div>
+      {eventBadge(event) ? <div className="mt-3 text-xs font-semibold text-amber-200">{eventBadge(event)}</div> : null}
+    </motion.button>
+  );
+
+  const monthGrid = useMemo(() => {
+    const first = new Date(calendarYear, calendarMonth, 1);
+    const start = startOfWeek(first);
+    return Array.from({ length: 42 }, (_, index) => addDays(start, index));
+  }, [calendarMonth, calendarYear]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -87,7 +315,7 @@ export default function FarmManagerCropsPage() {
         if (!cropsRes.ok) throw new Error('API failed');
         const cropsData = await cropsRes.json();
         setCrops(cropsData);
-        
+
         const blocksRes = await apiFetch('/api/fields/farm/default');
         if (!blocksRes.ok) throw new Error('API failed');
         const blocksData = await blocksRes.json();
@@ -170,12 +398,16 @@ export default function FarmManagerCropsPage() {
 
   const handleDeleteCrop = async (id: string) => {
     try {
-      const token = localStorage.getItem('token');
-      await apiFetch(`/api/crops/${id}`, { method: 'DELETE' });
+      const response = await apiFetch(`/api/crops/${id}`, { method: 'DELETE' });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to delete crop');
+      }
       setCrops((prev) => prev.filter(c => c.id !== id));
+      notifySuccess('Crop deleted successfully.');
     } catch (err) {
-      console.warn('API delete failed, using mock delete', err);
-      setCrops((prev) => prev.filter(c => c.id !== id));
+      console.error('Error deleting crop', err);
+      notifyError(err instanceof Error ? err.message : 'Failed to delete crop');
     }
   };
 
@@ -184,8 +416,8 @@ export default function FarmManagerCropsPage() {
       if (editingCropId) {
         setCrops(prev => prev.map(c => c.id === editingCropId ? { ...c, ...newCrop } : c));
       } else {
-        const created = { 
-          id: `CRP-${Math.floor(Math.random() * 10000)}`, 
+        const created = {
+          id: `CRP-${Math.floor(Math.random() * 10000)}`,
           ...newCrop,
           status: 'Growing'
         };
@@ -207,10 +439,11 @@ export default function FarmManagerCropsPage() {
       });
       if (response.ok) {
         const saved = await response.json();
+        const cropData = saved.crop || saved;
         if (editingCropId) {
-          setCrops((prev) => prev.map(c => c.id === editingCropId ? saved : c));
+          setCrops((prev) => prev.map(c => c.id === editingCropId ? cropData : c));
         } else {
-          setCrops((prev) => [...prev, saved]);
+          setCrops((prev) => [...prev, cropData]);
         }
         setShowCropModal(false);
         setNewCrop({ crop_name: '', variety: '', field_id: '', planting_date: '', expected_harvest_date: '', season: '', expected_yield: '', yield_unit: 'kg', notes: '' });
@@ -230,17 +463,16 @@ export default function FarmManagerCropsPage() {
       <SectionHeading eyebrow={t("Crop Management")} title={t("Crops & Fields")} description={t("Manage your crop lifecycle, fields, and growth monitoring.")} tone="light" />
       {/* Tabs */}
       <div className="flex space-x-3 border-b border-white/10 pb-4 overflow-x-auto">
-        {['dashboard', 'crops', 'growth', 'disease-reports'].map((tab) => (
+        {['dashboard', 'crops', 'calendar', 'growth', 'disease-reports'].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-5 py-2 rounded-xl text-sm font-semibold capitalize transition-all whitespace-nowrap ${
-              activeTab === tab
+            className={`px-5 py-2 rounded-xl text-sm font-semibold capitalize transition-all whitespace-nowrap ${activeTab === tab
                 ? 'bg-emerald-600 text-white shadow-[0_4px_20px_rgba(16,185,129,0.3)]'
                 : 'bg-slate-900/50 text-slate-300 hover:bg-slate-800 border border-white/5'
-            }`}
+              }`}
           >
-            {tab === 'dashboard' ? t('Overview') : tab === 'disease-reports' ? t('Disease Reports') : t(tab)}
+            {tab === 'dashboard' ? t('Overview') : tab === 'disease-reports' ? t('Disease Reports') : tab === 'calendar' ? t('Harvest Calendar') : t(tab)}
           </button>
         ))}
       </div>
@@ -286,6 +518,9 @@ export default function FarmManagerCropsPage() {
                   <th className="px-6 py-4">{t("Variety")}</th>
                   <th className="px-6 py-4">{t("Field")}</th>
                   <th className="px-6 py-4">{t("Planting Date")}</th>
+                  <th className="px-6 py-4">{t("Expected Harvest Date")}</th>
+                  <th className="px-6 py-4">{t("Harvested Date")}</th>
+                  <th className="px-6 py-4">{t("Harvest Status")}</th>
                   <th className="px-6 py-4">{t("Status")}</th>
                   <th className="px-6 py-4 text-right">{t("Actions")}</th>
                 </tr>
@@ -302,22 +537,33 @@ export default function FarmManagerCropsPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4">{c.planting_date ? new Date(c.planting_date).toLocaleDateString() : ''}</td>
+                    <td className="px-6 py-4 text-slate-300">{c.expected_harvest_date ? new Date(c.expected_harvest_date).toLocaleDateString() : '-'}</td>
+                    <td className="px-6 py-4 text-slate-300">{c.actual_harvest_date ? new Date(c.actual_harvest_date).toLocaleDateString() : '-'}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 rounded-md text-xs font-semibold ${c.harvest_status === 'Harvested' ? 'bg-emerald-500/10 text-emerald-300' :
+                          c.harvest_status === 'Ready for Harvest' ? 'bg-amber-500/10 text-amber-300' :
+                            'bg-slate-500/10 text-slate-300'
+                        }`}>
+                        {c.harvest_status || '-'}
+                      </span>
+                    </td>
                     <td className="px-6 py-4">
                       <span
-                        className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
-                          c.status === 'Growing'
+                        className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${c.status === 'Growing' || c.status === 'growing'
                             ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                            : 'bg-slate-500/10 text-slate-400 border-slate-500/20'
-                        }`}
+                            : c.status === 'harvested' || c.status === 'completed'
+                              ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                              : 'bg-slate-500/10 text-slate-400 border-slate-500/20'
+                          }`}
                       >
-                        {c.status}
+                        {c.status === 'harvested' ? 'Completed' : c.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right space-x-4">
                       <button onClick={() => handleEditCrop(c)} className="text-blue-400 hover:text-blue-300 transition-colors" title="Edit">
                         <FiEdit2 className="text-lg" />
                       </button>
-                      <button onClick={() => handleDeleteCrop(c.id)} className="text-rose-400 hover:text-rose-300 transition-colors" title="Delete">
+                      <button onClick={() => setCropToDelete(c)} className="text-rose-400 hover:text-rose-300 transition-colors" title="Delete">
                         <FiTrash2 className="text-lg" />
                       </button>
                     </td>
@@ -328,6 +574,8 @@ export default function FarmManagerCropsPage() {
           </div>
         </Card>
       )}
+
+      {activeTab === 'calendar' && <EnterpriseHarvestCalendar crops={crops} fields={fields} t={t} />}
 
       {activeTab === 'growth' && (
         <div className="space-y-6">
@@ -373,6 +621,8 @@ export default function FarmManagerCropsPage() {
                     <th className="px-6 py-4">{t("Current Growth Stage")}</th>
                     <th className="px-6 py-4">{t("Growth Progress %")}</th>
                     <th className="px-6 py-4">{t("Expected Harvest Date")}</th>
+                    <th className="px-6 py-4">{t("Remaining Days")}</th>
+                    <th className="px-6 py-4">{t("Harvest Status")}</th>
                     <th className="px-6 py-4">{t("Status")}</th>
                   </tr>
                 </thead>
@@ -392,16 +642,26 @@ export default function FarmManagerCropsPage() {
                         <td className="px-6 py-4">
                           <div className="space-y-2">
                             <div className="h-2 rounded-full bg-white/10">
-                              <div className="h-2 rounded-full bg-gradient-to-r from-emerald-500 to-lime-400" style={{ width: `${progress}%` }} />
+                              <div className="h-2 rounded-full bg-gradient-to-r from-emerald-500 to-lime-400" style={{ width: `${crop.harvest_progress || progress}%` }} />
                             </div>
-                            <span className="text-xs text-slate-300">{progress}%</span>
+                            <span className="text-xs text-slate-300">{crop.harvest_progress || progress}%</span>
                           </div>
                         </td>
                         <td className="px-6 py-4 text-slate-300">{crop.expected_harvest_date ? new Date(crop.expected_harvest_date).toLocaleDateString() : '-'}</td>
+                        <td className="px-6 py-4 font-mono text-xs text-slate-300">
+                          {crop.remaining_days != null ? `${crop.remaining_days} days` : '-'}
+                        </td>
                         <td className="px-6 py-4">
-                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                            progress >= 75 ? 'bg-emerald-500/10 text-emerald-300' : progress >= 45 ? 'bg-amber-500/10 text-amber-300' : 'bg-rose-500/10 text-rose-300'
-                          }`}>
+                          <span className={`px-2 py-1 rounded-md text-xs font-semibold ${crop.harvest_status === 'Harvested' ? 'bg-emerald-500/10 text-emerald-300' :
+                              crop.harvest_status === 'Ready for Harvest' ? 'bg-amber-500/10 text-amber-300' :
+                                'bg-slate-500/10 text-slate-300'
+                            }`}>
+                            {crop.harvest_status || '-'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${progress >= 75 ? 'bg-emerald-500/10 text-emerald-300' : progress >= 45 ? 'bg-amber-500/10 text-amber-300' : 'bg-rose-500/10 text-rose-300'
+                            }`}>
                             {progress >= 75 ? t('Healthy') : progress >= 45 ? t('On Track') : t('Alert')}
                           </span>
                         </td>
@@ -602,35 +862,33 @@ export default function FarmManagerCropsPage() {
                       <td className="px-6 py-4 font-medium text-slate-200">{report.title}</td>
                       <td className="px-6 py-4 text-slate-400">{report.farmer_name}</td>
                       <td className="px-6 py-4">
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
-                          report.severity === 'High' || report.severity === 'Emergency'
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${report.severity === 'High' || report.severity === 'Emergency'
                             ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                             : report.severity === 'Medium'
-                            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                            : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                        }`}>
+                              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                              : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                          }`}>
                           {report.severity}
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                          report.status === 'Resolved'
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${report.status === 'Resolved'
                             ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/20'
                             : report.status === 'Submitted'
-                            ? 'bg-blue-600/20 text-blue-400 border border-blue-500/20'
-                            : 'bg-slate-700/30 text-slate-300 border border-slate-600/20'
-                        }`}>
+                              ? 'bg-blue-600/20 text-blue-400 border border-blue-500/20'
+                              : 'bg-slate-700/30 text-slate-300 border border-slate-600/20'
+                          }`}>
                           {report.status}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <Button 
+                        <Button
                           onClick={() => {
                             setSelectedReport(report);
                             setReportStatus(report.status);
                             setReportNotes(report.manager_notes || '');
                             setShowReportModal(true);
-                          }} 
+                          }}
                           className="py-1 px-3 text-xs"
                         >
                           {t("Review")}
@@ -648,7 +906,7 @@ export default function FarmManagerCropsPage() {
       {/* Disease Report Review Modal */}
       {showReportModal && selectedReport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]">
+          <div id="disease-report-modal-content" className="bg-slate-900 border border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]">
             <h3 className="text-2xl font-bold text-white mb-2">{t('Review Disease Report')}</h3>
             <p className="text-slate-400 text-sm mb-6">{selectedReport.crop_name} - {selectedReport.field_name}</p>
 
@@ -678,9 +936,9 @@ export default function FarmManagerCropsPage() {
                 <div>
                   <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block mb-2">{t("Evidence Image")}</span>
                   <div className="rounded-2xl overflow-hidden border border-white/10 bg-slate-950">
-                    <img 
-                      src={selectedReport.image_urls[0].startsWith('http') || selectedReport.image_urls[0].startsWith('blob:') || selectedReport.image_urls[0].startsWith('data:') ? selectedReport.image_urls[0] : `http://localhost:5000${selectedReport.image_urls[0].startsWith('/') ? '' : '/'}${selectedReport.image_urls[0]}`} 
-                      alt="Disease evidence" 
+                    <img
+                      src={selectedReport.image_urls[0].startsWith('http') || selectedReport.image_urls[0].startsWith('blob:') || selectedReport.image_urls[0].startsWith('data:') ? selectedReport.image_urls[0] : `http://localhost:5000${selectedReport.image_urls[0].startsWith('/') ? '' : '/'}${selectedReport.image_urls[0]}`}
+                      alt="Disease evidence"
                       className="w-full h-auto max-h-60 object-cover"
                       onError={(e) => { e.currentTarget.style.display = 'none'; }}
                     />
@@ -716,8 +974,8 @@ export default function FarmManagerCropsPage() {
 
               <div>
                 <label className="block mb-2 text-sm font-semibold text-white/80">{t("Update Status")}</label>
-                <select 
-                  value={reportStatus} 
+                <select
+                  value={reportStatus}
                   onChange={e => setReportStatus(e.target.value)}
                   className="w-full bg-slate-800 border border-white/10 text-white p-2.5 rounded-2xl focus:outline-none focus:border-emerald-500 text-sm font-medium"
                 >
@@ -729,24 +987,102 @@ export default function FarmManagerCropsPage() {
 
               <div>
                 <label className="block mb-2 text-sm font-semibold text-white/80">{t("Manager Notes & Recommendations")}</label>
-                <textarea 
-                  value={reportNotes} 
+                <textarea
+                  value={reportNotes}
                   onChange={e => setReportNotes(e.target.value)}
                   placeholder={t("Enter treatment recommendation or review comments...")}
                   className="w-full bg-slate-800 border border-white/10 text-white p-3 rounded-2xl focus:outline-none focus:border-emerald-500 text-sm font-medium min-h-24"
                 />
               </div>
+              <div className="mt-4">
+                <label className="block mb-2 text-sm font-semibold text-white/80">{t("Upload PDF Attachment")}</label>
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setReportPdfFile(file);
+                      setReportPdfUrl(URL.createObjectURL(file));
+                    }
+                  }}
+                  className="w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-600/20 file:text-emerald-400 hover:file:bg-emerald-600/30"
+                />
+                {reportPdfFile && <p className="text-xs text-emerald-400 mt-2">Attached: {reportPdfFile.name}</p>}
+              </div>
             </div>
 
-            <div className="flex justify-end gap-3 mt-8">
-              <Button variant="ghost" onClick={() => { setShowReportModal(false); setSelectedReport(null); }}>
-                {t("Cancel")}
-              </Button>
-              <Button onClick={handleSaveReport}>{t("Save Updates")}</Button>
+            <div className="flex justify-between items-center mt-8">
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const title = `Manager Disease Report: ${selectedReport.crop_name}`;
+                    let content = `Date: ${new Date().toLocaleDateString()}\n`;
+                    content += `Crop: ${selectedReport.crop_name}\n`;
+                    content += `Disease Title: ${selectedReport.title}\n`;
+                    content += `Submitted By: ${selectedReport.worker_name || 'Worker'}\n`;
+                    content += `Severity: ${selectedReport.severity}\n`;
+                    content += `Status: ${reportStatus}\n\n`;
+
+                    if (selectedReport.description) {
+                      content += `Description from worker:\n${selectedReport.description}\n\n`;
+                    }
+
+                    if (reportNotes) {
+                      content += `Manager Notes & Recommendations:\n${reportNotes}\n`;
+                    }
+
+                    generateTextPDF(title, content, `Disease_Report_${selectedReport.crop_name}`);
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <FiPrinter /> {t("Generate PDF")}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 border-emerald-500/30 flex items-center gap-2"
+                  onClick={() => {
+                    navigate('/dashboard/farm-manager/tasks', {
+                      state: {
+                        isNewTask: true,
+                        prefillTitle: `Treat ${selectedReport.crop_name} for Disease`,
+                        prefillDescription: reportNotes || `Disease detected: ${selectedReport.title}. Please take necessary action.`,
+                        prefillCategory: 'Planting & Maintenance',
+                        prefillAttachmentUrl: reportPdfUrl,
+                        prefillAttachmentName: reportPdfFile?.name
+                      }
+                    });
+                  }}
+                >
+                  <FiPlus /> {t("Assign Task")}
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="ghost" onClick={() => { setShowReportModal(false); setSelectedReport(null); setReportPdfFile(null); setReportPdfUrl(null); }}>
+                  {t("Cancel")}
+                </Button>
+                <Button onClick={handleSaveReport}>{t("Save Updates")}</Button>
+              </div>
             </div>
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(cropToDelete)}
+        title="Delete crop?"
+        description={cropToDelete ? `Delete "${cropToDelete.crop_name}" permanently? This action cannot be undone.` : ''}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        destructive
+        onCancel={() => setCropToDelete(null)}
+        onConfirm={async () => {
+          if (!cropToDelete) return;
+          await handleDeleteCrop(cropToDelete.id);
+          setCropToDelete(null);
+        }}
+      />
     </div>
   );
 }

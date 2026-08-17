@@ -286,7 +286,7 @@ function WorkerBlocks() {
     try {
       const tokenRaw = localStorage.getItem('token');
       const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
-      const response = await fetch('/api/groups', {
+      const response = await fetch('/api/livestock/groups', {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
       if (!response.ok) {

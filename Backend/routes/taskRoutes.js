@@ -13,7 +13,11 @@ import {
   getRecentTaskUpdates,
   addActivityUpdate,
   getTaskReviews,
-  reviewTaskUpdate
+  getTaskTimeline,
+  reviewTaskUpdate,
+  getTaskEvidence,
+  getWorkerVerificationHistory,
+  getEvidenceVersions
 } from '../controllers/taskController.js';
 import upload from '../uploadMiddleware.js';
 
@@ -34,6 +38,10 @@ router.put('/:id', updateTaskDetails);
 router.put('/:id/start', startTask);
 router.post('/:id/activity-update', upload.array('images', 5), addActivityUpdate);
 router.post('/:id/evidence', upload.array('images', 5), submitTaskEvidence);
+router.get('/:id/evidence', getTaskEvidence);
+router.get('/:id/timeline', getTaskTimeline);
+router.get('/worker-history/:workerId', authorizeRole(['farm_manager', 'super_admin']), getWorkerVerificationHistory);
+router.get('/:id/evidence-versions', authorizeRole(['farm_manager', 'super_admin']), getEvidenceVersions);
 router.put('/:id/review', authorizeRole(['farm_manager', 'super_admin']), reviewTask);
 router.put('/update/:updateId/review', authorizeRole(['farm_manager', 'super_admin']), reviewTaskUpdate);
 

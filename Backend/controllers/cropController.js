@@ -1,5 +1,6 @@
 import { pool } from '../db.js';
 import { getDefaultFarmId } from './livestockController.js';
+import { calculateHarvestForCrop } from '../services/harvestService.js';
 
 // GET /api/crops – list crop cycles for the user's farm
 export async function getCrops(req, res) {
@@ -7,7 +8,7 @@ export async function getCrops(req, res) {
     const userId = req.user.userId;
     const farmId = await getDefaultFarmId(userId);
     const result = await pool.query(
-      `SELECT id, crop_name, variety, block_id, field_id, planting_date, expected_harvest_date, current_stage, status, expected_yield, yield_unit, notes, created_at`
+      `SELECT id, crop_name, variety, block_id, field_id, planting_date, expected_harvest_date, current_stage, status, expected_yield, yield_unit, notes, created_at, remaining_days, harvest_progress, harvest_status, is_historical, actual_harvest_date`
       + ` FROM crop_cycles WHERE farm_id = $1 ORDER BY created_at DESC`,
       [farmId]
     );
@@ -55,9 +56,39 @@ export async function addCrop(req, res) {
         notes || null
       ]
     );
-    res.status(201).json({ message: 'Crop created', crop: result.rows[0] });
+
+    const newCropId = result.rows[0].id;
+    // Auto-calculate harvest info based on crop_master and planting_date
+    await calculateHarvestForCrop(newCropId);
+
+    const updatedCropRes = await pool.query(`SELECT * FROM crop_cycles WHERE id = $1`, [newCropId]);
+    
+    res.status(201).json({ message: 'Crop created', crop: updatedCropRes.rows[0] });
   } catch (err) {
     console.error('Error adding crop:', err);
     res.status(500).json({ error: 'Failed to add crop', details: err.message });
+  }
+}
+
+// DELETE /api/crops/:id â€“ delete a crop cycle for the user's farm
+export async function deleteCrop(req, res) {
+  try {
+    const userId = req.user.userId;
+    const farmId = await getDefaultFarmId(userId);
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `DELETE FROM crop_cycles WHERE id = $1 AND farm_id = $2 RETURNING id`,
+      [id, farmId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Crop not found' });
+    }
+
+    res.json({ message: 'Crop deleted', id: result.rows[0].id });
+  } catch (err) {
+    console.error('Error deleting crop:', err);
+    res.status(500).json({ error: 'Failed to delete crop', details: err.message });
   }
 }

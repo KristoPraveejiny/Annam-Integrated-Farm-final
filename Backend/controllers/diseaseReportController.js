@@ -236,3 +236,55 @@ export async function checkDuplicates(req, res) {
     res.status(500).json({ error: 'Failed to check duplicates' });
   }
 }
+
+export async function rewardWorker(req, res) {
+  try {
+    const { worker_id, amount, disease_name } = req.body;
+    const farmId = await getDefaultFarmId(req.user.userId);
+    const managerId = req.user.userId;
+
+    if (!worker_id || !amount) {
+      return res.status(400).json({ error: 'Worker ID and amount are required' });
+    }
+
+    await pool.query('BEGIN');
+
+    // 1. Create a Completed Task for the worker
+    const taskResult = await pool.query(`
+      INSERT INTO tasks (
+        farm_id, assigned_to_user_id, created_by_user_id, title, description,
+        category, status, progress_percent, earned_salary, task_wage
+      ) VALUES ($1, $2, $3, $4, $5, 'General', 'Completed', 100, $6, $6)
+      RETURNING id
+    `, [
+      farmId, 
+      worker_id, 
+      managerId, 
+      'Disease Identification Bonus', 
+      `Bonus awarded for identifying: ${disease_name || 'Crop Disease'}`,
+      amount
+    ]);
+
+    const taskId = taskResult.rows[0].id;
+
+    // 2. Insert into Salary Ledger
+    await pool.query(`
+      INSERT INTO salary_ledger (farm_id, worker_id, task_id, date, amount, status)
+      VALUES ($1, $2, $3, CURRENT_DATE, $4, 'Approved')
+    `, [farmId, worker_id, taskId, amount]);
+
+    // 3. Notify the worker
+    await pool.query(`
+      INSERT INTO notifications (user_id, farm_id, type, title, message, priority)
+      VALUES ($1, $2, 'BONUS_AWARDED', 'Reward Received! 🏆', $3, 'high')
+    `, [worker_id, farmId, `You have received a bonus of ₹${amount} for identifying ${disease_name || 'a disease'} on the farm! Great work.`]);
+
+    await pool.query('COMMIT');
+
+    res.json({ message: 'Worker rewarded successfully', taskId, amount });
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('Error rewarding worker:', err);
+    res.status(500).json({ error: 'Failed to reward worker' });
+  }
+}

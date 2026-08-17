@@ -3,10 +3,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiUploadCloud, FiTrash2, FiAlertCircle, FiLoader, FiCheckCircle, FiInfo,
   FiCloudRain, FiSun, FiWind, FiCalendar, FiClock, FiFileText, FiShield,
-  FiZap, FiCompass, FiPercent, FiTrendingUp, FiCheck, FiMessageSquare
+  FiZap, FiCompass, FiPercent, FiTrendingUp, FiCheck, FiMessageSquare, FiX
 } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
+import html2pdf from 'html2pdf.js';
+import { generateTextPDF } from '../utils/pdfGenerator';
+import { createSession, sendChatMessage } from '../api/chat';
 
 interface TopPrediction {
   disease: string;
@@ -33,6 +36,12 @@ interface AnalysisResult {
     immediate_action: string[];
     future_prevention: string[];
     weather_based_advice: string;
+  };
+  mockMetrics?: {
+    severity: string;
+    spreadSpeed: string;
+    recoveryTime: string;
+    riskLevel: string;
   };
 }
 
@@ -104,6 +113,16 @@ export default function DiseaseDetectionPage() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState<boolean>(true);
+  
+  // Reward worker state
+  const [isRewardModalOpen, setIsRewardModalOpen] = useState(false);
+  const [workers, setWorkers] = useState<any[]>([]);
+  const [selectedWorkerId, setSelectedWorkerId] = useState('');
+  const [bonusAmount, setBonusAmount] = useState('');
+  const [aiRecommendation, setAiRecommendation] = useState<string | null>(null);
+  const [loadingRecommendation, setLoadingRecommendation] = useState(false);
+  const [isRewarding, setIsRewarding] = useState(false);
+  const reportRef = useRef<HTMLDivElement>(null);
 
   // Preview file stats
   const [fileSize, setFileSize] = useState<string>('');
@@ -123,10 +142,26 @@ export default function DiseaseDetectionPage() {
     return () => clearInterval(interval);
   }, [loading]);
 
-  // Fetch prediction history
+  // Fetch prediction history & workers
   useEffect(() => {
     fetchHistory();
+    fetchWorkers();
   }, []);
+
+  const fetchWorkers = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:5000/api/tasks/workers', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setWorkers(data);
+      }
+    } catch (err) {
+      console.error('Error fetching workers:', err);
+    }
+  };
 
   const fetchHistory = async () => {
     try {
@@ -218,6 +253,12 @@ export default function DiseaseDetectionPage() {
 
       const data = await response.json();
       setResult(data as AnalysisResult);
+      
+      // Auto-fetch AI Recommendation for the PDF
+      if (data.disease && data.disease.toLowerCase() !== 'healthy') {
+        fetchAIRecommendation(selectedCrop, data.disease, data.confidence);
+      }
+      
       // Refresh prediction history
       fetchHistory();
     } catch (err: any) {
@@ -225,6 +266,74 @@ export default function DiseaseDetectionPage() {
       setError(err.message || 'Failed to connect to the AI model server.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAIRecommendation = async (crop: string, disease: string, confidence: number) => {
+    setLoadingRecommendation(true);
+    setAiRecommendation('');
+    try {
+      const session = await createSession(`Disease Alert: ${crop}`);
+      const query = `The CNN model detected ${disease} in my ${crop} crop with ${confidence.toFixed(2)}% confidence. Please provide a detailed summary: 1. What is this disease? 2. Why does it happen? 3. What fertilizers, pesticides, or actions should I take to treat it?`;
+      
+      await sendChatMessage(query, session.id, undefined, crop, disease, confidence, {
+        onChunk: (text) => setAiRecommendation(prev => (prev || '') + text),
+        onDone: () => setLoadingRecommendation(false),
+        onError: () => setLoadingRecommendation(false)
+      });
+    } catch (err) {
+      console.error('Failed to fetch recommendation', err);
+      setLoadingRecommendation(false);
+    }
+  };
+
+  const handleDownloadReport = () => {
+    if (!reportRef.current) return;
+    const opt = {
+      margin:       0.5,
+      filename:     `Disease_Report_${result?.crop_name || 'Crop'}_${new Date().toISOString().split('T')[0]}.pdf`,
+      image:        { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true },
+      jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' as const }
+    };
+    html2pdf().set(opt).from(reportRef.current).save();
+  };
+
+  const handleRewardWorker = async () => {
+    if (!selectedWorkerId || !bonusAmount || isNaN(Number(bonusAmount))) {
+      alert("Please select a worker and enter a valid bonus amount.");
+      return;
+    }
+    
+    setIsRewarding(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:5000/api/disease-reports/reward-worker', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          worker_id: selectedWorkerId,
+          amount: Number(bonusAmount),
+          disease_name: result?.disease
+        })
+      });
+
+      if (response.ok) {
+        alert("Reward issued successfully! Downloading report...");
+        setIsRewardModalOpen(false);
+        handleDownloadReport();
+      } else {
+        const err = await response.json();
+        alert(err.error || "Failed to issue reward");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("An error occurred while rewarding.");
+    } finally {
+      setIsRewarding(false);
     }
   };
 
@@ -306,6 +415,32 @@ export default function DiseaseDetectionPage() {
   const weatherCond = result?.weatherSummary?.description ?? 'Partly Cloudy';
   const riskLevelVal: 'Low' | 'Medium' | 'High' = humidityVal > 80 ? 'High' : humidityVal > 60 ? 'Medium' : 'Low';
   const suitableSp = (riskLevelVal === 'Low' && windVal < 20) ? 'YES' : 'NO';
+
+  // Mock metrics for UI
+  const getMockMetrics = (disease: string, confidence: number) => {
+    const dLower = disease.toLowerCase();
+    if (dLower.includes('canker') || dLower.includes('blight') || dLower.includes('wilt') || dLower.includes('virus')) {
+      return { severity: 'Critical', spreadSpeed: 'Rapid (1-2 days)', recoveryTime: '3-4 weeks', riskLevel: 'High' };
+    } else if (dLower.includes('spot') || dLower.includes('rot') || dLower.includes('mildew') || dLower.includes('rust')) {
+      return { severity: 'Moderate', spreadSpeed: 'Moderate (3-5 days)', recoveryTime: '1-2 weeks', riskLevel: 'Medium' };
+    }
+    return { severity: 'Low', spreadSpeed: 'Slow', recoveryTime: '1 week', riskLevel: 'Low' };
+  };
+
+  const metrics = result ? (result.mockMetrics || getMockMetrics(result.disease, result.confidence)) : null;
+
+  const highlightCriticalValues = (text: string) => {
+    const keywords = ['ml', 'mg', 'liter', 'liters', 'days', 'hours', 'dosage', 'spray', 'part', 'parts', 'every'];
+    const regex = new RegExp(`\\b(\\d+\\.?\\d*\\s*(?:${keywords.join('|')})\\b|${keywords.join('|')})`, 'gi');
+    
+    const parts = text.split(regex);
+    return parts.map((part, i) => {
+      if (regex.test(part)) {
+        return <span key={i} className="bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-md font-bold mx-0.5">{part}</span>;
+      }
+      return part;
+    });
+  };
 
   // Determine Confidence Meter color
   const getConfidenceColor = (conf: number) => {
@@ -575,12 +710,68 @@ export default function DiseaseDetectionPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
+            ref={reportRef}
           >
-            <div>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-emerald-950/80 pb-3 mt-2">
               <h2 className="text-xl font-extrabold text-emerald-400 uppercase tracking-widest flex items-center gap-2">
                 <span>📊</span> AI Diagnosis Dashboard
               </h2>
-              <div className="h-0.5 bg-emerald-950/80 w-full mt-2" />
+              
+              <button 
+                onClick={() => {
+                  const cropName = result.crop_name || selectedCrop || 'Unknown';
+                  const title = `AI Advisory Report: Disease Detection (${cropName})`;
+                  let content = '';
+                  
+                  if (result.aiRecommendation) {
+                    content += `Disease Summary:\n${result.aiRecommendation.disease_explanation}\n\n`;
+                    
+                    if (result.aiRecommendation.possible_causes && result.aiRecommendation.possible_causes.length > 0) {
+                      content += `Possible Causes:\n`;
+                      result.aiRecommendation.possible_causes.forEach((c: string) => content += `- ${c}\n`);
+                      content += `\n`;
+                    }
+                    
+                    if (result.aiRecommendation.organic_treatment && result.aiRecommendation.organic_treatment.length > 0) {
+                      content += `Organic Treatment:\n`;
+                      result.aiRecommendation.organic_treatment.forEach((c: string) => content += `- ${c}\n`);
+                      content += `\n`;
+                    }
+                    
+                    if (result.aiRecommendation.chemical_treatment && result.aiRecommendation.chemical_treatment.length > 0) {
+                      content += `Chemical Treatment:\n`;
+                      result.aiRecommendation.chemical_treatment.forEach((c: string) => content += `- ${c}\n`);
+                      content += `\n`;
+                    }
+                    
+                    if (result.aiRecommendation.immediate_action && result.aiRecommendation.immediate_action.length > 0) {
+                      content += `Immediate Action:\n`;
+                      result.aiRecommendation.immediate_action.forEach((c: string) => content += `- ${c}\n`);
+                      content += `\n`;
+                    }
+                    
+                    if (result.aiRecommendation.future_prevention && result.aiRecommendation.future_prevention.length > 0) {
+                      content += `Future Prevention:\n`;
+                      result.aiRecommendation.future_prevention.forEach((c: string) => content += `- ${c}\n`);
+                      content += `\n`;
+                    }
+                    
+                    if (result.aiRecommendation.weather_based_advice) {
+                      content += `Weather-Based Recommendation:\n${result.aiRecommendation.weather_based_advice}\n\n`;
+                    }
+                  } else if (aiRecommendation) {
+                    let cleanRecommendation = aiRecommendation.replace(/SUGGESTED_QUESTIONS:\s*\[.*?\]/gs, '').trim();
+                    content = cleanRecommendation;
+                  }
+                  
+                  generateTextPDF(title, content || 'No advice generated yet.', `AI_Advisory_Disease_${cropName}`);
+                }}
+                className="flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-slate-700 hover:text-emerald-300 border border-emerald-500/30"
+                title="Download report as PDF"
+              >
+                <FiFileText />
+                Generate PDF
+              </button>
             </div>
 
             
@@ -672,6 +863,20 @@ export default function DiseaseDetectionPage() {
                  Ask AI Assistant
                </button>
             </div>
+
+            {/* AI Auto Recommendation */}
+            {(aiRecommendation || loadingRecommendation) && (
+              <div className="bg-[#112D2B] border border-emerald-900/50 p-6 rounded-xl shadow-md space-y-4 mb-4">
+                <h3 className="text-sm font-bold text-emerald-400 tracking-wide flex items-center gap-2">
+                  <FiMessageSquare /> AI Treatment Recommendation
+                </h3>
+                <div className="prose prose-invert prose-emerald max-w-none text-sm text-slate-300">
+                  {aiRecommendation}
+                  {loadingRecommendation && <span className="inline-block w-2 h-4 ml-1 bg-emerald-500 animate-pulse" />}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Card 1: Crop */}
               <div className="bg-[#112D2B] border border-emerald-900/50 p-4 rounded-xl shadow-md flex items-center gap-4">
@@ -684,18 +889,26 @@ export default function DiseaseDetectionPage() {
                 </div>
               </div>
 
-              {/* Card 2: Disease */}
-              <div className="bg-[#112D2B] border border-emerald-900/50 p-4 rounded-xl shadow-md flex items-center gap-4">
-                <div className="p-3 bg-red-950/30 text-[#FF5252] rounded-lg">
+              {/* Card 2: Disease (Glowing Alert) */}
+              <motion.div 
+                animate={{ 
+                  boxShadow: ["0px 0px 10px rgba(255, 82, 82, 0.3)", "0px 0px 30px rgba(255, 82, 82, 0.7)", "0px 0px 10px rgba(255, 82, 82, 0.3)"],
+                  scale: [1, 1.03, 1]
+                }}
+                transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
+                className="bg-[#112D2B] border border-[#FF5252]/60 p-4 rounded-xl shadow-md flex items-center gap-4 relative overflow-hidden"
+              >
+                <div className="absolute inset-0 bg-red-500/5" />
+                <div className="p-3 bg-red-500/20 text-[#FF5252] rounded-lg relative z-10">
                   <FiAlertCircle size={22} />
                 </div>
-                <div>
-                  <p className="text-[10px] text-[#B0BEC5] uppercase font-bold tracking-wider">Disease</p>
-                  <p className="text-base font-bold text-white mt-0.5 truncate max-w-[140px]" title={result.disease}>
+                <div className="relative z-10">
+                  <p className="text-[10px] text-[#FF5252] uppercase font-bold tracking-wider">Disease Alert</p>
+                  <p className="text-base font-black text-[#FF5252] mt-0.5 truncate max-w-[140px]" title={result.disease}>
                     {result.disease}
                   </p>
                 </div>
-              </div>
+              </motion.div>
 
               {/* Card 3: Confidence */}
               <div className="bg-[#112D2B] border border-emerald-900/50 p-4 rounded-xl shadow-md flex items-center gap-4">
@@ -704,7 +917,10 @@ export default function DiseaseDetectionPage() {
                 </div>
                 <div>
                   <p className="text-[10px] text-[#B0BEC5] uppercase font-bold tracking-wider">Confidence</p>
-                  <p className="text-base font-bold text-white mt-0.5">{(result.confidence).toFixed(2)}%</p>
+                  <p className="text-base font-bold text-white mt-0.5">
+                    {(result.confidence).toFixed(2)}%
+                    <span className="ml-2 px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-md text-[10px] uppercase">{getStatusBadge(result.confidence).label.split(' ')[0]}</span>
+                  </p>
                 </div>
               </div>
 
@@ -719,6 +935,28 @@ export default function DiseaseDetectionPage() {
                 </div>
               </div>
             </div>
+
+            {/* Advanced Metrics Cards */}
+            {metrics && (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+                <div className="bg-gradient-to-br from-[#112D2B] to-[#0a1f18] border border-red-500/30 p-4 rounded-xl flex flex-col justify-center items-center text-center">
+                  <span className="text-[10px] text-[#B0BEC5] uppercase font-bold tracking-wider mb-1">Severity</span>
+                  <span className={`text-sm font-black uppercase ${metrics.severity === 'Critical' ? 'text-red-500' : metrics.severity === 'Moderate' ? 'text-orange-400' : 'text-emerald-400'}`}>{metrics.severity}</span>
+                </div>
+                <div className="bg-gradient-to-br from-[#112D2B] to-[#0a1f18] border border-orange-500/30 p-4 rounded-xl flex flex-col justify-center items-center text-center">
+                  <span className="text-[10px] text-[#B0BEC5] uppercase font-bold tracking-wider mb-1">Spread Speed</span>
+                  <span className="text-sm font-bold text-orange-400">{metrics.spreadSpeed}</span>
+                </div>
+                <div className="bg-gradient-to-br from-[#112D2B] to-[#0a1f18] border border-emerald-500/30 p-4 rounded-xl flex flex-col justify-center items-center text-center">
+                  <span className="text-[10px] text-[#B0BEC5] uppercase font-bold tracking-wider mb-1">Est. Recovery</span>
+                  <span className="text-sm font-bold text-emerald-400">{metrics.recoveryTime}</span>
+                </div>
+                <div className="bg-gradient-to-br from-[#112D2B] to-[#0a1f18] border border-amber-500/30 p-4 rounded-xl flex flex-col justify-center items-center text-center">
+                  <span className="text-[10px] text-[#B0BEC5] uppercase font-bold tracking-wider mb-1">Risk Level</span>
+                  <span className="text-sm font-black text-amber-400 uppercase">{metrics.riskLevel}</span>
+                </div>
+              </div>
+            )}
 
             {/* Confidence Meter Progress Bar */}
             <div className="bg-[#112D2B] border border-emerald-900/40 p-6 rounded-xl shadow-md space-y-3">
@@ -789,8 +1027,9 @@ export default function DiseaseDetectionPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {/* Card 1: Disease Summary */}
-                  <div className="bg-[#112D2B] border border-emerald-900/40 p-5 rounded-xl shadow-md space-y-2">
-                    <div className="flex items-center gap-2.5 text-[#00C853] font-bold border-b border-emerald-900/40 pb-2 mb-2">
+                  <div className="bg-[#112D2B] border border-emerald-500/30 p-5 rounded-xl shadow-md space-y-2 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-emerald-500/50" />
+                    <div className="flex items-center gap-2.5 text-emerald-400 font-bold border-b border-emerald-900/40 pb-2 mb-2">
                       <FiFileText size={18} />
                       <span className="text-sm uppercase tracking-wider">Disease Summary</span>
                     </div>
@@ -800,66 +1039,86 @@ export default function DiseaseDetectionPage() {
                   </div>
 
                   {/* Card 2: Possible Causes */}
-                  <div className="bg-[#112D2B] border border-emerald-900/40 p-5 rounded-xl shadow-md space-y-2">
-                    <div className="flex items-center gap-2.5 text-[#FFC107] font-bold border-b border-emerald-900/40 pb-2 mb-2">
+                  <div className="bg-gradient-to-b from-[#FFC107]/10 to-[#112D2B] border border-[#FFC107]/30 p-5 rounded-xl shadow-md space-y-3 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-[#FFC107]/50" />
+                    <div className="flex items-center gap-2.5 text-[#FFC107] font-bold border-b border-[#FFC107]/20 pb-2">
                       <FiAlertCircle size={18} />
                       <span className="text-sm uppercase tracking-wider">Possible Causes</span>
                     </div>
-                    <ul className="list-disc pl-4 text-xs text-[#B0BEC5] leading-relaxed space-y-1.5">
+                    <ul className="space-y-2">
                       {result.aiRecommendation.possible_causes.map((cause, idx) => (
-                        <li key={idx}>{cause}</li>
+                        <li key={idx} className="flex items-start gap-2 text-xs text-[#B0BEC5] leading-relaxed">
+                          <span className="text-[#FFC107] mt-0.5"><FiInfo size={12} /></span>
+                          <span>{highlightCriticalValues(cause)}</span>
+                        </li>
                       ))}
                     </ul>
                   </div>
 
                   {/* Card 3: Organic Treatment */}
-                  <div className="bg-[#112D2B] border border-emerald-900/40 p-5 rounded-xl shadow-md space-y-2">
-                    <div className="flex items-center gap-2.5 text-[#00C853] font-bold border-b border-emerald-900/40 pb-2 mb-2">
+                  <div className="bg-gradient-to-b from-[#00C853]/10 to-[#112D2B] border border-[#00C853]/30 p-5 rounded-xl shadow-md space-y-3 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-[#00C853]/50" />
+                    <div className="flex items-center gap-2.5 text-[#00C853] font-bold border-b border-[#00C853]/20 pb-2">
                       <span className="text-base">🌱</span>
                       <span className="text-sm uppercase tracking-wider">Organic Treatment</span>
                     </div>
-                    <ul className="list-disc pl-4 text-xs text-[#B0BEC5] leading-relaxed space-y-1.5">
+                    <ul className="space-y-2">
                       {result.aiRecommendation.organic_treatment.map((treatment, idx) => (
-                        <li key={idx}>{treatment}</li>
+                        <li key={idx} className="flex items-start gap-2 text-xs text-[#B0BEC5] leading-relaxed">
+                          <span className="text-[#00C853] mt-0.5"><FiCheckCircle size={12} /></span>
+                          <span>{highlightCriticalValues(treatment)}</span>
+                        </li>
                       ))}
                     </ul>
                   </div>
 
                   {/* Card 4: Chemical Treatment */}
-                  <div className="bg-[#112D2B] border border-emerald-900/40 p-5 rounded-xl shadow-md space-y-2">
-                    <div className="flex items-center gap-2.5 text-[#FF5252] font-bold border-b border-emerald-900/40 pb-2 mb-2">
+                  <div className="bg-gradient-to-b from-[#FF5252]/10 to-[#112D2B] border border-[#FF5252]/30 p-5 rounded-xl shadow-md space-y-3 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-[#FF5252]/50" />
+                    <div className="flex items-center gap-2.5 text-[#FF5252] font-bold border-b border-[#FF5252]/20 pb-2">
                       <span className="text-base">🧪</span>
                       <span className="text-sm uppercase tracking-wider">Chemical Treatment</span>
                     </div>
-                    <ul className="list-disc pl-4 text-xs text-[#B0BEC5] leading-relaxed space-y-1.5">
+                    <ul className="space-y-2">
                       {result.aiRecommendation.chemical_treatment.map((treatment, idx) => (
-                        <li key={idx}>{treatment}</li>
+                        <li key={idx} className="flex items-start gap-2 text-xs text-[#B0BEC5] leading-relaxed">
+                          <span className="text-[#FF5252] mt-0.5"><FiCheckCircle size={12} /></span>
+                          <span>{highlightCriticalValues(treatment)}</span>
+                        </li>
                       ))}
                     </ul>
                   </div>
 
                   {/* Card 5: Immediate Action */}
-                  <div className="bg-[#112D2B] border border-emerald-900/40 p-5 rounded-xl shadow-md space-y-2">
-                    <div className="flex items-center gap-2.5 text-[#FFC107] font-bold border-b border-emerald-900/40 pb-2 mb-2">
+                  <div className="bg-gradient-to-b from-orange-500/10 to-[#112D2B] border border-orange-500/30 p-5 rounded-xl shadow-md space-y-3 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-orange-500/50" />
+                    <div className="flex items-center gap-2.5 text-orange-400 font-bold border-b border-orange-500/20 pb-2">
                       <FiZap size={18} />
                       <span className="text-sm uppercase tracking-wider">Immediate Action</span>
                     </div>
-                    <ul className="list-disc pl-4 text-xs text-[#B0BEC5] leading-relaxed space-y-1.5">
+                    <ul className="space-y-2">
                       {result.aiRecommendation.immediate_action.map((action, idx) => (
-                        <li key={idx}>{action}</li>
+                        <li key={idx} className="flex items-start gap-2 text-xs text-[#B0BEC5] leading-relaxed">
+                          <span className="text-[#FFC107] mt-0.5"><FiZap size={12} /></span>
+                          <span>{highlightCriticalValues(action)}</span>
+                        </li>
                       ))}
                     </ul>
                   </div>
 
                   {/* Card 6: Future Prevention */}
-                  <div className="bg-[#112D2B] border border-emerald-900/40 p-5 rounded-xl shadow-md space-y-2">
-                    <div className="flex items-center gap-2.5 text-blue-400 font-bold border-b border-emerald-900/40 pb-2 mb-2">
+                  <div className="bg-gradient-to-b from-blue-500/10 to-[#112D2B] border border-blue-500/30 p-5 rounded-xl shadow-md space-y-3 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-1 bg-blue-500/50" />
+                    <div className="flex items-center gap-2.5 text-blue-400 font-bold border-b border-blue-500/20 pb-2">
                       <FiShield size={18} />
                       <span className="text-sm uppercase tracking-wider">Future Prevention</span>
                     </div>
-                    <ul className="list-disc pl-4 text-xs text-[#B0BEC5] leading-relaxed space-y-1.5">
+                    <ul className="space-y-2">
                       {result.aiRecommendation.future_prevention.map((prev, idx) => (
-                        <li key={idx}>{prev}</li>
+                        <li key={idx} className="flex items-start gap-2 text-xs text-[#B0BEC5] leading-relaxed">
+                          <span className="text-blue-400 mt-0.5"><FiShield size={12} /></span>
+                          <span>{highlightCriticalValues(prev)}</span>
+                        </li>
                       ))}
                     </ul>
                   </div>
@@ -1031,6 +1290,64 @@ export default function DiseaseDetectionPage() {
           </div>
         )}
       </div>
+      {/* Reward Worker Modal */}
+      {isRewardModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-[#081C15] border border-emerald-500/30 rounded-2xl w-full max-w-md p-6 relative shadow-2xl"
+          >
+            <button 
+              onClick={() => setIsRewardModalOpen(false)}
+              className="absolute top-4 right-4 text-emerald-400 hover:text-emerald-300"
+            >
+              <FiX size={24} />
+            </button>
+            
+            <h3 className="text-xl font-bold text-white flex items-center gap-2 mb-4">
+              <span className="text-emerald-400">🏆</span> Reward Worker
+            </h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-[#B0BEC5] mb-1">Select Worker</label>
+                <select 
+                  className="w-full bg-[#112D2B] border border-emerald-900/50 rounded-lg p-3 text-white focus:outline-none focus:border-emerald-500"
+                  value={selectedWorkerId}
+                  onChange={(e) => setSelectedWorkerId(e.target.value)}
+                >
+                  <option value="">-- Choose Worker --</option>
+                  {workers.map(w => (
+                    <option key={w.id} value={w.id}>{w.full_name || w.username}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm text-[#B0BEC5] mb-1">Bonus Amount (₹)</label>
+                <input 
+                  type="number"
+                  placeholder="e.g. 50"
+                  className="w-full bg-[#112D2B] border border-emerald-900/50 rounded-lg p-3 text-white focus:outline-none focus:border-emerald-500"
+                  value={bonusAmount}
+                  onChange={(e) => setBonusAmount(e.target.value)}
+                />
+              </div>
+              
+              <button
+                onClick={handleRewardWorker}
+                disabled={isRewarding}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl shadow-lg transition-colors mt-4 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isRewarding ? <FiLoader className="animate-spin" /> : <FiCheckCircle />}
+                Confirm & Download Report
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
     </div>
   );
 }

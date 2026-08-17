@@ -1,10 +1,12 @@
 import { KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { FiAlertCircle, FiCpu, FiLoader, FiMessageSquare, FiPlus, FiSend, FiTrash2, FiUser, FiImage, FiX } from 'react-icons/fi';
+import { FiAlertCircle, FiCpu, FiLoader, FiMessageSquare, FiPlus, FiSend, FiTrash2, FiUser, FiImage, FiX, FiCheckCircle, FiFileText } from 'react-icons/fi';
 import Markdown from 'react-markdown';
 import { useLocation } from 'react-router-dom';
 import { fetchChatHistory, fetchSessionMessages, createSession, sendChatMessage, deleteSession, type ChatMessage, type ChatSession, type ChatResponse } from '../../api/chat';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { notifyError, notifySuccess } from '../../utils/notifications';
+import { updateLivestockHealthEvent } from '../../api/livestockHealth';
+import { generateTextPDF } from '../../utils/pdfGenerator';
 
 function formatTime(timestamp: string) {
   return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -17,15 +19,15 @@ function MessageBubble({ message, onSuggestionClick }: { message: ChatMessage; o
 
   // Parse SUGGESTED_QUESTIONS
   if (!isUser) {
-      const match = displayContent.match(/SUGGESTED_QUESTIONS:\s*(\[.*\])/s);
-      if (match) {
-          try {
-              suggestions = JSON.parse(match[1]);
-              displayContent = displayContent.replace(/SUGGESTED_QUESTIONS:\s*\[.*\]/s, '').trim();
-          } catch (e) {
-              // Ignore parse error
-          }
+    const match = displayContent.match(/SUGGESTED_QUESTIONS:\s*(\[.*\])/s);
+    if (match) {
+      try {
+        suggestions = JSON.parse(match[1]);
+        displayContent = displayContent.replace(/SUGGESTED_QUESTIONS:\s*\[.*\]/s, '').trim();
+      } catch (e) {
+        // Ignore parse error
       }
+    }
   }
 
   return (
@@ -36,30 +38,69 @@ function MessageBubble({ message, onSuggestionClick }: { message: ChatMessage; o
         </div>
       ) : null}
       <div className={`max-w-[80%] flex flex-col items-${isUser ? 'end' : 'start'}`}>
-          <div className={`rounded-2xl px-4 py-3 ${isUser ? 'rounded-tr-sm bg-emerald-600 text-white' : 'rounded-tl-sm border border-slate-700 bg-slate-800 text-slate-100'}`}>
-            {message.image_url && (
-                <div className="mb-2">
-                  <img src={message.image_url.startsWith('blob:') ? message.image_url : `http://localhost:5000${message.image_url}`} alt="Uploaded" className="rounded-lg max-h-60 object-cover" />
-                </div>
-            )}
-            <div className={`whitespace-pre-wrap text-sm leading-relaxed ${isUser ? '' : 'markdown-body'}`}>
-              {isUser ? displayContent : <Markdown>{displayContent}</Markdown>}
+        <div className={`rounded-2xl px-4 py-3 ${isUser ? 'rounded-tr-sm bg-emerald-600 text-white' : 'rounded-tl-sm border border-slate-700 bg-slate-800 text-slate-100'}`}>
+          {message.image_url && (
+            <div className="mb-2">
+              <img src={message.image_url.startsWith('blob:') ? message.image_url : `http://localhost:5000${message.image_url}`} alt="Uploaded" className="rounded-lg max-h-60 object-cover" />
             </div>
-            <span className="mt-1 block text-right text-[10px] opacity-50">{formatTime(message.created_at)}</span>
-          </div>
-          {!isUser && suggestions.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                  {suggestions.map((sug, idx) => (
-                      <button 
-                          key={idx}
-                          onClick={() => onSuggestionClick && onSuggestionClick(sug)}
-                          className="text-xs bg-slate-800 border border-slate-700 hover:border-emerald-500 hover:text-emerald-400 text-slate-300 px-3 py-1.5 rounded-full transition-colors"
-                      >
-                          {sug}
-                      </button>
-                  ))}
-              </div>
           )}
+          <div className={`whitespace-pre-wrap text-sm leading-relaxed ${isUser ? '' : 'markdown-body'}`}>
+            {isUser ? displayContent : (
+              <Markdown
+                components={{
+                  h3: ({ node, ...props }) => {
+                    const text = String(props.children);
+                    let icon = '📌';
+                    let colorClass = 'text-emerald-400';
+                    if (text.toLowerCase().includes('immediate action')) { icon = '⚡'; colorClass = 'text-[#FFC107]'; }
+                    else if (text.toLowerCase().includes('chemical treatment')) { icon = '🧪'; colorClass = 'text-[#FF5252]'; }
+                    else if (text.toLowerCase().includes('organic treatment')) { icon = '🌱'; colorClass = 'text-[#00C853]'; }
+                    else if (text.toLowerCase().includes('future prevention')) { icon = '🛡️'; colorClass = 'text-blue-400'; }
+                    else if (text.toLowerCase().includes('disease')) { icon = '🦠'; colorClass = 'text-[#FF5252]'; }
+
+                    return (
+                      <div className="flex items-center gap-2 mt-4 mb-2 pb-1 border-b border-slate-700/50">
+                        <span className="text-lg">{icon}</span>
+                        <h3 className={`text-base font-bold uppercase tracking-wider ${colorClass}`} {...props} />
+                      </div>
+                    );
+                  },
+                  ul: ({ node, ...props }) => <ul className="space-y-2 my-2 bg-slate-900/50 p-4 rounded-xl border border-slate-700/50" {...props} />,
+                  li: ({ node, ...props }) => (
+                    <li className="flex items-start gap-2 text-slate-300">
+                      <span className="text-emerald-400 mt-0.5"><FiCheckCircle size={14} /></span>
+                      <span>{props.children}</span>
+                    </li>
+                  ),
+                  strong: ({ node, ...props }) => {
+                    const text = String(props.children);
+                    // Apply glowing alert style if it's strongly identifying a disease
+                    if (text.toLowerCase().includes('confidence') || text.toLowerCase().includes('detected')) {
+                      return <strong className="text-white bg-slate-700/50 px-1.5 py-0.5 rounded font-extrabold" {...props} />;
+                    }
+                    return <strong className="font-bold text-white" {...props} />;
+                  }
+                }}
+              >
+                {displayContent}
+              </Markdown>
+            )}
+          </div>
+          <span className="mt-1 block text-right text-[10px] opacity-50">{formatTime(message.created_at)}</span>
+        </div>
+        {!isUser && suggestions.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {suggestions.map((sug, idx) => (
+              <button
+                key={idx}
+                onClick={() => onSuggestionClick && onSuggestionClick(sug)}
+                className="text-xs bg-slate-800 border border-slate-700 hover:border-emerald-500 hover:text-emerald-400 text-slate-300 px-3 py-1.5 rounded-full transition-colors"
+              >
+                {sug}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       {isUser ? (
         <div className="ml-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-700 text-slate-200 mt-1">
@@ -72,7 +113,7 @@ function MessageBubble({ message, onSuggestionClick }: { message: ChatMessage; o
 
 export default function AIChatbot() {
   const location = useLocation();
-  const stateData = location.state as { crop?: string; predictedDisease?: string; confidence?: number; top_3?: any[]; imageUrl?: string } | null;
+  const stateData = location.state as { crop?: string; predictedDisease?: string; confidence?: number; top_3?: any[]; imageUrl?: string; livestockSymptoms?: string; animal?: string; eventId?: string } | null;
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -89,6 +130,7 @@ export default function AIChatbot() {
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const eventIdRef = useRef<string | null>(stateData?.eventId || null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const activeSession = useMemo(
@@ -102,10 +144,10 @@ export default function AIChatbot() {
       const history = await fetchChatHistory();
       setSessions(history);
       if (history.length > 0 && !activeSessionId) {
-          const latestId = history[0].id;
-          setActiveSessionId(latestId);
-          const msgs = await fetchSessionMessages(latestId);
-          setMessages(msgs);
+        const latestId = history[0].id;
+        setActiveSessionId(latestId);
+        const msgs = await fetchSessionMessages(latestId);
+        setMessages(msgs);
       }
     } catch (error) {
       console.error('Failed to load chat history:', error);
@@ -119,42 +161,45 @@ export default function AIChatbot() {
     loadHistory();
   }, []);
 
-  // Handle auto-trigger from Disease Detection module
+  // Handle auto-trigger from Disease Detection module or Livestock Health History
   useEffect(() => {
-      if (stateData?.crop && !initializing && !loading) {
-          let autoPrompt = "";
-          if (stateData.confidence !== undefined && stateData.confidence < 60 && stateData.top_3) {
-             const top3Str = stateData.top_3.map((p: any, i: number) => `${i+1}. ${p.disease} (${p.confidence.toFixed(1)}%)`).join(', ');
-             autoPrompt = `I tried to scan an image of my ${stateData.crop} but the AI had low confidence. Its top guesses were: ${top3Str}. Can you help me identify the problem and what I should do?`;
-          } else if (stateData.predictedDisease) {
-             autoPrompt = `I need help with my ${stateData.crop} crop. The AI detected ${stateData.predictedDisease} with ${stateData.confidence}% confidence. What should I do? Please explain what this disease is, what the reasons for it are, and suggest fertilizers or treatments.`;
-          }
-          
-          if (autoPrompt) {
-              const initiateChatWithImage = async () => {
-                  let imageFile: File | undefined = undefined;
-                  if (stateData.imageUrl) {
-                      try {
-                          const urlToFetch = stateData.imageUrl.startsWith('http') || stateData.imageUrl.startsWith('blob') 
-                              ? stateData.imageUrl 
-                              : `http://localhost:5000${stateData.imageUrl}`;
-                          const response = await fetch(urlToFetch);
-                          const blob = await response.blob();
-                          const filename = stateData.imageUrl.split('/').pop() || 'disease_image.jpg';
-                          imageFile = new File([blob], filename, { type: blob.type });
-                      } catch (err) {
-                          console.error("Failed to fetch image for chat", err);
-                      }
-                  }
-                  
-                  await handleNewChat(autoPrompt, stateData.crop, stateData.predictedDisease, stateData.confidence, imageFile);
-                  // clear state to prevent re-triggering
-                  window.history.replaceState({}, document.title);
-              };
-              
-              void initiateChatWithImage();
-          }
+    if ((stateData?.crop || stateData?.livestockSymptoms) && !initializing && !loading) {
+      let autoPrompt = "";
+
+      if (stateData.livestockSymptoms) {
+        autoPrompt = `My livestock (${stateData.animal || 'Animal'}) has the following symptoms: ${stateData.livestockSymptoms}. What disease could this be, what is the recommended treatment, causes, feeding/water requirements, and do we need to consider a doctor?`;
+      } else if (stateData.confidence !== undefined && stateData.confidence < 60 && stateData.top_3) {
+        const top3Str = stateData.top_3.map((p: any, i: number) => `${i + 1}. ${p.disease} (${p.confidence.toFixed(1)}%)`).join(', ');
+        autoPrompt = `I tried to scan an image of my ${stateData.crop} but the AI had low confidence. Its top guesses were: ${top3Str}. Can you help me identify the problem and what I should do?`;
+      } else if (stateData.predictedDisease) {
+        autoPrompt = `I need help with my ${stateData.crop} crop. The AI detected ${stateData.predictedDisease} with ${stateData.confidence}% confidence. What should I do? Please explain what this disease is, what the reasons for it are, and suggest fertilizers or treatments.`;
       }
+
+      if (autoPrompt) {
+        const initiateChatWithImage = async () => {
+          let imageFile: File | undefined = undefined;
+          if (stateData.imageUrl) {
+            try {
+              const urlToFetch = stateData.imageUrl.startsWith('http') || stateData.imageUrl.startsWith('blob')
+                ? stateData.imageUrl
+                : `http://localhost:5000${stateData.imageUrl}`;
+              const response = await fetch(urlToFetch);
+              const blob = await response.blob();
+              const filename = stateData.imageUrl.split('/').pop() || 'disease_image.jpg';
+              imageFile = new File([blob], filename, { type: blob.type });
+            } catch (err) {
+              console.error("Failed to fetch image for chat", err);
+            }
+          }
+
+          await handleNewChat(autoPrompt, stateData.crop, stateData.predictedDisease, stateData.confidence, imageFile);
+          // clear state to prevent re-triggering
+          window.history.replaceState({}, document.title);
+        };
+
+        void initiateChatWithImage();
+      }
+    }
   }, [stateData, initializing]);
 
 
@@ -167,13 +212,13 @@ export default function AIChatbot() {
     setActiveSessionId(sessionId);
     setLoading(true);
     try {
-        const msgs = await fetchSessionMessages(sessionId);
-        setMessages(msgs);
-        setWeatherData(null); // reset weather on switch
+      const msgs = await fetchSessionMessages(sessionId);
+      setMessages(msgs);
+      setWeatherData(null); // reset weather on switch
     } catch (error) {
-        console.error(error);
+      console.error(error);
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -184,55 +229,55 @@ export default function AIChatbot() {
     setWeatherData(null);
     setSelectedImage(null);
     setImagePreview(null);
-    
+
     try {
-        setLoading(true);
-        const session = await createSession('New Conversation');
-        setSessions(prev => [session, ...prev]);
-        setActiveSessionId(session.id);
-        
-        if (initialText) {
-            await sendMessage(initialText, session.id, initialFile, cropCtx, diseaseCtx, confCtx);
-        } else {
-            setLoading(false);
-            inputRef.current?.focus();
-        }
-    } catch (error) {
-        console.error(error);
+      setLoading(true);
+      const session = await createSession('New Conversation');
+      setSessions(prev => [session, ...prev]);
+      setActiveSessionId(session.id);
+
+      if (initialText) {
+        await sendMessage(initialText, session.id, initialFile, cropCtx, diseaseCtx, confCtx);
+      } else {
         setLoading(false);
+        inputRef.current?.focus();
+      }
+    } catch (error) {
+      console.error(error);
+      setLoading(false);
     }
   };
 
   const handleDeleteSession = async () => {
-      if (!sessionToDelete) return;
-      try {
-          await deleteSession(sessionToDelete);
-          notifySuccess('Conversation deleted');
-          setSessions(prev => prev.filter(s => s.id !== sessionToDelete));
-          if (activeSessionId === sessionToDelete) {
-              setActiveSessionId(null);
-              setMessages([]);
-          }
-      } catch (err: any) {
-          notifyError(err.message || 'Failed to delete');
-      } finally {
-          setDeleteConfirmOpen(false);
-          setSessionToDelete(null);
+    if (!sessionToDelete) return;
+    try {
+      await deleteSession(sessionToDelete);
+      notifySuccess('Conversation deleted');
+      setSessions(prev => prev.filter(s => s.id !== sessionToDelete));
+      if (activeSessionId === sessionToDelete) {
+        setActiveSessionId(null);
+        setMessages([]);
       }
+    } catch (err: any) {
+      notifyError(err.message || 'Failed to delete');
+    } finally {
+      setDeleteConfirmOpen(false);
+      setSessionToDelete(null);
+    }
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files && e.target.files[0]) {
-          const file = e.target.files[0];
-          setSelectedImage(file);
-          setImagePreview(URL.createObjectURL(file));
-      }
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setSelectedImage(file);
+      setImagePreview(URL.createObjectURL(file));
+    }
   };
 
   const clearImage = () => {
-      setSelectedImage(null);
-      setImagePreview(null);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+    setSelectedImage(null);
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const sendMessage = async (text: string, overrideSessionId?: string, file?: File, cropCtx?: string, diseaseCtx?: string, confCtx?: number) => {
@@ -241,7 +286,7 @@ export default function AIChatbot() {
 
     const targetSessionId = overrideSessionId || activeSessionId;
     if (!targetSessionId) {
-        return handleNewChat(trimmed);
+      return handleNewChat(trimmed);
     }
 
     const imgToUse = file || selectedImage;
@@ -264,41 +309,63 @@ export default function AIChatbot() {
 
     // Add empty AI message to stream into
     setMessages((current) => [
-        ...current,
-        { id: tempAiId, sender: 'ai', content: '', created_at: new Date().toISOString() }
+      ...current,
+      { id: tempAiId, sender: 'ai', content: '', created_at: new Date().toISOString() }
     ]);
 
     try {
       await sendChatMessage(trimmed, targetSessionId, imgToUse || undefined, cropCtx, diseaseCtx, confCtx, {
-          onMetadata: (data) => {
-              if (data.weather) setWeatherData(data.weather);
-          },
-          onChunk: (chunk) => {
-              setMessages((current) => 
-                  current.map(msg => 
-                      msg.id === tempAiId ? { ...msg, content: msg.content + chunk } : msg
-                  )
-              );
-              // scroll to bottom while streaming
-              bottomRef.current?.scrollIntoView({ behavior: 'auto' });
-          },
-          onDone: (finalMsg) => {
-              setMessages((current) => 
-                  current.map(msg => 
-                      msg.id === tempAiId ? finalMsg : msg
-                  )
-              );
-              loadHistory(); // reload history to update titles if changed
-          },
-          onError: (err) => {
-              throw err;
+        onMetadata: (data) => {
+          if (data.weather) setWeatherData(data.weather);
+        },
+        onChunk: (chunk) => {
+          setMessages((current) =>
+            current.map(msg =>
+              msg.id === tempAiId ? { ...msg, content: msg.content + chunk } : msg
+            )
+          );
+          // scroll to bottom while streaming
+          bottomRef.current?.scrollIntoView({ behavior: 'auto' });
+        },
+        onDone: async (finalMsg) => {
+          setMessages((current) =>
+            current.map(msg =>
+              msg.id === tempAiId ? finalMsg : msg
+            )
+          );
+          loadHistory(); // reload history to update titles if changed
+
+          if (eventIdRef.current && finalMsg.content) {
+            try {
+              // Attempt to extract diagnosis and treatment
+              const diagnosisMatch = finalMsg.content.match(/(?:### |\*\*)?(?:Disease Identification|Diagnosis|Disease):?(?:\*\*)?\s*\n?([^\n]+)/i);
+              const treatmentMatch = finalMsg.content.match(/(?:### |\*\*)?(?:Treatment|Recommended Treatment|Immediate Action):?(?:\*\*)?\s*\n?([\s\S]+?)(?=\n###|\n\*\*|$)/i);
+
+              let diagnosis = diagnosisMatch ? diagnosisMatch[1].replace(/\*\*/g, '').trim() : 'AI Diagnosis Available in Chat';
+              let treatment = treatmentMatch ? treatmentMatch[1].replace(/\*\*/g, '').trim() : 'Please check AI response for treatment details.';
+
+              // Fallback if regex misses but we have content
+              if (!diagnosisMatch && !treatmentMatch) {
+                diagnosis = 'AI Reviewed';
+                treatment = finalMsg.content.substring(0, 500) + '...';
+              }
+
+              await updateLivestockHealthEvent(eventIdRef.current, { diagnosis, treatment });
+              notifySuccess('Treatment Review Report Generated');
+            } catch (err) {
+              console.error('Failed to auto-update event review report', err);
+            }
           }
+        },
+        onError: (err) => {
+          throw err;
+        }
       });
     } catch (error: any) {
-      setMessages((current) => 
-          current.map(msg => 
-              msg.id === tempAiId ? { ...msg, content: error?.message ? `Error: ${error.message}` : 'Error: Failed to reach the SmartFarm AI advisor.' } : msg
-          )
+      setMessages((current) =>
+        current.map(msg =>
+          msg.id === tempAiId ? { ...msg, content: error?.message ? `Error: ${error.message}` : 'Error: Failed to reach the SmartFarm AI advisor.' } : msg
+        )
       );
     } finally {
       setLoading(false);
@@ -347,21 +414,20 @@ export default function AIChatbot() {
             sessions.map((session) => (
               <div
                 key={session.id}
-                className={`mb-1 flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition-colors cursor-pointer group ${
-                  activeSessionId === session.id ? 'bg-slate-800 text-emerald-400' : 'text-slate-300 hover:bg-slate-800/50'
-                }`}
+                className={`mb-1 flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm transition-colors cursor-pointer group ${activeSessionId === session.id ? 'bg-slate-800 text-emerald-400' : 'text-slate-300 hover:bg-slate-800/50'
+                  }`}
                 onClick={() => handleSelectSession(session.id)}
               >
                 <div className="flex min-w-0 flex-1 items-center gap-2 text-left">
                   <FiMessageSquare className="shrink-0 opacity-70" />
                   <span className="truncate">{session.title}</span>
                 </div>
-                <button 
+                <button
                   onClick={(e) => { e.stopPropagation(); setSessionToDelete(session.id); setDeleteConfirmOpen(true); }}
                   className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-500 transition-opacity"
                   title="Delete conversation"
                 >
-                    <FiTrash2 size={14} />
+                  <FiTrash2 size={14} />
                 </button>
               </div>
             ))
@@ -369,7 +435,7 @@ export default function AIChatbot() {
         </div>
       </aside>
 
-      <section className="relative flex min-w-0 flex-1 flex-col bg-slate-900">
+      <section className="relative flex min-w-0 flex-1 flex-col bg-slate-900" id="ai-chat-content">
         <header className="absolute top-0 z-10 flex h-14 w-full items-center justify-between border-b border-slate-800 bg-slate-900/90 px-6 backdrop-blur-md">
           <div className="flex items-center gap-3">
             <FiCpu className="text-xl text-emerald-500" />
@@ -378,13 +444,33 @@ export default function AIChatbot() {
               <p className="text-xs text-slate-400">{activeSession?.title || 'New conversation'}</p>
             </div>
           </div>
-          {weatherData && (
+          <div className="flex items-center gap-3">
+            {weatherData && (
               <div className="flex items-center gap-3 text-xs bg-slate-800 px-3 py-1.5 rounded-full border border-slate-700 text-slate-300">
-                  <span>Temp: {weatherData.temperature}°C</span>
-                  <span>Humidity: {weatherData.humidity}%</span>
-                  <span>{weatherData.condition}</span>
+                <span>Temp: {weatherData.temperature}°C</span>
+                <span>Humidity: {weatherData.humidity}%</span>
+                <span>{weatherData.condition}</span>
               </div>
-          )}
+            )}
+            <button
+              onClick={() => {
+                const title = `AI Advisory Report: ${activeSession?.title || 'General'}`;
+
+                const aiMessages = messages.filter(m => m.sender !== 'user');
+                let content = '';
+                if (aiMessages.length > 0) {
+                  content = aiMessages[0].content.replace(/SUGGESTED_QUESTIONS:\s*\[.*?\]/gs, '').trim();
+                }
+
+                generateTextPDF(title, content || 'No advice generated yet.', `AI_Advisory_${activeSession?.title?.replace(/[^a-zA-Z0-9]/g, '_') || 'Report'}`);
+              }}
+              className="flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-emerald-400 transition-colors hover:bg-slate-700 hover:text-emerald-300 border border-emerald-500/30"
+              title="Download chat text as PDF"
+            >
+              <FiFileText />
+              Generate PDF
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto px-6 pb-4 pt-20">
@@ -402,7 +488,7 @@ export default function AIChatbot() {
             messages.map((message) => <MessageBubble key={message.id} message={message} onSuggestionClick={(sug) => void sendMessage(sug)} />)
           )}
 
-          {loading && messages.length > 0 && messages[messages.length-1].content === '' ? (
+          {loading && messages.length > 0 && messages[messages.length - 1].content === '' ? (
             <div className="mb-4 flex w-full justify-start">
               <div className="mr-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400">
                 <FiCpu />
@@ -419,21 +505,21 @@ export default function AIChatbot() {
 
         <div className="border-t border-slate-800 bg-slate-900 p-4">
           {imagePreview && (
-              <div className="mb-2 relative inline-block">
-                  <img src={imagePreview} alt="Preview" className="h-16 w-16 object-cover rounded-md border border-slate-700" />
-                  <button onClick={clearImage} className="absolute -top-2 -right-2 bg-slate-700 rounded-full p-1 text-white hover:bg-rose-500">
-                      <FiX size={12} />
-                  </button>
-              </div>
+            <div className="mb-2 relative inline-block">
+              <img src={imagePreview} alt="Preview" className="h-16 w-16 object-cover rounded-md border border-slate-700" />
+              <button onClick={clearImage} className="absolute -top-2 -right-2 bg-slate-700 rounded-full p-1 text-white hover:bg-rose-500">
+                <FiX size={12} />
+              </button>
+            </div>
           )}
           <div className="mx-auto flex max-w-4xl items-end gap-2 rounded-2xl border border-slate-700 bg-slate-800 p-1 transition-all focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/50">
             <input type="file" ref={fileInputRef} onChange={handleImageChange} accept="image/*" className="hidden" />
             <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="mb-1 ml-1 rounded-xl p-3 text-slate-400 transition-colors hover:text-emerald-400"
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="mb-1 ml-1 rounded-xl p-3 text-slate-400 transition-colors hover:text-emerald-400"
             >
-                <FiImage size={20} />
+              <FiImage size={20} />
             </button>
             <textarea
               ref={inputRef}
@@ -463,15 +549,15 @@ export default function AIChatbot() {
           </div>
         </div>
       </section>
-      
+
       <ConfirmDialog
-          open={deleteConfirmOpen}
-          title="Delete Conversation"
-          description="Are you sure you want to delete this conversation? This action cannot be undone."
-          confirmLabel="Delete"
-          cancelLabel="Cancel"
-          onConfirm={handleDeleteSession}
-          onCancel={() => setDeleteConfirmOpen(false)}
+        open={deleteConfirmOpen}
+        title="Delete Conversation"
+        description="Are you sure you want to delete this conversation? This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={handleDeleteSession}
+        onCancel={() => setDeleteConfirmOpen(false)}
       />
     </div>
   );

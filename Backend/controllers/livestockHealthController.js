@@ -90,3 +90,53 @@ export async function createLivestockHealthEvent(req, res) {
     res.status(500).json({ error: 'Failed to create livestock health event' });
   }
 }
+
+export async function updateLivestockHealthEvent(req, res) {
+  try {
+    const farmId = await getDefaultFarmId(req.user.userId);
+    const { id } = req.params;
+    const { diagnosis, treatment } = req.body;
+    console.log(`[UPDATE LIVESTOCK EVENT] id: ${id}, farmId: ${farmId}, diagnosis: ${diagnosis?.substring(0,20)}`);
+
+    if (!id) {
+      return res.status(400).json({ error: 'Missing required event id' });
+    }
+
+    const result = await pool.query(
+      `
+        UPDATE livestock_health_events 
+        SET diagnosis = COALESCE($1, diagnosis), 
+            treatment = COALESCE($2, treatment),
+            updated_at = NOW()
+        WHERE id = $3 AND farm_id = $4
+        RETURNING id, animal_id, event_type, notes, diagnosis, treatment,
+                  medication, event_date, status, reported_by_user_id, image_url, updated_at, created_at
+      `,
+      [diagnosis, treatment, id, farmId],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Livestock health event not found or unauthorized' });
+    }
+
+    const row = result.rows[0];
+    res.json({
+      id: row.id,
+      livestockId: row.animal_id,
+      healthIssue: row.event_type,
+      symptoms: row.notes,
+      diagnosis: row.diagnosis,
+      treatment: row.treatment,
+      vaccinationDetails: row.medication,
+      eventDate: row.event_date,
+      status: row.status,
+      imageUrl: row.image_url,
+      updatedBy: row.reported_by_user_id,
+      updatedAt: row.updated_at,
+      createdAt: row.created_at,
+    });
+  } catch (error) {
+    console.error('Failed to update livestock health event:', error);
+    res.status(500).json({ error: 'Failed to update livestock health event' });
+  }
+}

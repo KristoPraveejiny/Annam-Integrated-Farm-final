@@ -81,7 +81,7 @@ export default function FarmerTasksPage() {
 
   const getDisplayStatus = (task: any) => {
     const status = normalizeTaskStatus(task.status);
-    if ((status === 'completed' || status === 'done' || status === 'approved' || status === 'waiting_for_manager_approval' || status === 'waiting_manager_approval') && task.completion_percentage < 100) {
+    if (status === 'approved' && (task.completion_percentage || 0) < 100) {
       return 'in_progress';
     }
     return status;
@@ -110,7 +110,7 @@ export default function FarmerTasksPage() {
       }
 
       if (status === 'done' || status === 'update') {
-        navigate(`/dashboard/farmer-worker/tasks/${taskId}/activity`);
+        navigate(`/dashboard/farmer-worker/tasks/${taskId}/activity`, { state: { isFinal: status === 'done' } });
         return;
       }
 
@@ -213,7 +213,7 @@ export default function FarmerTasksPage() {
                           <FiClock className="mr-1 inline" /> {t("Start Work")}
                         </Button>
                       )}
-                      {(getDisplayStatus(task) === 'in_progress') && (
+                      {(getDisplayStatus(task) === 'in_progress' || (getDisplayStatus(task) === 'approved' && (task.completion_percentage || 0) < 100)) && (
                         <>
                           <Button variant="ghost" onClick={() => updateTaskStatus(task.id, 'update')} className="!p-2 text-blue-400 hover:text-blue-300" title="Update Progress">
                             <FiCheckCircle className="mr-1 inline" /> {t("Update")}

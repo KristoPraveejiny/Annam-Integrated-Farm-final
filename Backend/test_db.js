@@ -1,0 +1,1 @@
+import { pool } from './db.js'; pool.query(\"SELECT id, title, status, completion_percentage, total_updates FROM tasks WHERE title = 'should water';\").then(res => { console.log(res.rows); process.exit(0); });

@@ -254,8 +254,8 @@ const newReviewTask = `export async function reviewTask(req, res) {
         const checkOutTime = updatedTask.end_time || updatedTask.completed_at;
 
         const existingAttendance = await pool.query(
-          \`SELECT id FROM shift_attendances WHERE worker_id = $1 AND shift_id = $3 AND DATE_TRUNC('second', check_out_time) = DATE_TRUNC('second', $2::timestamptz) LIMIT 1\`,
-          [workerId, checkOutTime, updatedTask.shift_id]
+          \`SELECT id FROM shift_attendances WHERE worker_id = $1 AND shift_id = $3 AND date = $2::date LIMIT 1\`,
+          [workerId, attendanceDate, updatedTask.shift_id]
         );
 
         if (existingAttendance.rows.length > 0) {

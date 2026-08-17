@@ -2,41 +2,60 @@ import { pool } from '../db.js';
 
 // Helper function to get or create a default farm for the user
 export async function getDefaultFarmId(userId) {
-  // Get user role
+  // 1. Prefer an explicit membership
+  let result = await pool.query('SELECT farm_id FROM farm_memberships WHERE user_id = $1 LIMIT 1', [userId]);
+  if (result.rows.length > 0) {
+    return result.rows[0].farm_id;
+  }
+
+  // 2. Then prefer farms owned by the user
+  result = await pool.query('SELECT id FROM farms WHERE owner_user_id = $1 LIMIT 1', [userId]);
+  if (result.rows.length > 0) {
+    return result.rows[0].id;
+  }
+
+  // 3. For manager-style accounts, reuse the first existing farm instead of creating a blank one
   const userRes = await pool.query('SELECT role FROM app_users WHERE id = $1', [userId]);
-  const userRole = userRes.rows[0]?.role;
-  if (userRole === 'worker' || (userRole && userRole.toLowerCase() === 'farmer')) {
-    // 1. Check memberships
-    let result = await pool.query('SELECT farm_id FROM farm_memberships WHERE user_id = $1 LIMIT 1', [userId]);
-    if (result.rows.length > 0) {
-      return result.rows[0].farm_id;
-    }
-    // 2. Fallback to the first farm owned by a farm_manager in the database
+  const userRole = String(userRes.rows[0]?.role || '').toLowerCase();
+  if (userRole === 'farm_manager' || userRole === 'super_admin' || userRole === 'admin') {
     result = await pool.query(`
-      SELECT f.id 
-      FROM farms f
-      JOIN app_users u ON f.owner_user_id = u.id
-      WHERE u.role = 'farm_manager'
-      ORDER BY f.created_at ASC 
+      SELECT farm_id AS id
+      FROM (
+        SELECT farm_id, COUNT(*) AS records
+        FROM farm_fields
+        WHERE farm_id IS NOT NULL
+        GROUP BY farm_id
+        UNION ALL
+        SELECT farm_id, COUNT(*) AS records
+        FROM crop_cycles
+        WHERE farm_id IS NOT NULL
+        GROUP BY farm_id
+        UNION ALL
+        SELECT farm_id, COUNT(*) AS records
+        FROM livestock_animals
+        WHERE farm_id IS NOT NULL
+        GROUP BY farm_id
+        UNION ALL
+        SELECT farm_id, COUNT(*) AS records
+        FROM products
+        WHERE farm_id IS NOT NULL
+        GROUP BY farm_id
+        UNION ALL
+        SELECT farm_id, COUNT(*) AS records
+        FROM orders
+        WHERE farm_id IS NOT NULL
+        GROUP BY farm_id
+      ) farm_usage
+      GROUP BY farm_id
+      ORDER BY SUM(records) DESC, farm_id ASC
       LIMIT 1
     `);
     if (result.rows.length > 0) {
       return result.rows[0].id;
     }
-    // 3. Absolute fallback to any farm
-    result = await pool.query('SELECT id FROM farms ORDER BY created_at ASC LIMIT 1');
-    if (result.rows.length > 0) {
-      return result.rows[0].id;
-    }
   }
 
-  // Check if user owns a farm
-  let result = await pool.query('SELECT id FROM farms WHERE owner_user_id = $1 LIMIT 1', [userId]);
-  if (result.rows.length > 0) {
-    return result.rows[0].id;
-  }
-
-  // Create a default farm if none exists
+  // 4. Absolute fallback: create a default farm only if nothing exists at all
   const farmCode = `FARM-${Date.now().toString().slice(-6)}`;
   result = await pool.query(
     'INSERT INTO farms (owner_user_id, farm_code, name, description) VALUES ($1, $2, $3, $4) RETURNING id',
