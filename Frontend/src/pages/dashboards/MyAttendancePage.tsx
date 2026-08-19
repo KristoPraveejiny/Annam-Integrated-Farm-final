@@ -5,9 +5,11 @@ import { FiCalendar, FiClock, FiSend, FiTrendingUp } from 'react-icons/fi';
 
 type AttendanceRow = {
   missed_task_title: any;
+  missed_task_details?: { title: string; type: 'crop' | 'livestock' | 'general' }[] | null;
   id: string;
   date: string;
   task_title?: string | null;
+  task_details?: { title: string; type: 'crop' | 'livestock' | 'general' }[] | null;
   session?: string | null;
   shift_status?: string | null;
   total_hours?: number | string | null;
@@ -40,6 +42,21 @@ type Advance = {
   account_details?: string | null;
   reviewed_at?: string | null;
 };
+
+function buildTaskItems(details: { title: string; type: 'crop' | 'livestock' | 'general' }[] | null | undefined, titleStr: string | null | undefined) {
+  if (details && details.length > 0) return details;
+  if (!titleStr) return [];
+  return titleStr.split(',').map((name) => ({ title: name.trim(), type: null as unknown as 'crop' | 'livestock' | 'general' }));
+}
+
+function TaskTypeBadge({ type }: { type?: 'crop' | 'livestock' | 'general' | null }) {
+  if (!type || type === 'general') return null;
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+      type === 'livestock' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+    }`}>{type}</span>
+  );
+}
 
 export default function MyAttendancePage() {
   const [month, setMonth] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
@@ -279,10 +296,13 @@ export default function MyAttendancePage() {
             <div className="space-y-2">
               {attendances.map((row) => (
                 <div key={row.id} className="flex flex-col gap-2 rounded-2xl border border-slate-100 px-4 py-3">
-                  {row.task_title && row.task_title.split(',').map((taskName: string, i: number) => (
+                  {buildTaskItems(row.task_details, row.task_title).map((item, i) => (
                     <div key={`completed-${i}`} className="flex items-center justify-between border-b border-slate-100 pb-2 last:border-b-0 last:pb-0">
                       <div>
-                        <p className="font-semibold text-slate-900">{taskName.trim() || 'Task session'}</p>
+                        <p className="font-semibold text-slate-900 flex items-center gap-2">
+                          {item.title || 'Task session'}
+                          <TaskTypeBadge type={item.type} />
+                        </p>
                         <p className="text-sm text-slate-500">{row.session || 'N/A'}</p>
                       </div>
                       <div className="text-right">
@@ -305,10 +325,13 @@ export default function MyAttendancePage() {
                     </div>
                   )}
 
-                  {row.missed_task_title && row.missed_task_title.split(',').map((taskName: string, i: number) => (
+                  {buildTaskItems(row.missed_task_details, row.missed_task_title).map((item, i) => (
                     <div key={`missed-${i}`} className="flex items-center justify-between border-t border-slate-100 pt-2 mt-1">
                       <div>
-                        <p className="text-sm text-red-500/80 font-medium line-through">{taskName.trim()}</p>
+                        <p className="text-sm text-red-500/80 font-medium line-through flex items-center gap-2">
+                          {item.title}
+                          <TaskTypeBadge type={item.type} />
+                        </p>
                       </div>
                       <div className="text-right">
                         <p className="font-semibold text-red-400">0.00 hrs</p>

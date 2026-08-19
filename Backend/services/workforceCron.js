@@ -53,15 +53,20 @@ cron.schedule('* * * * *', async () => {
           });
         }
 
-        // Mark attendance as Absent
-        const attendanceDate = task.shift_end_time 
-          ? new Date(task.shift_end_time).toISOString().slice(0, 10) 
+        // Mark attendance as Absent (only if no attendance row exists yet for this worker+shift+day)
+        const attendanceDate = task.shift_end_time
+          ? new Date(task.shift_end_time).toISOString().slice(0, 10)
           : new Date().toISOString().slice(0, 10);
-        await pool.query(`
-          INSERT INTO shift_attendances (worker_id, date, shift_id, check_in_time, check_out_time, total_hours, shift_status, farm_id)
-          VALUES ($1, $2::date, $3, NULL, NULL, 0, 'Absent', $4)
-          ON CONFLICT DO NOTHING
-        `, [task.assigned_to_user_id, attendanceDate, task.shift_id, task.farm_id]);
+        const existingAttendance = await pool.query(
+          `SELECT id FROM shift_attendances WHERE worker_id = $1 AND date = $2::date AND shift_id = $3 LIMIT 1`,
+          [task.assigned_to_user_id, attendanceDate, task.shift_id]
+        );
+        if (existingAttendance.rows.length === 0) {
+          await pool.query(`
+            INSERT INTO shift_attendances (worker_id, date, shift_id, check_in_time, check_out_time, total_hours, shift_status, farm_id)
+            VALUES ($1, $2::date, $3, NULL, NULL, 0, 'Absent', $4)
+          `, [task.assigned_to_user_id, attendanceDate, task.shift_id, task.farm_id]);
+        }
       }
     }
 
@@ -155,15 +160,20 @@ cron.schedule('* * * * *', async () => {
           });
         }
 
-        // Mark attendance as Absent
-        const attendanceDate = task.shift_end_time 
-          ? new Date(task.shift_end_time).toISOString().slice(0, 10) 
+        // Mark attendance as Absent (only if no attendance row exists yet for this worker+shift+day)
+        const attendanceDate = task.shift_end_time
+          ? new Date(task.shift_end_time).toISOString().slice(0, 10)
           : new Date().toISOString().slice(0, 10);
-        await pool.query(`
-          INSERT INTO shift_attendances (worker_id, date, shift_id, check_in_time, check_out_time, total_hours, shift_status, farm_id)
-          VALUES ($1, $2::date, $3, NULL, NULL, 0, 'Absent', $4)
-          ON CONFLICT DO NOTHING
-        `, [task.assigned_to_user_id, attendanceDate, task.shift_id, task.farm_id]);
+        const existingAttendance = await pool.query(
+          `SELECT id FROM shift_attendances WHERE worker_id = $1 AND date = $2::date AND shift_id = $3 LIMIT 1`,
+          [task.assigned_to_user_id, attendanceDate, task.shift_id]
+        );
+        if (existingAttendance.rows.length === 0) {
+          await pool.query(`
+            INSERT INTO shift_attendances (worker_id, date, shift_id, check_in_time, check_out_time, total_hours, shift_status, farm_id)
+            VALUES ($1, $2::date, $3, NULL, NULL, 0, 'Absent', $4)
+          `, [task.assigned_to_user_id, attendanceDate, task.shift_id, task.farm_id]);
+        }
       }
 
       // Notify manager

@@ -64,8 +64,13 @@ export async function getDefaultFarmId(userId) {
   return result.rows[0].id;
 }
 
-// Helper to ensure default groups exist for a farm
+// Helper to seed starter groups, but only for a brand-new farm that has no groups at all.
+// Once a farm has any group (starter or manager-created), this is a no-op so it never
+// re-injects the starter set alongside groups the manager has since created.
 async function ensureDefaultGroups(farmId) {
+  const existing = await pool.query('SELECT 1 FROM livestock_groups WHERE farm_id = $1 LIMIT 1', [farmId]);
+  if (existing.rows.length > 0) return;
+
   const defaultGroups = [
     { code: 'COW', species: 'Cattle' },
     { code: 'HEN', species: 'Poultry' },

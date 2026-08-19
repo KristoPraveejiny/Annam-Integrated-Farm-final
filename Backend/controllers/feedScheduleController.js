@@ -126,27 +126,12 @@ export async function createFeedSchedule(req, res) {
     if (!farmId) {
       return res.status(400).json({ error: 'Unable to resolve farm for feed schedule' });
     }
-    const { livestockId, feedType, feedAmount, waterRequirement, scheduledTime, status, assignedWorkerId, session } = req.body;
+    const { livestockId, feedType, feedAmount, waterRequirement, scheduledTime, status, assignedWorkerId } = req.body;
     if (!livestockId || !feedType || !feedAmount || !waterRequirement || !scheduledTime) {
       return res.status(400).json({ error: 'Missing required schedule fields' });
     }
 
-    const taskTitle = `${String(session || 'Morning')} Feed ${feedType}`.trim();
-    let taskId = null;
-    if (assignedWorkerId) {
-      const taskResult = await pool.query(
-        `
-          INSERT INTO tasks (
-            farm_id, title, description, livestock_group_id, assigned_to_user_id, created_by_user_id,
-            priority, due_date, status, session
-          )
-          VALUES ($1, $2, $3, (SELECT group_id FROM livestock_animals WHERE id = $4 LIMIT 1), $5, $6, 'high', CURRENT_DATE, 'Pending', $7)
-          RETURNING id
-        `,
-        [farmId, taskTitle, `Livestock feeding task for ${feedType}`, livestockId, assignedWorkerId, req.user.userId, session || 'Morning']
-      );
-      taskId = taskResult.rows[0]?.id || null;
-    }
+    const taskId = null;
 
     const result = await pool.query(
       `

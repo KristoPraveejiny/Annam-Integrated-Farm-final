@@ -4,18 +4,27 @@ const DJANGO_BASE_URL = "http://localhost:8000/api";
 
 async function _handleResponse(res: Response): Promise<any> {
     const contentType = res.headers.get('content-type') || '';
-    if (!res.ok) {
-        const txt = await res.text();
-        return { error: `Server error ${res.status}: ${txt}` };
-    }
+    let data: any = null;
+
     if (contentType.includes('application/json')) {
-        return res.json();
+        data = await res.json().catch(() => null);
+    } else {
+        const txt = await res.text();
+        try {
+            data = JSON.parse(txt);
+        } catch {
+            data = txt ? { error: txt } : null;
+        }
     }
-    try {
-        return JSON.parse(await res.text());
-    } catch {
-        return { error: `Unexpected response format (status ${res.status})` };
+
+    if (!res.ok) {
+        // Surface the server's own message (e.g. "awaiting admin approval") rather
+        // than a raw "Server error 403: {...}" dump.
+        const message = (data && (data.error || data.detail || data.message)) || `Request failed (${res.status})`;
+        return { error: message };
     }
+
+    return data ?? {};
 }
 
 export async function sendSignupOtp(email: string) {

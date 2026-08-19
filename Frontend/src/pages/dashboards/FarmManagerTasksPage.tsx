@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
-import { FiPlus, FiAlertTriangle, FiFileText } from 'react-icons/fi';
+import { AssignTaskModal } from '../../components/tasks/AssignTaskModal';
+import { FiPlus, FiAlertTriangle } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { apiFetch } from '../../utils/apiFetch';
-import { notifyError, notifySuccess, notifyWarning } from '../../utils/notifications';
 
 export default function FarmManagerTasksPage() {
   const { t } = useTranslation();
@@ -15,9 +15,9 @@ export default function FarmManagerTasksPage() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [farmers, setFarmers] = useState<any[]>([]);
   const [crops, setCrops] = useState<any[]>([]);
-  const [livestockGroups, setLivestockGroups] = useState<any[]>([]);
   const [shifts, setShifts] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [taskPrefill, setTaskPrefill] = useState<{ title?: string; description?: string; attachmentUrl?: string; attachmentName?: string }>({});
   const [loading, setLoading] = useState(true);
   const [filterWorker, setFilterWorker] = useState('');
   const [filterTask, setFilterTask] = useState('');
@@ -27,22 +27,6 @@ export default function FarmManagerTasksPage() {
   const [filterReview, setFilterReview] = useState('All');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
-
-
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    cropCycleId: '',
-    livestockGroupId: '',
-    assignedToUserId: '',
-    priority: 'medium',
-    session: 'morning',
-    dueDate: '',
-    attachmentUrl: '',
-    attachmentName: ''
-  });
-
-  const todayDate = new Date().toISOString().split('T')[0];
 
   const normalizeTaskStatus = (status: string | undefined | null) =>
     String(status || '')
@@ -76,19 +60,18 @@ export default function FarmManagerTasksPage() {
 
   const fetchData = async () => {
     try {
-      const [tasksRes, cropsRes, workersRes, livestockRes, shiftsRes] = await Promise.all([
+      const [tasksRes, cropsRes, workersRes, shiftsRes] = await Promise.all([
         apiFetch('/api/tasks/manager'),
         apiFetch('/api/crops'),
         apiFetch('/api/tasks/workers'),
-        apiFetch('/api/livestock/groups'),
         apiFetch('/api/shifts')
       ]);
 
       if (tasksRes.ok) {
         const tasksData = await tasksRes.json();
-        setTasks(tasksData);
+        setTasks(tasksData.filter((t: any) => !t.livestock_group_id));
       }
-      
+
       if (cropsRes.ok) {
         const cropsData = await cropsRes.json();
         setCrops(cropsData);
@@ -97,11 +80,6 @@ export default function FarmManagerTasksPage() {
       if (workersRes.ok) {
         const workersData = await workersRes.json();
         setFarmers(workersData);
-      }
-      
-      if (livestockRes.ok) {
-        const livestockData = await livestockRes.json();
-        setLivestockGroups(livestockData);
       }
 
       if (shiftsRes.ok) {
@@ -122,16 +100,14 @@ export default function FarmManagerTasksPage() {
 
   useEffect(() => {
     if (location.state && location.state.isNewTask && crops.length > 0) {
-      setFormData(prev => ({
-        ...prev,
+      setTaskPrefill({
         title: location.state.prefillTitle || '',
         description: location.state.prefillDescription || '',
-        category: location.state.prefillCategory || 'Planting & Maintenance',
         attachmentUrl: location.state.prefillAttachmentUrl || '',
         attachmentName: location.state.prefillAttachmentName || ''
-      }));
+      });
       setShowModal(true);
-      
+
       // Clear state so it doesn't reopen on refresh
       window.history.replaceState({}, document.title);
     }
@@ -143,7 +119,7 @@ export default function FarmManagerTasksPage() {
     const score = getEvidenceScore(task);
     const workerName = String(task.assigned_to_name || '').toLowerCase();
     const taskName = String(task.title || '').toLowerCase();
-    const crop = String(task.crop_name || task.livestock_name || 'N/A');
+    const crop = String(task.crop_name || 'N/A');
     const status = getDisplayStatus(task);
     const submitted = task.latest_update?.created_at;
 
@@ -181,47 +157,7 @@ export default function FarmManagerTasksPage() {
     return true;
   });
 
-  const uniqueCrops = Array.from(new Set(tasks.map(t => t.crop_name || t.livestock_name || 'N/A')));
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (formData.dueDate && formData.dueDate < todayDate) {
-      notifyWarning('Task date cannot be earlier than today.');
-      return;
-    }
-
-    const selectedShift = shifts.find((shift) => {
-      const shiftName = String(shift.shift_name || '').trim().toLowerCase();
-      return shiftName === formData.session || String(shift.id || '').trim() === formData.session;
-    });
-
-    try {
-      const res = await apiFetch('/api/tasks', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ...formData,
-          shiftId: selectedShift?.id,
-          session: String(selectedShift?.shift_name || formData.session).trim().toLowerCase()
-        })
-      });
-
-      if (res.ok) {
-        setShowModal(false);
-        setFormData({ title: '', description: '', cropCycleId: '', livestockGroupId: '', assignedToUserId: '', priority: 'medium', session: 'morning', dueDate: '', attachmentUrl: '', attachmentName: '' });
-        fetchData();
-        notifySuccess('Task assigned and email sent successfully!');
-      } else {
-        const errorData = await res.json();
-        notifyError(errorData.error || 'Failed to create task');
-      }
-    } catch (err) {
-      console.error('Submit error:', err);
-      notifyError('An error occurred while saving.');
-    }
-  };
+  const uniqueCrops = Array.from(new Set(tasks.map(t => t.crop_name || 'N/A')));
 
   return (
     <div className="space-y-6 pb-20">
@@ -333,7 +269,7 @@ export default function FarmManagerTasksPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3">{task.crop_name || task.livestock_name || 'N/A'}</td>
+                    <td className="px-4 py-3">{task.crop_name || 'N/A'}</td>
                     <td className="px-4 py-3">{task.activity_type || 'N/A'}</td>
                     <td className="px-4 py-3 capitalize">{task.session || 'morning'}</td>
                     <td className="px-4 py-3">{task.latest_update?.created_at ? new Date(task.latest_update.created_at).toLocaleString() : 'N/A'}</td>
@@ -390,154 +326,16 @@ export default function FarmManagerTasksPage() {
       </Card>
 
 
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-white/10 rounded-3xl p-6 w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]">
-            <h3 className="text-2xl font-bold text-white mb-6">{t("Assign New Task")}</h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">{t("Task Title")}</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.title}
-                  onChange={e => setFormData({...formData, title: e.target.value})}
-                  className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
-                  placeholder={t("eg Inspect irrigation lines")}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">{t("Description")}</label>
-                <textarea
-                  rows={3}
-                  value={formData.description}
-                  onChange={e => setFormData({...formData, description: e.target.value})}
-                  className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
-                  placeholder={t("Details about the task")}
-                />
-              </div>
-
-              {formData.attachmentUrl && (
-                <div className="bg-slate-900 border border-emerald-500/30 rounded-xl p-3 flex items-center justify-between mt-2">
-                  <div className="flex items-center gap-2 text-sm text-emerald-400">
-                    <FiFileText size={18} />
-                    <span className="font-medium truncate max-w-[200px]">{formData.attachmentName || 'Attached Document'}</span>
-                  </div>
-                  <a href={formData.attachmentUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-emerald-300 hover:text-emerald-200 underline">
-                    {t("View")}
-                  </a>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">{t("Assign to Farmer")}</label>
-                <select
-                  required
-                  value={formData.assignedToUserId}
-                  onChange={e => setFormData({...formData, assignedToUserId: e.target.value})}
-                  className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
-                >
-                  <option value="" disabled>{t("Select farmer")}</option>
-                  {farmers.map(f => (
-                    <option key={f.id} value={f.id}>{f.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">{t("Related Crop")}</label>
-                  <select
-                    value={formData.cropCycleId}
-                    onChange={e => setFormData({...formData, cropCycleId: e.target.value, livestockGroupId: ''})}
-                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
-                    disabled={!!formData.livestockGroupId}
-                  >
-                    <option value="">{t("None")}</option>
-                    {crops
-                      .filter(c => 
-                        String(c.status || '').toLowerCase() !== 'harvested' && 
-                        String(c.status || '').toLowerCase() !== 'completed' && 
-                        String(c.harvest_status || '').toLowerCase() !== 'harvested'
-                      )
-                      .map(c => (
-                      <option key={c.id} value={c.id}>{c.crop_name} {c.variety ? `(${c.variety})` : ''}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">{t("Related Livestock")}</label>
-                  <select
-                    value={formData.livestockGroupId}
-                    onChange={e => setFormData({...formData, livestockGroupId: e.target.value, cropCycleId: ''})}
-                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
-                    disabled={!!formData.cropCycleId}
-                  >
-                    <option value="">{t("None")}</option>
-                    {livestockGroups.map(lg => (
-                      <option key={lg.id} value={lg.id}>{lg.group_code} - {lg.species}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 mt-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Priority</label>
-                  <select
-                    value={formData.priority}
-                    onChange={e => setFormData({...formData, priority: e.target.value})}
-                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Session</label>
-                  <select
-                    value={formData.session}
-                    onChange={e => setFormData({...formData, session: e.target.value})}
-                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none"
-                  >
-                    {shifts.length > 0 ? (
-                      shifts.map((shift) => (
-                        <option key={shift.id} value={String(shift.shift_name || '').trim().toLowerCase()}>
-                          {shift.shift_name}
-                          {shift.start_time && shift.end_time ? ` (${String(shift.start_time).slice(0, 5)} - ${String(shift.end_time).slice(0, 5)})` : ''}
-                        </option>
-                      ))
-                    ) : (
-                      <>
-                        <option value="morning">Morning (Rs. 2000)</option>
-                        <option value="afternoon">Afternoon (Rs. 2000)</option>
-                        <option value="evening">Evening (Rs. 1000)</option>
-                      </>
-                    )}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Due Date</label>
-                  <input
-                    type="date"
-                    min={todayDate}
-                    value={formData.dueDate}
-                    onChange={e => setFormData({...formData, dueDate: e.target.value})}
-                    className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none [color-scheme:dark]"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-white/10">
-                <Button variant="ghost" type="button" onClick={() => setShowModal(false)}>{t("Cancel")}</Button>
-                <Button type="submit">{t("Create Task")}</Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <AssignTaskModal
+        mode="crop"
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        onCreated={fetchData}
+        farmers={farmers}
+        shifts={shifts}
+        relatedOptions={crops}
+        prefill={taskPrefill}
+      />
     </div>
   );
 }

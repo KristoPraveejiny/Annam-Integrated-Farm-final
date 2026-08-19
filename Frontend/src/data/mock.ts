@@ -1,4 +1,4 @@
-import { FiBarChart2, FiBell, FiBox, FiCloud, FiDollarSign, FiHome, FiLayers, FiMessageCircle, FiSettings, FiShield, FiShoppingBag, FiUser, FiUsers, FiAlertTriangle, FiCheckCircle, FiMapPin, FiDroplet, FiHeart, FiActivity, FiClipboard } from 'react-icons/fi';
+import { FiBarChart2, FiBell, FiBox, FiCloud, FiDollarSign, FiHome, FiInbox, FiLayers, FiMessageCircle, FiSettings, FiShield, FiShoppingBag, FiUser, FiUsers, FiAlertTriangle, FiCheckCircle, FiMapPin, FiDroplet, FiHeart, FiActivity, FiClipboard } from 'react-icons/fi';
 
 export const metrics = [
   { label: 'Total Fields', value: '48', delta: '+12%', color: 'from-emerald-500 to-lime-400' },
@@ -69,6 +69,7 @@ export const publicNavItems = {
     { label: 'Reports & Analytics', href: '/dashboard/super-admin/reports', icon: FiBarChart2 },
     { label: 'Notification Management', href: '/dashboard/super-admin/notifications', icon: FiBell },
     { label: 'Feedback Management', href: '/dashboard/super-admin/feedback', icon: FiMessageCircle },
+    { label: 'Enquiries', href: '/dashboard/super-admin/inquiries', icon: FiInbox },
     { label: 'System Settings', href: '/dashboard/super-admin/settings', icon: FiSettings },
     { label: 'Audit Logs', href: '/dashboard/super-admin/audit-logs', icon: FiClipboard },
     { label: 'Logout', href: '/', icon: FiMessageCircle },
@@ -77,7 +78,7 @@ export const publicNavItems = {
     { label: 'Dashboard', href: '/dashboard/farm-manager', icon: FiHome },
     { label: 'Field Management', href: '/dashboard/farm-manager/fields', icon: FiMapPin },
     { label: 'Crops', href: '/dashboard/farm-manager/crops', icon: FiLayers },
-    { label: 'Tasks', href: '/dashboard/farm-manager/tasks', icon: FiCheckCircle },
+    { label: 'Crop Task', href: '/dashboard/farm-manager/tasks', icon: FiCheckCircle, matchExact: true },
     { label: 'Attendance Management', href: '/dashboard/farm-manager/attendance', icon: FiActivity },
     { label: 'Livestock', href: '/dashboard/farm-manager/livestock', icon: FiUser },
     { label: 'Farmer Updates', href: '/dashboard/farm-manager/recent-updates', icon: FiClipboard },
@@ -97,7 +98,7 @@ export const publicNavItems = {
   'farmer-worker': [
     { label: 'Dashboard', href: '/dashboard/farmer-worker', icon: FiHome },
     { label: 'Feedback', href: '/dashboard/farmer-worker/feedback', icon: FiMessageCircle },
-    { label: 'My Tasks', href: '/dashboard/farmer-worker/tasks', icon: FiCheckCircle },
+    { label: 'My Tasks', href: '/dashboard/farmer-worker/tasks', icon: FiCheckCircle, matchExact: true },
     { label: 'My Products', href: '/dashboard/farmer-worker/marketplace', icon: FiShoppingBag },
     { label: 'Crop Updates', href: '/dashboard/farmer-worker/crop-updates', icon: FiLayers },
     { label: 'Livestock Updates', href: '/dashboard/farmer-worker/livestock-updates', icon: FiHeart },

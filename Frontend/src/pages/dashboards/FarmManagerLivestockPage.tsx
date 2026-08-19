@@ -3,25 +3,31 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
-import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiMapPin, FiHeart, FiDroplet, FiCheckCircle, FiDownload, FiMessageCircle, FiFileText } from 'react-icons/fi';
-import { useNavigate } from 'react-router-dom';
+import { AssignTaskModal } from '../../components/tasks/AssignTaskModal';
+import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiDroplet, FiDownload, FiMessageCircle, FiFileText, FiAlertTriangle } from 'react-icons/fi';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { deleteFeedRequirement, getFeedRequirements, upsertFeedRequirement, getFeedSchedules, createFeedSchedule, getFeedLogs, getFeedSummary, completeFeedSchedule, type FeedRequirement, type FeedSchedule, type FeedLog } from '../../api/livestock';
+import { deleteFeedRequirement, getFeedRequirements, upsertFeedRequirement, getFeedLogs, getFeedSummary, type FeedRequirement, type FeedLog } from '../../api/livestock';
 import { createLivestockHealthEvent, getLivestockHealthEvents, type LivestockHealthEvent } from '../../api/livestockHealth';
 import html2pdf from 'html2pdf.js';
 import { notifyError, notifySuccess } from '../../utils/notifications';
+import { apiFetch } from '../../utils/apiFetch';
 
 export default function FarmManagerLivestockPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('overview');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState((location.state as any)?.activeTab || 'overview');
   const [livestock, setLivestock] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
   const [feedConfigs, setFeedConfigs] = useState<FeedRequirement[]>([]);
   const [healthEvents, setHealthEvents] = useState<LivestockHealthEvent[]>([]);
-  const [feedSchedules, setFeedSchedules] = useState<FeedSchedule[]>([]);
   const [feedLogs, setFeedLogs] = useState<FeedLog[]>([]);
   const [feedSummary, setFeedSummary] = useState<any>({});
+  const [livestockTasks, setLivestockTasks] = useState<any[]>([]);
+  const [farmers, setFarmers] = useState<any[]>([]);
+  const [shifts, setShifts] = useState<any[]>([]);
+  const [showTaskModal, setShowTaskModal] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showFeedModal, setShowFeedModal] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -61,23 +67,6 @@ export default function FarmManagerLivestockPage() {
     vaccinationDetails: '',
     eventDate: '',
     status: 'Healthy',
-  });
-
-  const [scheduleForm, setScheduleForm] = useState({
-    animalId: '',
-    feedType: '',
-    amount: '',
-    water: '',
-    time: 'Morning',
-    assignedWorkerId: '',
-  });
-  const [selectedSchedule, setSelectedSchedule] = useState<FeedSchedule | null>(null);
-  const [completionForm, setCompletionForm] = useState({
-    feedGiven: '',
-    waterGiven: '',
-    appetite: 'Good',
-    healthObservation: 'Normal',
-    notes: '',
   });
 
   const fetchLivestock = async () => {
@@ -167,12 +156,39 @@ export default function FarmManagerLivestockPage() {
     }
   };
 
-  const fetchFeedSchedules = async () => {
+  const fetchLivestockTasks = async () => {
     try {
-      const data = await getFeedSchedules();
-      setFeedSchedules(data);
+      const res = await apiFetch('/api/tasks/manager');
+      if (res.ok) {
+        const data = await res.json();
+        setLivestockTasks(data.filter((t: any) => !!t.livestock_group_id));
+      }
     } catch (error) {
-      console.error('Failed to fetch feed schedules:', error);
+      console.error('Failed to fetch livestock tasks:', error);
+    }
+  };
+
+  const fetchFarmers = async () => {
+    try {
+      const res = await apiFetch('/api/tasks/workers');
+      if (res.ok) {
+        const data = await res.json();
+        setFarmers(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch farmers:', error);
+    }
+  };
+
+  const fetchShifts = async () => {
+    try {
+      const res = await apiFetch('/api/shifts');
+      if (res.ok) {
+        const data = await res.json();
+        setShifts(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch shifts:', error);
     }
   };
 
@@ -201,7 +217,9 @@ export default function FarmManagerLivestockPage() {
       await fetchLivestock();
       await fetchFeedConfigs();
       await fetchHealthEvents();
-      await fetchFeedSchedules();
+      await fetchLivestockTasks();
+      await fetchFarmers();
+      await fetchShifts();
       await fetchFeedLogs();
       await fetchFeedSummary();
       setLoading(false);
@@ -371,52 +389,6 @@ export default function FarmManagerLivestockPage() {
     }
   };
 
-  const handleScheduleSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
-    createFeedSchedule({
-      livestockId: scheduleForm.animalId,
-      feedType: scheduleForm.feedType,
-      feedAmount: scheduleForm.amount,
-      waterRequirement: scheduleForm.water,
-      scheduledTime: scheduleForm.time,
-      session: scheduleForm.time,
-      assignedWorkerId: scheduleForm.assignedWorkerId || null,
-    })
-      .then((saved) => {
-        setFeedSchedules((prev) => [saved, ...prev]);
-        setScheduleForm({ animalId: '', feedType: '', amount: '', water: '', time: 'Morning', assignedWorkerId: '' });
-        notifySuccess('Feed schedule created successfully.');
-        fetchFeedSummary();
-      })
-      .catch((error) => {
-        console.error('Failed to create feed schedule:', error);
-        notifyError('Failed to create feed schedule.');
-      });
-  };
-
-  const handleCompleteSchedule = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!selectedSchedule) return;
-    try {
-      const result = await completeFeedSchedule(selectedSchedule.id, {
-        feedGiven: completionForm.feedGiven,
-        waterGiven: completionForm.waterGiven,
-        appetite: completionForm.appetite,
-        healthObservation: completionForm.healthObservation,
-        notes: completionForm.notes,
-      });
-      setFeedLogs((prev) => [result.log, ...prev]);
-      setFeedSchedules((prev) => prev.map((schedule) => schedule.id === selectedSchedule.id ? { ...schedule, status: 'Completed' } : schedule));
-      setSelectedSchedule(null);
-      setCompletionForm({ feedGiven: '', waterGiven: '', appetite: 'Good', healthObservation: 'Normal', notes: '' });
-      fetchFeedSummary();
-      notifySuccess('Feeding completed and logged.');
-    } catch (error) {
-      console.error('Failed to complete feeding:', error);
-      notifyError('Failed to complete feeding.');
-    }
-  };
-
   return (
     <div className="space-y-6 pb-20">
       <SectionHeading
@@ -428,7 +400,7 @@ export default function FarmManagerLivestockPage() {
 
       {/* Tabs */}
       <div className="flex space-x-3 border-b border-white/10 pb-4 overflow-x-auto">
-        {['overview', 'list', 'feed', 'health'].map((tab) => (
+        {['overview', 'list', 'task', 'feed', 'health'].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -555,6 +527,70 @@ export default function FarmManagerLivestockPage() {
         </Card>
       )}
 
+      {activeTab === 'task' && (
+        <Card title={t("Livestock Tasks")} subtitle={t("Assign and track tasks against livestock groups")}>
+          <div className="flex justify-end mb-6">
+            <Button onClick={() => setShowTaskModal(true)} className="flex items-center gap-2 whitespace-nowrap">
+              <FiPlus className="text-lg" /> {t("Assign Livestock Task")}
+            </Button>
+          </div>
+          <div className="overflow-x-auto rounded-2xl border border-white/10 shadow-xl">
+            <table className="min-w-full text-left text-sm text-slate-300">
+              <thead className="bg-slate-900/90 text-white font-semibold">
+                <tr>
+                  <th className="px-4 py-3">{t("Worker")}</th>
+                  <th className="px-4 py-3">{t("Task")}</th>
+                  <th className="px-4 py-3">{t("Livestock Group")}</th>
+                  <th className="px-4 py-3">{t("Shift")}</th>
+                  <th className="px-4 py-3">{t("Due Date")}</th>
+                  <th className="px-4 py-3 text-center">{t("Status")}</th>
+                  <th className="px-4 py-3 text-right">{t("Actions")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5 bg-slate-950/60">
+                {loading ? (
+                  <tr><td colSpan={7} className="px-4 py-4 text-center text-slate-500">Loading tasks...</td></tr>
+                ) : livestockTasks.length === 0 ? (
+                  <tr><td colSpan={7} className="px-4 py-4 text-center text-slate-500">{t("No livestock tasks found")}</td></tr>
+                ) : (
+                  livestockTasks.map((task) => (
+                    <tr key={task.id} className="hover:bg-white/5 transition-colors">
+                      <td className="px-4 py-3 font-medium text-white">{task.assigned_to_name || 'Unassigned'}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-white max-w-[150px] truncate" title={task.title}>{task.title}</span>
+                          {task.needs_manager_review && (
+                            <FiAlertTriangle className="text-amber-500 shrink-0" title="Needs Manager Review" />
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">{task.livestock_name || 'N/A'}</td>
+                      <td className="px-4 py-3 capitalize">{task.session || 'morning'}</td>
+                      <td className="px-4 py-3">{task.due_date ? new Date(task.due_date).toLocaleDateString() : 'N/A'}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border bg-amber-500/10 text-amber-400 border-amber-500/20">
+                          {String(task.status || 'pending').replace(/_/g, ' ')}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => navigate(`/dashboard/farm-manager/tasks/${task.id}/review`)}
+                          className="!px-3 !py-1 text-slate-200 hover:text-white text-xs whitespace-nowrap"
+                        >
+                          Review
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
       {activeTab === 'feed' && (
         <div className="space-y-6">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -606,87 +642,6 @@ export default function FarmManagerLivestockPage() {
                   </div>
                 </div>
               ))}
-            </div>
-          </Card>
-
-          <Card title={t("Feeding Schedule")} subtitle={t("Create and track planned feed delivery")}>
-            <form onSubmit={handleScheduleSubmit} className="space-y-5">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200/70">{t("Animal")}</label>
-                  <select
-                    className="farm-input"
-                    value={scheduleForm.animalId}
-                    onChange={(e) => setScheduleForm((prev) => ({ ...prev, animalId: e.target.value }))}
-                    required
-                  >
-                    <option value="">{t("Select animal")}</option>
-                    {livestock.map((animal) => (
-                      <option key={animal.dbId || animal.id} value={animal.dbId || animal.id}>
-                        {animal.id} • {animal.pen}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200/70">{t("Time")}</label>
-                  <select
-                    className="farm-input"
-                    value={scheduleForm.time}
-                    onChange={(e) => setScheduleForm((prev) => ({ ...prev, time: e.target.value }))}
-                  >
-                    <option>{t("Morning")}</option>
-                    <option>{t("Afternoon")}</option>
-                    <option>{t("Evening")}</option>
-                  </select>
-                </div>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200/70">{t("Feed type")}</label>
-                  <input className="farm-input" value={scheduleForm.feedType} onChange={(e) => setScheduleForm((prev) => ({ ...prev, feedType: e.target.value }))} placeholder={t("Balanced feed")} />
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200/70">{t("Feed amount")}</label>
-                  <input className="farm-input" value={scheduleForm.amount} onChange={(e) => setScheduleForm((prev) => ({ ...prev, amount: e.target.value }))} placeholder={t("e.g. 40 kg/day")} />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-emerald-200/70">{t("Water requirement")}</label>
-                <input className="farm-input" value={scheduleForm.water} onChange={(e) => setScheduleForm((prev) => ({ ...prev, water: e.target.value }))} placeholder={t("e.g. 15 liters/day")} />
-              </div>
-              <Button type="submit" className="w-full border-0 bg-gradient-to-r from-emerald-500 via-lime-400 to-emerald-600 text-white shadow-[0_16px_40px_rgba(16,185,129,0.28)] hover:from-emerald-400 hover:via-lime-300 hover:to-emerald-500">
-                {t("Save Schedule")}
-              </Button>
-            </form>
-          </Card>
-
-          <Card title={t("Feeding Schedule List")} subtitle={t("Planned feed deliveries and status")}>
-            <div className="space-y-3">
-              {feedSchedules.length === 0 ? (
-                <p className="text-sm text-slate-400">{t("No feeding schedules yet.")}</p>
-              ) : (
-                feedSchedules.map((schedule) => (
-                  <div key={schedule.id} className="rounded-3xl border border-white/10 bg-slate-950/35 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-white">{schedule.animalTag || schedule.livestockId}</p>
-                        <p className="mt-1 text-xs text-slate-400">{schedule.feedType}</p>
-                      </div>
-                      <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">{schedule.scheduledTime}</span>
-                    </div>
-                    <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
-                      <span>{t("Feed")}: {schedule.feedAmount}</span>
-                      <span>{t("Water")}: {schedule.waterRequirement}</span>
-                    </div>
-                    <div className="mt-4 flex justify-end">
-                      <Button variant="ghost" type="button" onClick={() => setSelectedSchedule(schedule)}>
-                        Complete Feeding
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              )}
             </div>
           </Card>
 
@@ -790,34 +745,15 @@ export default function FarmManagerLivestockPage() {
         </div>
       )}
 
-      {selectedSchedule && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-slate-900 p-6 shadow-2xl">
-            <h3 className="mb-2 text-2xl font-bold text-white">Complete Feeding</h3>
-            <p className="mb-6 text-sm text-slate-400">{selectedSchedule.animalTag || selectedSchedule.livestockId} • {selectedSchedule.scheduledTime}</p>
-            <form onSubmit={handleCompleteSchedule} className="grid gap-4 md:grid-cols-2">
-              <input className="farm-input" value={completionForm.feedGiven} onChange={(e) => setCompletionForm((prev) => ({ ...prev, feedGiven: e.target.value }))} placeholder="Feed given (kg)" />
-              <input className="farm-input" value={completionForm.waterGiven} onChange={(e) => setCompletionForm((prev) => ({ ...prev, waterGiven: e.target.value }))} placeholder="Water given (L)" />
-              <select className="farm-input" value={completionForm.appetite} onChange={(e) => setCompletionForm((prev) => ({ ...prev, appetite: e.target.value }))}>
-                <option>Excellent</option>
-                <option>Good</option>
-                <option>Average</option>
-                <option>Poor</option>
-              </select>
-              <select className="farm-input" value={completionForm.healthObservation} onChange={(e) => setCompletionForm((prev) => ({ ...prev, healthObservation: e.target.value }))}>
-                <option>Normal</option>
-                <option>Weak</option>
-                <option>Sick</option>
-              </select>
-              <textarea className="farm-input md:col-span-2" rows={3} value={completionForm.notes} onChange={(e) => setCompletionForm((prev) => ({ ...prev, notes: e.target.value }))} placeholder="Remarks" />
-              <div className="md:col-span-2 flex justify-end gap-3">
-                <Button type="button" variant="ghost" onClick={() => setSelectedSchedule(null)}>Cancel</Button>
-                <Button type="submit">Complete Task</Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <AssignTaskModal
+        mode="livestock"
+        open={showTaskModal}
+        onClose={() => setShowTaskModal(false)}
+        onCreated={fetchLivestockTasks}
+        farmers={farmers}
+        shifts={shifts}
+        relatedOptions={groups}
+      />
 
       {showFeedModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">

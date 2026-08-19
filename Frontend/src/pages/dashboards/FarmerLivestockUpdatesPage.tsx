@@ -1,178 +1,173 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { SectionHeading } from '../../components/ui/SectionHeading';
-import { completeFeedSchedule, getFeedSchedules, getFeedSummary, type FeedSchedule } from '../../api/livestock';
-import { notifyError, notifySuccess, notifyWarning } from '../../utils/notifications';
-import { FiCalendar, FiCheckCircle, FiDroplet } from 'react-icons/fi';
+import { FiCheckCircle, FiClock } from 'react-icons/fi';
+import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../utils/apiFetch';
+import { notifyError, notifySuccess } from '../../utils/notifications';
 
 export default function FarmerLivestockUpdatesPage() {
-  const [schedules, setSchedules] = useState<FeedSchedule[]>([]);
-  const [summary, setSummary] = useState<any>({});
-  const [selectedScheduleId, setSelectedScheduleId] = useState('');
-  const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().slice(0, 10));
-  const [feedGiven, setFeedGiven] = useState('');
-  const [waterGiven, setWaterGiven] = useState('');
-  const [appetite, setAppetite] = useState('Good');
-  const [healthObservation, setHealthObservation] = useState('Normal');
-  const [notes, setNotes] = useState('');
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const selectedSchedule = useMemo(
-    () => schedules.find((schedule) => schedule.id === selectedScheduleId) || null,
-    [schedules, selectedScheduleId],
-  );
-
-  const loadData = async () => {
+  const fetchTasks = async () => {
     try {
-      const [scheduleResult, summaryResult] = await Promise.allSettled([getFeedSchedules(), getFeedSummary()]);
-      if (scheduleResult.status === 'fulfilled') {
-        setSchedules(scheduleResult.value);
-        if (!selectedScheduleId && scheduleResult.value[0]) {
-          setSelectedScheduleId(scheduleResult.value[0].id);
-        }
+      const res = await apiFetch('/api/tasks/farmer');
+      if (res.ok) {
+        const data = await res.json();
+        setTasks(data.filter((t: any) => !!t.livestock_group_id));
       }
-      if (summaryResult.status === 'fulfilled') {
-        setSummary(summaryResult.value);
-      }
-      if (scheduleResult.status === 'rejected' && summaryResult.status === 'rejected') {
-        throw scheduleResult.reason ?? summaryResult.reason;
-      }
-    } catch (error) {
-      console.error('Failed to load livestock updates:', error);
-      notifyError('Failed to load livestock updates.');
+      setLoading(false);
+    } catch (err) {
+      console.error('Failed to fetch livestock tasks:', err);
+      notifyError('Failed to load livestock tasks.');
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
-  }, [scheduleDate]);
+    fetchTasks();
+  }, []);
 
-  const handleComplete = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!selectedSchedule) {
-      notifyWarning('Please select a feeding task.');
-      return;
+  const normalizeTaskStatus = (status: string | undefined | null) =>
+    String(status || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_');
+
+  const getDisplayStatus = (task: any) => {
+    const status = normalizeTaskStatus(task.status);
+    if (status === 'approved' && (task.completion_percentage || 0) < 100) {
+      return 'in_progress';
     }
+    return status;
+  };
 
+  const isOverdue = (task: any) => {
+    const status = getDisplayStatus(task);
+    if (['approved', 'completed', 'done'].includes(status)) return false;
+    return !!task.due_date && new Date(task.due_date) < new Date(new Date().toDateString());
+  };
+
+  const updateTaskStatus = async (taskId: string, status: string) => {
     try {
-      await completeFeedSchedule(selectedSchedule.id, {
-        feedGiven,
-        waterGiven,
-        appetite,
-        healthObservation,
-        notes,
-      });
-      notifySuccess('Feeding completed successfully.');
-      setFeedGiven('');
-      setWaterGiven('');
-      setAppetite('Good');
-      setHealthObservation('Normal');
-      setNotes('');
-      await loadData();
-    } catch (error) {
-      console.error('Failed to complete feeding:', error);
-      notifyError('Failed to complete feeding.');
+      if (status === 'in_progress') {
+        const res = await apiFetch(`/api/tasks/${taskId}/start`, { method: 'PUT' });
+        if (res.ok) {
+          fetchTasks();
+          notifySuccess('Task started successfully.');
+        } else {
+          notifyError('Failed to start task');
+        }
+        return;
+      }
+
+      if (status === 'done' || status === 'update') {
+        navigate(`/dashboard/farmer-worker/tasks/${taskId}/activity`, { state: { isFinal: status === 'done' } });
+        return;
+      }
+    } catch (err) {
+      console.error('Update status error:', err);
+      notifyError('Error updating task');
     }
   };
+
+  const totalCount = tasks.length;
+  const pendingCount = tasks.filter(t => getDisplayStatus(t) === 'pending').length;
+  const completedCount = tasks.filter(t => ['approved', 'completed', 'done'].includes(getDisplayStatus(t))).length;
+  const overdueCount = tasks.filter(t => getDisplayStatus(t) === 'rework_requested' || isOverdue(t)).length;
 
   return (
     <div className="space-y-6 pb-20">
       <SectionHeading
-        eyebrow="Livestock Updates"
-        title="Livestock Feeding"
-        description="Review assigned feeding tasks and submit the actual feed and water given."
+        eyebrow={t("Livestock Updates")}
+        title={t("Livestock Tasks")}
+        description={t("Review tasks assigned for your livestock and submit evidence to complete them.")}
         tone="light"
       />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <Card title="Animals Fed Today"><p className="mt-2 text-4xl font-black text-white">{summary.animalsFedToday ?? 0}</p></Card>
-        <Card title="Pending Feedings"><p className="mt-2 text-4xl font-black text-white">{summary.pendingFeedings ?? 0}</p></Card>
-        <Card title="Missed Feedings"><p className="mt-2 text-4xl font-black text-white">{summary.missedFeedings ?? 0}</p></Card>
-        <Card title="Feed Used Today"><p className="mt-2 text-4xl font-black text-white">{summary.actualFeed ?? 0} kg</p></Card>
-        <Card title="Water Used Today"><p className="mt-2 text-4xl font-black text-white">{summary.actualWater ?? 0} L</p></Card>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Card title={t("Total Tasks")}><p className="mt-2 text-4xl font-black text-white">{totalCount}</p></Card>
+        <Card title={t("Pending")}><p className="mt-2 text-4xl font-black text-white">{pendingCount}</p></Card>
+        <Card title={t("Completed")}><p className="mt-2 text-4xl font-black text-white">{completedCount}</p></Card>
+        <Card title={t("Rework / Overdue")}><p className="mt-2 text-4xl font-black text-white">{overdueCount}</p></Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <Card title="Feeding Tasks" subtitle="Select one task to complete">
-          <div className="mb-4 flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-            <FiCalendar className="text-emerald-300" />
-            <input className="w-full bg-transparent text-white outline-none" type="date" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} />
-          </div>
-
-          <div className="space-y-3">
-            {schedules.length === 0 ? (
-              <p className="text-sm text-slate-400">No feed schedules found.</p>
-            ) : schedules.map((schedule) => (
-              <button
-                key={schedule.id}
-                onClick={() => setSelectedScheduleId(schedule.id)}
-                className={`w-full rounded-3xl border p-4 text-left transition ${
-                  selectedScheduleId === schedule.id ? 'border-emerald-500 bg-emerald-500/10' : 'border-white/10 bg-slate-950/35 hover:bg-white/5'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-white">{schedule.animalTag || schedule.livestockId}</p>
-                    <p className="mt-1 text-xs text-slate-400">{schedule.feedType}</p>
-                  </div>
-                  <span className="rounded-full bg-sky-500/10 px-3 py-1 text-xs font-semibold text-sky-300">{schedule.scheduledTime}</span>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-400">
-                  <span>{schedule.feedAmount}</span>
-                  <span>{schedule.waterRequirement}</span>
-                  <span className="rounded-full bg-white/5 px-2 py-1">{schedule.status}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </Card>
-
-        <Card title="Complete Feeding" subtitle="Enter actual feed and water values">
-          {selectedSchedule ? (
-            <form onSubmit={handleComplete} className="grid gap-4 md:grid-cols-2">
-              <div className="md:col-span-2 rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold text-white">{selectedSchedule.animalTag || selectedSchedule.livestockId}</p>
-                    <p className="text-xs text-slate-400">{selectedSchedule.feedType} • {selectedSchedule.scheduledTime}</p>
-                  </div>
-                  <FiDroplet className="text-2xl text-emerald-300" />
-                </div>
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  <div className="rounded-2xl bg-slate-950/45 p-3 text-sm text-slate-300">Feed Required: <span className="font-semibold text-white">{selectedSchedule.feedAmount}</span></div>
-                  <div className="rounded-2xl bg-slate-950/45 p-3 text-sm text-slate-300">Water Required: <span className="font-semibold text-white">{selectedSchedule.waterRequirement}</span></div>
-                </div>
-              </div>
-
-              <input className="farm-input" placeholder="Feed given (kg)" value={feedGiven} onChange={(e) => setFeedGiven(e.target.value)} />
-              <input className="farm-input" placeholder="Water given (L)" value={waterGiven} onChange={(e) => setWaterGiven(e.target.value)} />
-              <select className="farm-input" value={appetite} onChange={(e) => setAppetite(e.target.value)}>
-                <option>Excellent</option>
-                <option>Good</option>
-                <option>Average</option>
-                <option>Poor</option>
-              </select>
-              <select className="farm-input" value={healthObservation} onChange={(e) => setHealthObservation(e.target.value)}>
-                <option>Normal</option>
-                <option>Weak</option>
-                <option>Sick</option>
-              </select>
-              <textarea className="farm-input md:col-span-2 min-h-28" placeholder="Remarks" value={notes} onChange={(e) => setNotes(e.target.value)} />
-
-              <div className="md:col-span-2 flex justify-end gap-3">
-                <Button type="button" variant="ghost" onClick={() => setSelectedScheduleId('')}>
-                  Cancel
-                </Button>
-                <Button type="submit" className="flex items-center gap-2">
-                  <FiCheckCircle /> Complete Task
-                </Button>
-              </div>
-            </form>
-          ) : (
-            <div className="rounded-3xl border border-white/10 bg-slate-950/35 p-6 text-slate-400">Select a feeding task to complete it.</div>
-          )}
-        </Card>
-      </div>
+      <Card title={t("Livestock Task List")} subtitle={t("Manage your assigned livestock tasks")}>
+        <div className="overflow-x-auto rounded-2xl border border-white/10 shadow-xl mt-4">
+          <table className="min-w-full text-left text-sm text-slate-300">
+            <thead className="bg-slate-900/90 text-white font-semibold">
+              <tr>
+                <th className="px-6 py-4">{t("Task Name")}</th>
+                <th className="px-6 py-4">{t("Livestock Group")}</th>
+                <th className="px-6 py-4">{t("Priority")}</th>
+                <th className="px-6 py-4">{t("Due Date")}</th>
+                <th className="px-6 py-4">{t("Status")}</th>
+                <th className="px-6 py-4 text-right">{t("Actions")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5 bg-slate-950/60">
+              {loading ? (
+                <tr><td colSpan={6} className="px-6 py-4 text-center">{t("Loading tasks...")}</td></tr>
+              ) : tasks.length === 0 ? (
+                <tr><td colSpan={6} className="px-6 py-4 text-center">{t("No livestock tasks assigned.")}</td></tr>
+              ) : (
+                tasks.map(task => (
+                  <tr key={task.id} className="hover:bg-white/5 transition-colors">
+                    <td className="px-6 py-4 font-bold text-white">
+                      {t(task.title)}
+                      {task.description && <p className="text-xs text-slate-400 font-normal mt-1">{task.description}</p>}
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                          <div className="h-full bg-emerald-500" style={{ width: `${task.completion_percentage || 0}%` }} />
+                        </div>
+                        <span className="text-xs text-slate-400">{task.completion_percentage || 0}%</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">{task.livestock_name || t('N/A')}</td>
+                    <td className="px-6 py-4 capitalize">{t(task.priority)}</td>
+                    <td className="px-6 py-4">{task.due_date ? new Date(task.due_date).toLocaleDateString() : t('N/A')}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
+                        getDisplayStatus(task) === 'approved' || getDisplayStatus(task) === 'completed' || getDisplayStatus(task) === 'done'
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          : getDisplayStatus(task) === 'in_progress'
+                            ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                            : getDisplayStatus(task) === 'waiting_for_manager_approval' || getDisplayStatus(task) === 'waiting_manager_approval'
+                              ? 'bg-violet-500/10 text-violet-300 border-violet-500/20'
+                              : getDisplayStatus(task) === 'rejected'
+                                ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                                : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                      }`}>{String(getDisplayStatus(task)).replace(/_/g, ' ')}</span>
+                    </td>
+                    <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                      {getDisplayStatus(task) === 'pending' && (
+                        <Button variant="ghost" onClick={() => updateTaskStatus(task.id, 'in_progress')} className="!p-2 text-blue-400 hover:text-blue-300" title="Start Task">
+                          <FiClock className="mr-1 inline" /> {t("Start Work")}
+                        </Button>
+                      )}
+                      {(getDisplayStatus(task) === 'in_progress' || (getDisplayStatus(task) === 'approved' && (task.completion_percentage || 0) < 100)) && (
+                        <>
+                          <Button variant="ghost" onClick={() => updateTaskStatus(task.id, 'update')} className="!p-2 text-blue-400 hover:text-blue-300" title="Update Progress">
+                            <FiCheckCircle className="mr-1 inline" /> {t("Update")}
+                          </Button>
+                          <Button variant="ghost" onClick={() => updateTaskStatus(task.id, 'done')} className="!p-2 text-emerald-400 hover:text-emerald-300" title="Mark Complete">
+                            <FiCheckCircle className="mr-1 inline" /> {t("Complete")}
+                          </Button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
   );
 }

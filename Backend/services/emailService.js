@@ -181,6 +181,39 @@ export async function sendSalaryPaymentEmail(farmerEmail, paymentDetails) {
   return sendEmail({ to: farmerEmail, subject, text: html.replace(/<[^>]+>/g, ''), html });
 }
 
+export async function sendContactReplyEmail(recipientEmail, replyDetails) {
+  const subject = `Re: ${replyDetails.originalSubject || 'Your enquiry'}`;
+  const escape = (value) =>
+    String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+  const replyHtml = escape(replyDetails.replyMessage).replace(/\n/g, '<br/>');
+  const originalHtml = escape(replyDetails.originalMessage).replace(/\n/g, '<br/>');
+
+  const html = `
+    <h2>Reply from Annam Integrated Farm</h2>
+    <p>Dear ${escape(replyDetails.recipientName) || 'there'},</p>
+    <p>Thank you for contacting us. Here is our reply to your enquiry:</p>
+    <div style="border-left:4px solid #10b981;padding:12px 16px;margin:16px 0;background:#f0fdf4;">
+      ${replyHtml}
+    </div>
+    <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;"/>
+    <p style="color:#64748b;font-size:13px;"><strong>Your original message</strong> (sent ${
+      replyDetails.originalSentAt ? new Date(replyDetails.originalSentAt).toLocaleString() : 'earlier'
+    }):</p>
+    <div style="border-left:4px solid #cbd5e1;padding:12px 16px;margin:8px 0;color:#475569;font-size:13px;">
+      <p style="margin:0 0 8px 0;"><strong>Subject:</strong> ${escape(replyDetails.originalSubject)}</p>
+      ${originalHtml}
+    </div>
+    <br/>
+    <p>Warm regards,<br/>Annam Integrated Farm (Pvt) Ltd</p>
+  `;
+
+  return sendEmail({ to: recipientEmail, subject, text: html.replace(/<[^>]+>/g, ''), html });
+}
+
 // Marketplace Email Functions
 export async function sendProductApprovedEmail(farmerEmail, productDetails) {
   const subject = 'Your Product is Approved';

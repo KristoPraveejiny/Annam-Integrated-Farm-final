@@ -78,6 +78,19 @@ export const getMyAttendance = async (req, res) => {
               AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
           ) as task_title,
           (
+            SELECT json_agg(json_build_object(
+              'title', t.title,
+              'type', CASE WHEN t.livestock_group_id IS NOT NULL THEN 'livestock'
+                           WHEN t.crop_cycle_id IS NOT NULL THEN 'crop'
+                           ELSE 'general' END
+            ))
+            FROM tasks t
+            WHERE t.assigned_to_user_id = sa.worker_id
+              AND t.status NOT IN ('missed_shift', 'cancelled')
+              AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
+              AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
+          ) as task_details,
+          (
             SELECT string_agg(t.title, ', ')
             FROM tasks t
             WHERE t.assigned_to_user_id = sa.worker_id
@@ -85,6 +98,19 @@ export const getMyAttendance = async (req, res) => {
               AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
               AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
           ) as missed_task_title,
+          (
+            SELECT json_agg(json_build_object(
+              'title', t.title,
+              'type', CASE WHEN t.livestock_group_id IS NOT NULL THEN 'livestock'
+                           WHEN t.crop_cycle_id IS NOT NULL THEN 'crop'
+                           ELSE 'general' END
+            ))
+            FROM tasks t
+            WHERE t.assigned_to_user_id = sa.worker_id
+              AND t.status = 'missed_shift'
+              AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
+              AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
+          ) as missed_task_details,
           COALESCE(
             s.shift_name,
             (
@@ -132,6 +158,19 @@ export const getMyAttendance = async (req, res) => {
               AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
           ) as task_title,
           (
+            SELECT json_agg(json_build_object(
+              'title', t.title,
+              'type', CASE WHEN t.livestock_group_id IS NOT NULL THEN 'livestock'
+                           WHEN t.crop_cycle_id IS NOT NULL THEN 'crop'
+                           ELSE 'general' END
+            ))
+            FROM tasks t
+            WHERE t.assigned_to_user_id = sa.worker_id
+              AND t.status NOT IN ('missed_shift', 'cancelled')
+              AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
+              AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
+          ) as task_details,
+          (
             SELECT string_agg(t.title, ', ')
             FROM tasks t
             WHERE t.assigned_to_user_id = sa.worker_id
@@ -139,6 +178,19 @@ export const getMyAttendance = async (req, res) => {
               AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
               AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
           ) as missed_task_title,
+          (
+            SELECT json_agg(json_build_object(
+              'title', t.title,
+              'type', CASE WHEN t.livestock_group_id IS NOT NULL THEN 'livestock'
+                           WHEN t.crop_cycle_id IS NOT NULL THEN 'crop'
+                           ELSE 'general' END
+            ))
+            FROM tasks t
+            WHERE t.assigned_to_user_id = sa.worker_id
+              AND t.status = 'missed_shift'
+              AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
+              AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
+          ) as missed_task_details,
           COALESCE(
             s.shift_name,
             (
@@ -260,6 +312,19 @@ export const getManagerAttendance = async (req, res) => {
               AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
           ) as task_title,
           (
+            SELECT json_agg(json_build_object(
+              'title', t.title,
+              'type', CASE WHEN t.livestock_group_id IS NOT NULL THEN 'livestock'
+                           WHEN t.crop_cycle_id IS NOT NULL THEN 'crop'
+                           ELSE 'general' END
+            ))
+            FROM tasks t
+            WHERE t.assigned_to_user_id = sa.worker_id
+              AND t.status NOT IN ('missed_shift', 'cancelled')
+              AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
+              AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
+          ) as task_details,
+          (
             SELECT string_agg(t.title, ', ')
             FROM tasks t
             WHERE t.assigned_to_user_id = sa.worker_id
@@ -267,6 +332,19 @@ export const getManagerAttendance = async (req, res) => {
               AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
               AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
           ) as missed_task_title,
+          (
+            SELECT json_agg(json_build_object(
+              'title', t.title,
+              'type', CASE WHEN t.livestock_group_id IS NOT NULL THEN 'livestock'
+                           WHEN t.crop_cycle_id IS NOT NULL THEN 'crop'
+                           ELSE 'general' END
+            ))
+            FROM tasks t
+            WHERE t.assigned_to_user_id = sa.worker_id
+              AND t.status = 'missed_shift'
+              AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
+              AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
+          ) as missed_task_details,
           sa.full_shift_wage,
           sa.approved_completion_percentage,
           sa.payable_wage,

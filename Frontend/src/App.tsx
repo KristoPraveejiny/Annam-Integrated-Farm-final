@@ -59,6 +59,7 @@ import SalaryPaymentMonitoringPage from './pages/dashboards/superadmin/SalaryPay
 import MarketplaceManagementPage from './pages/dashboards/superadmin/MarketplaceManagementPage';
 import NotificationManagementPage from './pages/dashboards/superadmin/NotificationManagementPage';
 import FeedbackManagementPage from './pages/dashboards/superadmin/FeedbackManagementPage';
+import ContactInquiriesPage from './pages/dashboards/superadmin/ContactInquiriesPage';
 import SystemSettingsPage from './pages/dashboards/superadmin/SystemSettingsPage';
 import AuditLogsPage from './pages/dashboards/superadmin/AuditLogsPage';
 
@@ -167,6 +168,11 @@ export default function App() {
       <Route path="/dashboard/super-admin/feedback" element={
         <AppShell role="super-admin" items={publicNavItems['super-admin']}>
           <FeedbackManagementPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/super-admin/inquiries" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <ContactInquiriesPage />
         </AppShell>
       } />
       <Route path="/dashboard/super-admin/settings" element={

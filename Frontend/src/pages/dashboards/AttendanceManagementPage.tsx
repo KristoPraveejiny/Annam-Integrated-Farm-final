@@ -10,6 +10,9 @@ type AttendanceRow = {
   date: string;
   shift_name: string;
   task_title?: string | null;
+  task_details?: { title: string; type: 'crop' | 'livestock' | 'general' }[] | null;
+  missed_task_title?: string | null;
+  missed_task_details?: { title: string; type: 'crop' | 'livestock' | 'general' }[] | null;
   check_in_time?: string | null;
   check_out_time?: string | null;
   total_hours?: number | string | null;
@@ -46,6 +49,21 @@ type AttendanceResponse = {
   workers?: WorkerSummary[];
   calendar?: Array<{ date: string; shift_count: number; present_count: number }>;
 };
+
+function buildTaskItems(details: { title: string; type: 'crop' | 'livestock' | 'general' }[] | null | undefined, titleStr: string | null | undefined) {
+  if (details && details.length > 0) return details;
+  if (!titleStr) return [];
+  return titleStr.split(',').map((name) => ({ title: name.trim(), type: null as unknown as 'crop' | 'livestock' | 'general' }));
+}
+
+function TaskTypeBadge({ type }: { type?: 'crop' | 'livestock' | 'general' | null }) {
+  if (!type || type === 'general') return null;
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+      type === 'livestock' ? 'bg-amber-500/10 text-amber-300' : 'bg-emerald-500/10 text-emerald-300'
+    }`}>{type}</span>
+  );
+}
 
 export default function AttendanceManagementPage() {
   const [month, setMonth] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
@@ -231,10 +249,13 @@ export default function AttendanceManagementPage() {
                   <div className="divide-y divide-white/5">
                     {group.records.map(row => (
                       <div key={row.id} className="flex flex-col">
-                        {row.task_title && row.task_title.split(',').map((taskName: string, i: number) => (
+                        {buildTaskItems(row.task_details, row.task_title).map((item, i) => (
                           <div key={`completed-${i}`} className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between border-b border-white/5 last:border-b-0">
                             <div>
-                              <p className="font-semibold text-white">{taskName.trim() || 'Task Session'}</p>
+                              <p className="font-semibold text-white flex items-center gap-2">
+                                {item.title || 'Task Session'}
+                                <TaskTypeBadge type={item.type} />
+                              </p>
                               <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-400">
                                 <span className="rounded bg-white/5 px-2 py-1 uppercase">{row.shift_name}</span>
                                 <span>{Number(row.total_hours || 0).toFixed(2)} hrs</span>
@@ -285,10 +306,13 @@ export default function AttendanceManagementPage() {
                           </div>
                         )}
 
-                        {row.missed_task_title && row.missed_task_title.split(',').map((taskName: string, i: number) => (
+                        {buildTaskItems(row.missed_task_details, row.missed_task_title).map((item, i) => (
                           <div key={`missed-${i}`} className="flex flex-col gap-4 px-5 pb-4 pt-4 sm:flex-row sm:items-center sm:justify-between border-t border-dashed border-white/10">
                             <div>
-                              <p className="font-semibold text-red-400/90">{taskName.trim()}</p>
+                              <p className="font-semibold text-red-400/90 flex items-center gap-2">
+                                {item.title}
+                                <TaskTypeBadge type={item.type} />
+                              </p>
                               <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-red-400/70">
                                 <span className="rounded bg-red-900/20 px-2 py-1 uppercase">{row.shift_name}</span>
                                 <span>0.00 hrs</span>

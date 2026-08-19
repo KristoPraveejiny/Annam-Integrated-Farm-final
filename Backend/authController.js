@@ -26,19 +26,63 @@ function passwordValidationMessage() {
   return 'Password must be 8-12 characters and include uppercase, lowercase, number, and special character.';
 }
 
+// Only accounts an administrator has activated may sign in.
+const ACCOUNT_STATUS_MESSAGES = {
+  pending:
+    'Your account is awaiting administrator approval. You will be able to sign in once an administrator activates your account.',
+  suspended: 'Your account has been suspended. Please contact the farm administrator for assistance.',
+  disabled: 'Your account has been disabled. Please contact the farm administrator for assistance.',
+};
+
+// Incoming role labels/aliases -> user_role enum values.
+const ROLE_ALIASES = {
+  super_admin: 'super_admin',
+  'super admin': 'super_admin',
+  superadmin: 'super_admin',
+  admin: 'super_admin',
+  farm_manager: 'farm_manager',
+  'farm manager': 'farm_manager',
+  manager: 'farm_manager',
+  worker: 'worker',
+  farmer: 'worker',
+  customer: 'customer',
+  guest: 'guest',
+};
+
+// Roles a visitor may choose when signing up. Privileged roles are assigned by
+// an administrator, never self-selected.
+const SELF_REGISTERABLE_ROLES = new Set(['worker', 'customer']);
+
+function normalizeSignupRole(role) {
+  const key = String(role || '').trim().toLowerCase().replace(/-/g, '_');
+  return ROLE_ALIASES[key] || null;
+}
+
+function accountAccessError(userStatus) {
+  const normalized = String(userStatus || '').trim().toLowerCase();
+  if (normalized === 'active') return null;
+  return (
+    ACCOUNT_STATUS_MESSAGES[normalized] ||
+    'Your account is not active. Please contact the farm administrator for assistance.'
+  );
+}
+
 
 export async function register(req, res) {
   try {
     const { name, email, password, role, phone } = req.body;
-  const roleMap = {
-    "Super Admin": "super_admin",
-    "Manager": "farm_manager",
-    "Farmer": "worker",
-    "Customer": "customer",
-  };
-  const normalizedRole = roleMap[role] || role.toLowerCase();
     if (!name || !email || !password || !role) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const normalizedRole = normalizeSignupRole(role);
+    if (!normalizedRole) {
+      return res.status(400).json({ error: `Unsupported user role: ${role}` });
+    }
+    if (!SELF_REGISTERABLE_ROLES.has(normalizedRole)) {
+      return res.status(403).json({
+        error: 'This role cannot be selected during sign-up. Please contact the farm administrator.',
+      });
     }
     // Ensure the users table exists
     await pool.query(`
@@ -69,8 +113,15 @@ export async function register(req, res) {
       throw e; // rethrow other DB errors
     }
     const user = result.rows[0];
-    const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET);
-    res.status(201).json({ token, user: { id: user.id, name: user.full_name, email: user.email, phone: user.phone, role: user.role } });
+    // New accounts start as 'pending' and must be activated by an administrator,
+    // so no session token is issued here.
+    res.status(201).json({
+      message: 'Account created successfully',
+      requiresApproval: true,
+      notice:
+        'Your account has been created and sent to the administrator for approval. You will be able to sign in once it has been activated.',
+      user: { id: user.id, name: user.full_name, email: user.email, phone: user.phone, role: user.role },
+    });
   } catch (err) {
     console.error('Register error:', err);
     res.status(500).json({ error: 'Server error' });
@@ -83,7 +134,7 @@ export async function login(req, res) {
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password required' });
     }
-    const result = await pool.query('SELECT id, full_name, email, phone, password_hash, role FROM app_users WHERE email = $1', [email]);
+    const result = await pool.query('SELECT id, full_name, email, phone, password_hash, role, status FROM app_users WHERE email = $1', [email]);
     const user = result.rows[0];
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
@@ -91,6 +142,10 @@ export async function login(req, res) {
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) {
       return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    const accessError = accountAccessError(user.status);
+    if (accessError) {
+      return res.status(403).json({ error: accessError });
     }
     const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET);
     res.json({ token, user: { id: user.id, name: user.full_name, email: user.email, phone: user.phone, role: user.role } });
@@ -106,7 +161,21 @@ export async function refreshToken(req, res) {
     if (!authHeader) return res.status(401).json({ error: 'No token provided' });
     const token = authHeader.split(' ')[1];
     const payload = jwt.verify(token, JWT_SECRET);
-    const newToken = jwt.sign({ userId: payload.userId, role: payload.role }, JWT_SECRET);
+
+    // Re-read role and status from the database: an account deactivated since the
+    // original token was issued must not be able to mint a fresh one.
+    const result = await pool.query('SELECT id, role, status FROM app_users WHERE id = $1', [payload.userId]);
+    const user = result.rows[0];
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    const accessError = accountAccessError(user.status);
+    if (accessError) {
+      return res.status(403).json({ error: accessError });
+    }
+
+    const newToken = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET);
     res.json({ token: newToken });
   } catch (err) {
     console.error('Refresh token error:', err);

@@ -12,6 +12,7 @@ type NavItem = {
   label: string;
   href: string;
   icon: ComponentType<{ className?: string }>;
+  matchExact?: boolean;
 };
 
 type AppShellProps = {
@@ -133,6 +134,7 @@ export function AppShell({ role, items, children }: AppShellProps) {
                   <NavLink
                     key={item.label}
                     to={item.href}
+                    end={item.matchExact}
                     onClick={() => setMobileOpen(false)}
                     className={({ isActive }) =>
                       `flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-medium tracking-wide transition duration-300 ${isActive ? 'border-white/20 bg-white/12 text-white shadow-[0_10px_25px_rgba(2,6,23,0.15)]' : 'border-transparent text-white/72 hover:border-white/10 hover:bg-white/6 hover:text-white'}`

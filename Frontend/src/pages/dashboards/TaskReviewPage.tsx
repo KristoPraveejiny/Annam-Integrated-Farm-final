@@ -632,8 +632,16 @@ export default function TaskReviewPage() {
           </div>
           
           <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-            <Button variant="ghost" theme="dark" onClick={() => navigate('/dashboard/farm-manager/tasks')}>
-              <Inbox className="mr-2 h-4 w-4" /> Back to Tasks
+            <Button
+              variant="ghost"
+              theme="dark"
+              onClick={() =>
+                task?.livestock_group_id
+                  ? navigate('/dashboard/farm-manager/livestock', { state: { activeTab: 'task' } })
+                  : navigate('/dashboard/farm-manager/tasks')
+              }
+            >
+              <Inbox className="mr-2 h-4 w-4" /> {task?.livestock_group_id ? 'Back to Livestock Tasks' : 'Back to Tasks'}
             </Button>
             <Button variant="secondary" theme="dark" onClick={() => setManagerNotes('Need more evidence before approval.') }>
               <MessageSquareReply className="mr-2 h-4 w-4" /> Request Evidence

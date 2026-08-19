@@ -12,7 +12,15 @@ type AuthLayoutProps = {
 export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
   const { t } = useTranslation();
   return (
-    <div className="glass-bg min-h-screen bg-[linear-gradient(160deg,#04130c_0%,#0c2d1b_42%,#071420_100%)] p-4 text-white sm:p-6">
+    <div
+      className="glass-bg min-h-screen bg-cover bg-center bg-no-repeat p-4 text-white sm:p-6"
+      style={{
+        // Farm landscape backdrop with a deep-green scrim layered on top, so the
+        // photo stays visible while white text on the glass panels remains legible.
+        backgroundImage:
+          "linear-gradient(160deg, rgba(4,19,12,0.86) 0%, rgba(9,38,23,0.72) 45%, rgba(7,20,32,0.88) 100%), url('/aboutbackground.jpg')",
+      }}
+    >
       <div className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-7xl items-center">
         <div className="grid w-full gap-8 lg:grid-cols-[0.95fr_1.05fr]">
           <div className="relative overflow-hidden rounded-[2rem] border border-white/15 bg-white/10 p-8 backdrop-blur-2xl shadow-[0_25px_70px_rgba(2,6,23,0.28)] sm:p-10">

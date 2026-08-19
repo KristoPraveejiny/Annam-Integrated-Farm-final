@@ -40,7 +40,7 @@ export default function FarmerTasksPage() {
 
       if (tasksRes.ok) {
         const data = await tasksRes.json();
-        setTasks(data);
+        setTasks(data.filter((t: any) => !t.livestock_group_id));
       }
       
       if (notifRes.ok) {
