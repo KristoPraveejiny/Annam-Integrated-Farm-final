@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 
 interface Payment {
   id: string;
+  payment_type?: string;
   payment_month: string;
   final_payment_amount: number;
   net_salary?: number;
@@ -40,6 +41,12 @@ interface LedgerEntry {
   approved_progress: number;
   amount: string;
   status: string;
+}
+
+function formatPaymentDate(value?: string) {
+  if (!value) return 'Not recorded';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toLocaleDateString();
 }
 
 export default function MyEarningsPage() {
@@ -149,7 +156,7 @@ export default function MyEarningsPage() {
         )}
       </Card>
 
-      <Card title={t("Payment History")} subtitle={t("Your monthly salary payments")}>
+      <Card title={t("Payment History")} subtitle={t("Monthly salary and paid advances")}>
         {loading ? (
           <p className="text-slate-500">{t("Loading...")}</p>
         ) : payments.length === 0 ? (
@@ -160,6 +167,7 @@ export default function MyEarningsPage() {
               <thead className="bg-slate-50 text-slate-500">
                 <tr>
                   <th className="px-4 py-3">{t("Month")}</th>
+                    <th className="px-4 py-3">{t("Type")}</th>
                   <th className="px-4 py-3">{t("Amount")}</th>
                   <th className="px-4 py-3">{t("Payment Date")}</th>
                   <th className="px-4 py-3">{t("Status")}</th>
@@ -169,8 +177,9 @@ export default function MyEarningsPage() {
                 {payments.map((item) => (
                   <tr key={item.id}>
                     <td className="px-4 py-3 font-medium text-slate-900">{item.payment_month}</td>
-                    <td className="px-4 py-3 font-medium text-slate-900">Rs. {Number(item.final_payment_amount ?? item.net_salary ?? 0).toFixed(2)}</td>
-                    <td className="px-4 py-3 text-slate-600">{new Date(item.payment_date).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 text-slate-600">{item.payment_type || 'Monthly Salary'}</td>
+                    <td className="px-4 py-3 font-medium text-slate-900">Rs. {(Number(item.final_payment_amount) || Number(item.net_salary) || 0).toFixed(2)}</td>
+                    <td className="px-4 py-3 text-slate-600">{formatPaymentDate(item.payment_date)}</td>
                     <td className="px-4 py-3">
                       <span className={`capitalize font-medium ${item.payment_status.toLowerCase() === 'paid' ? 'text-emerald-600' : 'text-amber-600'}`}>
                         {t(item.payment_status)}

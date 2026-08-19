@@ -215,9 +215,9 @@ async function upsertMonthlyPayrollAfterApproval({ farmId, managerId, workerId, 
         COALESCE(SUM(CASE WHEN LOWER(s.shift_name) = 'morning' THEN 1 ELSE 0 END), 0)::int AS morning_shifts,
         COALESCE(SUM(CASE WHEN LOWER(s.shift_name) = 'afternoon' THEN 1 ELSE 0 END), 0)::int AS afternoon_shifts,
         COALESCE(SUM(CASE WHEN LOWER(s.shift_name) = 'evening' THEN 1 ELSE 0 END), 0)::int AS evening_shifts,
-        COALESCE(SUM(COALESCE(sa.total_hours, 0)), 0)::numeric AS total_working_hours,
+        COALESCE(SUM(CASE WHEN LOWER(sa.shift_status) != 'absent' THEN COALESCE(NULLIF(sa.total_hours, 0), EXTRACT(EPOCH FROM (sa.check_out_time - sa.check_in_time))/3600, 0) ELSE 0 END), 0)::numeric AS total_working_hours,
         COALESCE(SUM(COALESCE(sa.payable_wage, COALESCE(s.base_wage, 0))), 0)::numeric AS shift_wage_earned,
-        COALESCE(SUM(GREATEST(COALESCE(sa.total_hours, 0) - COALESCE(s.standard_hours, 0), 0) * COALESCE(NULLIF(s.base_wage, 0) / NULLIF(s.standard_hours, 0), s.hourly_rate, 0)), 0)::numeric AS overtime_pay
+        COALESCE(SUM(GREATEST(COALESCE(sa.total_hours, 0) - COALESCE(s.standard_hours, 0), 0) * COALESCE(s.overtime_rate, 0)), 0)::numeric AS overtime_pay
       FROM shift_attendances sa
       LEFT JOIN shifts s ON sa.shift_id = s.id
       WHERE sa.farm_id = $1
@@ -433,12 +433,12 @@ export async function syncAttendanceFromCompletedTasks({ farmId, workerId = null
       t.end_time,
       t.updated_at,
       t.working_hours,
-      DATE(COALESCE(t.completed_at, t.end_time, t.updated_at)) AS attendance_date
+      TO_CHAR(COALESCE(t.completed_at, t.end_time, t.updated_at), 'YYYY-MM-DD') AS attendance_date
     FROM tasks t
     LEFT JOIN shift_attendances sa
       ON sa.worker_id = t.assigned_to_user_id
       AND sa.shift_id = t.shift_id
-      AND DATE_TRUNC('second', sa.check_out_time) = DATE_TRUNC('second', COALESCE(t.completed_at, t.end_time, t.updated_at))
+      AND sa.date = TO_CHAR(COALESCE(t.completed_at, t.end_time, t.updated_at), 'YYYY-MM-DD')::date
     WHERE t.farm_id = $1
       AND t.status IN ('Completed', 'approved')
       AND t.assigned_to_user_id IS NOT NULL
@@ -462,9 +462,9 @@ export async function syncAttendanceFromCompletedTasks({ farmId, workerId = null
     const existingAttendance = await pool.query(
       `SELECT id FROM shift_attendances
        WHERE worker_id = $1 AND shift_id = $3 AND farm_id = $4
-         AND DATE_TRUNC('second', check_out_time) = DATE_TRUNC('second', $2::timestamptz)
+         AND date = $2::date
        LIMIT 1`,
-      [task.worker_id, checkOutTime, task.shift_id, farmId]
+      [task.worker_id, attendanceDate, task.shift_id, farmId]
     );
 
     if (existingAttendance.rows.length > 0) {
@@ -1129,16 +1129,58 @@ export async function reviewTask(req, res) {
       return res.status(400).json({ error: 'A mandatory reason is required to approve a task with High/Medium risk or low verification score.' });
     }
 
-    const result = await pool.query(`
+    const previousApprovedProgress = Math.min(100, Math.max(0, Number(task.approved_progress || 0)));
+    const cumulativeProgress = Math.min(100, Math.max(0, Number(approvedCompletionPercentage)));
+    let approvedDelta = 0;
+    let earnedAmount = 0;
+
+    let fullShiftWageForDelta = 0;
+    if (task.shift_id) {
+      const shiftRes = await pool.query(`SELECT base_wage FROM shifts WHERE id = $1`, [task.shift_id]);
+      if (shiftRes.rows.length > 0) {
+        fullShiftWageForDelta = shiftRes.rows[0].base_wage || 0;
+      }
+    }
+
+    if (status === 'approved') {
+      approvedDelta = Math.max(0, cumulativeProgress - previousApprovedProgress);
+      earnedAmount = Number((Number(fullShiftWageForDelta || task.task_wage || 0) * (Number(approvedDelta) / 100)).toFixed(2));
+    }
+
+    let updateQuery = `
       UPDATE tasks
-      SET status = $1, manager_review_notes = $2, manager_reviewed_at = NOW(), updated_at = NOW()
+      SET status = $1, manager_review_notes = $2, manager_reviewed_at = NOW(), updated_at = NOW(), needs_manager_review = false
       WHERE id = $3 AND farm_id = $4
       RETURNING *
-    `, [status, reason || null, taskId, farmId]);
+    `;
+    let queryParams = [status, reason || null, taskId, farmId];
+
+    if (status === 'approved') {
+      updateQuery = `
+        UPDATE tasks
+        SET status = $1, manager_review_notes = $2, manager_reviewed_at = NOW(), updated_at = NOW(),
+            approved_progress = $5, earned_salary = COALESCE(earned_salary, 0) + $6, completion_percentage = GREATEST(completion_percentage, $5),
+            needs_manager_review = false
+        WHERE id = $3 AND farm_id = $4
+        RETURNING *
+      `;
+      queryParams = [status, reason || null, taskId, farmId, cumulativeProgress, earnedAmount];
+    }
+
+    const result = await pool.query(updateQuery, queryParams);
 
     const updatedTask = result.rows[0];
     const workerId = task.assigned_to_user_id;
+
+    if (status === 'approved' && approvedDelta > 0) {
+      await pool.query(`
+        INSERT INTO salary_ledger (farm_id, worker_id, task_id, task_update_id, approved_progress, amount)
+        VALUES ($1, $2, $3, NULL, $4, $5)
+      `, [farmId, workerId, taskId, approvedDelta, earnedAmount]);
+    }
+
     const attendanceDate = normalizeDateInput(updatedTask.completed_at || updatedTask.end_time || updatedTask.updated_at || new Date()) || new Date().toISOString().slice(0, 10);
+
 
     // Increment rework count if not approved
     if (status !== 'approved') {
@@ -1160,7 +1202,18 @@ export async function reviewTask(req, res) {
     // If Approved, Mark Attendance
     if (status === 'approved') {
       const checkInTime = updatedTask.started_at || updatedTask.updated_at;
-      const checkOutTime = updatedTask.completed_at || updatedTask.updated_at;
+      let checkOutTime = updatedTask.completed_at;
+      if (!checkOutTime) {
+        const finishUpdate = await pool.query(
+          `SELECT created_at FROM task_updates WHERE task_id = $1 AND progress_percentage >= 100 ORDER BY created_at DESC LIMIT 1`,
+          [taskId]
+        );
+        if (finishUpdate.rows.length > 0) {
+          checkOutTime = finishUpdate.rows[0].created_at;
+        } else {
+          checkOutTime = updatedTask.updated_at;
+        }
+      }
 
       let attendanceStatus = 'present';
       if (task.status === 'late_submission') {
@@ -1181,19 +1234,19 @@ export async function reviewTask(req, res) {
         if (shiftRes.rows.length > 0) {
           fullShiftWage = shiftRes.rows[0].base_wage || 0;
         }
-      }
-      
-      const payableWage = (Number(fullShiftWage) * (Number(approvedCompletionPercentage) / 100)).toFixed(2);
 
-      if (existingAttendance.rows.length > 0) {
-        await pool.query(`
+        // Update or insert shift attendance with correct approved completion percentage and payable wage
+        const payableWage = (Number(fullShiftWage) * (Number(cumulativeProgress) / 100)).toFixed(2);
+        if (existingAttendance.rows.length > 0) {
+          await pool.query(`
             UPDATE shift_attendances SET check_in_time = $1, check_out_time = $2, total_hours = $3, shift_status = $4, full_shift_wage = $6, approved_completion_percentage = $7, payable_wage = $8, updated_at = NOW() WHERE id = $5
-          `, [checkInTime, checkOutTime, updatedTask.working_hours, attendanceStatus, existingAttendance.rows[0].id, fullShiftWage, approvedCompletionPercentage, payableWage]);
-      } else {
-        await pool.query(`
+          `, [checkInTime, checkOutTime, updatedTask.working_hours, attendanceStatus, existingAttendance.rows[0].id, fullShiftWage, cumulativeProgress, payableWage]);
+        } else {
+          await pool.query(`
             INSERT INTO shift_attendances (worker_id, date, shift_id, check_in_time, check_out_time, total_hours, shift_status, farm_id, full_shift_wage, approved_completion_percentage, payable_wage)
             VALUES ($1, $2::date, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-          `, [workerId, attendanceDate, updatedTask.shift_id, checkInTime, checkOutTime, updatedTask.working_hours, attendanceStatus, farmId, fullShiftWage, approvedCompletionPercentage, payableWage]);
+          `, [workerId, attendanceDate, updatedTask.shift_id, checkInTime, checkOutTime, updatedTask.working_hours, attendanceStatus, farmId, fullShiftWage, cumulativeProgress, payableWage]);
+        }
       }
 
       await upsertMonthlyPayrollAfterApproval({ farmId, managerId: userId, workerId, effectiveDate: attendanceDate });
@@ -1425,37 +1478,50 @@ export async function reviewTaskUpdate(req, res) {
     `, [newStatus, reason || null, updateId]);
 
     if (newStatus === 'Approved') {
-      const prog = approvedPercentage !== undefined ? parseInt(approvedPercentage, 10) : parseInt(update.progress_percentage || 0, 10);
-      const earnedAmount = (Number(update.task_wage || 0) * prog) / 100;
+      const cumulativeProgress = Math.min(100, Math.max(0, approvedPercentage !== undefined
+        ? parseInt(approvedPercentage, 10)
+        : parseInt(update.progress_percentage || 0, 10)));
+      const previousApprovedProgress = Math.min(100, Math.max(0, Number((await pool.query(
+        `SELECT COALESCE(approved_progress, 0) AS approved_progress FROM tasks WHERE id = $1`,
+        [update.task_id]
+      )).rows[0]?.approved_progress || 0)));
+      const approvedDelta = Math.max(0, cumulativeProgress - previousApprovedProgress);
+      let earnedAmount = (Number(update.task_wage || 0) * approvedDelta) / 100;
+
+      // Update shift_attendances to reflect payable wage
+      let fullShiftWage = 0;
+      let payableWage = 0;
+      const attendanceDate = normalizeDateInput(update.created_at) || new Date().toISOString().slice(0, 10);
+      
+      if (update.shift_id) {
+        const shiftRes = await pool.query(`SELECT base_wage FROM shifts WHERE id = $1`, [update.shift_id]);
+        if (shiftRes.rows.length > 0) {
+          fullShiftWage = shiftRes.rows[0].base_wage || 0;
+        }
+        payableWage = (Number(fullShiftWage) * (Number(cumulativeProgress) / 100)).toFixed(2);
+        earnedAmount = Number((Number(fullShiftWage) * (Number(approvedDelta) / 100)).toFixed(2));
+      }
 
       await pool.query(`
         UPDATE task_updates SET approved_progress = $1 WHERE id = $2
-      `, [prog, updateId]);
+      `, [cumulativeProgress, updateId]);
 
       await pool.query(`
         UPDATE tasks 
-        SET approved_progress = approved_progress + $1,
+        SET approved_progress = $1,
             earned_salary = earned_salary + $2,
             completion_percentage = GREATEST(completion_percentage, $1),
             needs_manager_review = false
         WHERE id = $3
-      `, [prog, earnedAmount, update.task_id]);
+      `, [cumulativeProgress, earnedAmount, update.task_id]);
 
       // Create Ledger Entry
       await pool.query(`
         INSERT INTO salary_ledger (farm_id, worker_id, task_id, task_update_id, approved_progress, amount)
         VALUES ($1, $2, $3, $4, $5, $6)
-      `, [farmId, update.assigned_to_user_id, update.task_id, updateId, prog, earnedAmount]);
+      `, [farmId, update.assigned_to_user_id, update.task_id, updateId, approvedDelta, earnedAmount]);
 
-      // Update shift_attendances to reflect payable wage
       if (update.shift_id) {
-        const attendanceDate = normalizeDateInput(update.created_at) || new Date().toISOString().slice(0, 10);
-        const shiftRes = await pool.query(`SELECT base_wage FROM shifts WHERE id = $1`, [update.shift_id]);
-        let fullShiftWage = 0;
-        if (shiftRes.rows.length > 0) {
-          fullShiftWage = shiftRes.rows[0].base_wage || 0;
-        }
-        const payableWage = (Number(fullShiftWage) * (Number(prog) / 100)).toFixed(2);
 
         // Check if attendance exists
         const existingAttendance = await pool.query(
@@ -1468,7 +1534,7 @@ export async function reviewTaskUpdate(req, res) {
             UPDATE shift_attendances 
             SET full_shift_wage = $1, approved_completion_percentage = $2, payable_wage = $3, shift_status = 'Present', updated_at = NOW()
             WHERE id = $4
-          `, [fullShiftWage, prog, payableWage, existingAttendance.rows[0].id]);
+          `, [fullShiftWage, cumulativeProgress, payableWage, existingAttendance.rows[0].id]);
         } else {
           // If not exists, insert it
           const checkInTime = update.created_at || new Date();
@@ -1485,7 +1551,7 @@ export async function reviewTaskUpdate(req, res) {
             checkOutTime,
             farmId,
             fullShiftWage,
-            prog,
+            cumulativeProgress,
             payableWage
           ]);
         }

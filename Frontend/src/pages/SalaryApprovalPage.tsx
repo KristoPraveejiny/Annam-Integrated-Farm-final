@@ -13,10 +13,22 @@ interface PayrollRow {
   net_salary?: number | string | null;
 }
 
+interface AdvanceRow {
+  id: string;
+  worker_name: string;
+  payroll_month: string;
+  amount: number | string;
+  reason: string;
+  status: string;
+  payment_status?: string | null;
+}
+
 export default function SalaryApprovalPage() {
   const { t } = useTranslation();
   const [payrolls, setPayrolls] = useState<PayrollRow[]>([]);
+  const [advances, setAdvances] = useState<AdvanceRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const [month, setMonth] = useState(String(new Date().getMonth() + 1).padStart(2, '0'));
   const [year, setYear] = useState(String(new Date().getFullYear()));
 
@@ -31,16 +43,35 @@ export default function SalaryApprovalPage() {
       const tokenRaw = localStorage.getItem('token');
       const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
 
-      const res = await fetch(`/api/salary?month=${Number(month)}&year=${year}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const headers = { Authorization: `Bearer ${token}` };
+      const [res, advanceRes] = await Promise.all([
+        fetch(`/api/salary?month=${Number(month)}&year=${year}`, { headers }),
+        fetch('/api/salary/advances', { headers }),
+      ]);
+      const advanceData = await advanceRes.json();
+      setAdvances(Array.isArray(advanceData) ? advanceData.filter((item) => String(item.status || '').trim().toLowerCase() === 'pending') : []);
       const data = await res.json();
-      setPayrolls(Array.isArray(data) ? data : []);
+      setPayrolls(
+        Array.isArray(data)
+          ? data.filter((item) => String(item.payment_status || '').trim().toLowerCase() === 'pending')
+          : [],
+      );
     } catch (err) {
       console.error('Failed to fetch payrolls', err);
     } finally {
       setLoading(false);
     }
+  };
+
+  const reviewAdvance = async (id: string, action: 'Approve' | 'Reject') => {
+    const tokenRaw = localStorage.getItem('token');
+    const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
+    await fetch(`/api/salary/advances/${id}/review`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, notes: action === 'Approve' ? 'Approved - Payment Pending' : 'Rejected by manager' }),
+    });
+    setAdvances((prev) => prev.filter((item) => item.id !== id));
   };
 
   const approvePayroll = async (id: string) => {
@@ -54,6 +85,25 @@ export default function SalaryApprovalPage() {
     setPayrolls((prev) => prev.filter((p) => p.id !== id));
   };
 
+  const generatePendingPayroll = async () => {
+    try {
+      setGenerating(true);
+      const tokenRaw = localStorage.getItem('token');
+      const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
+      const res = await fetch('/api/salary/generate', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ month: Number(month), year: Number(year) }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'Failed to generate payroll');
+      await fetchPayrolls();
+    } catch (err) {
+      console.error('Failed to generate pending payroll:', err);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   return (
     <div className="section-shell py-10">
       <SectionHeading
@@ -64,17 +114,20 @@ export default function SalaryApprovalPage() {
       />
 
       <Card title={t("Payroll Period")} subtitle={t("Choose the month to review")}>
-        <div className="grid gap-4 md:grid-cols-2 max-w-xl">
-          <Field label={t("Month")} value={month} onChange={(e) => setMonth(e.target.value)} type="number" min="1" max="12" />
-          <Field label={t("Year")} value={year} onChange={(e) => setYear(e.target.value)} type="number" />
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="w-full max-w-xs"><Field label={t("Month")} value={month} onChange={(e) => setMonth(e.target.value)} type="number" min="1" max="12" /></div>
+          <div className="w-full max-w-xs"><Field label={t("Year")} value={year} onChange={(e) => setYear(e.target.value)} type="number" /></div>
+          <button onClick={generatePendingPayroll} disabled={generating} className="h-12 rounded-2xl bg-emerald-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60">
+            {generating ? 'Generating...' : 'Generate Pending Payroll'}
+          </button>
         </div>
       </Card>
 
-      <Card title={t("Pending Approvals")} subtitle={t("Payroll records awaiting manager approval")}>
+      <Card title="Monthly Salary Waiting for Approval" subtitle="Review monthly payroll and approve the net salary before payment">
         {loading ? (
           <p className="text-slate-500">{t("Loading...")}</p>
         ) : payrolls.length === 0 ? (
-          <p className="text-slate-500">{t("No payroll records for this period.")}</p>
+          <p className="text-slate-500">No monthly salaries waiting for approval.</p>
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-100">
             <table className="min-w-full text-left text-sm">
@@ -82,7 +135,6 @@ export default function SalaryApprovalPage() {
                 <tr>
                   <th className="px-4 py-3">{t("Worker")}</th>
                   <th className="px-4 py-3">{t("Month")}</th>
-                  <th className="px-4 py-3">{t("Gross Salary")}</th>
                   <th className="px-4 py-3">{t("Net Salary")}</th>
                   <th className="px-4 py-3">{t("Status")}</th>
                   <th className="px-4 py-3">{t("Action")}</th>
@@ -93,7 +145,6 @@ export default function SalaryApprovalPage() {
                   <tr key={item.id}>
                     <td className="px-4 py-3 font-medium text-slate-900">{item.worker_name}</td>
                     <td className="px-4 py-3 text-slate-600">{item.payment_month}</td>
-                    <td className="px-4 py-3 text-slate-600">Rs. {Number(item.gross_salary || 0).toFixed(2)}</td>
                     <td className="px-4 py-3 text-slate-600">Rs. {Number(item.net_salary || 0).toFixed(2)}</td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
@@ -112,6 +163,35 @@ export default function SalaryApprovalPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </Card>
+
+      <Card title="Pending Salary Advances" subtitle="Advance requests awaiting manager approval">
+        {advances.length === 0 ? (
+          <p className="text-slate-500">No pending salary advances for this period.</p>
+        ) : (
+          <div className="space-y-3">
+            {advances.map((item) => (
+              <div key={item.id} className="grid gap-4 rounded-2xl border border-slate-100 bg-white p-4 md:grid-cols-[1.2fr_1fr_auto_auto] md:items-center">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-slate-900">{item.worker_name}</p>
+                  <p className="truncate text-sm text-slate-500">{item.reason}</p>
+                </div>
+                <div className="text-sm text-slate-500">
+                  <span className="block text-xs uppercase tracking-wide text-slate-400">Payroll month</span>
+                  <strong className="text-slate-900">{item.payroll_month}</strong>
+                </div>
+                <div className="text-left md:text-right">
+                  <span className="block text-xs uppercase tracking-wide text-slate-400">Requested amount</span>
+                  <strong className="text-slate-900">Rs. {Number(item.amount).toFixed(2)}</strong>
+                </div>
+                <div className="flex gap-2 md:justify-end">
+                  <button onClick={() => reviewAdvance(item.id, 'Approve')} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700">Approve</button>
+                  <button onClick={() => reviewAdvance(item.id, 'Reject')} className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700">Reject</button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </Card>

@@ -230,29 +230,87 @@ export default function AttendanceManagementPage() {
                   </div>
                   <div className="divide-y divide-white/5">
                     {group.records.map(row => (
-                      <div key={row.id} className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="font-semibold text-white">{row.task_title || 'Task Session'}</p>
-                          <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-400">
-                            <span className="rounded bg-white/5 px-2 py-1 uppercase">{row.shift_name}</span>
-                            <span>{Number(row.total_hours || 0).toFixed(1)} hrs</span>
-                            <span className="capitalize">{row.shift_status}</span>
+                      <div key={row.id} className="flex flex-col">
+                        {row.task_title && row.task_title.split(',').map((taskName: string, i: number) => (
+                          <div key={`completed-${i}`} className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between border-b border-white/5 last:border-b-0">
+                            <div>
+                              <p className="font-semibold text-white">{taskName.trim() || 'Task Session'}</p>
+                              <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                                <span className="rounded bg-white/5 px-2 py-1 uppercase">{row.shift_name}</span>
+                                <span>{Number(row.total_hours || 0).toFixed(2)} hrs</span>
+                                <span className="capitalize">{row.shift_status}</span>
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-6 sm:text-right">
+                              <div>
+                                <p className="text-xs text-slate-500">Progress</p>
+                                <p className="font-medium text-slate-300">{row.approved_completion_percentage != null ? `${row.approved_completion_percentage}%` : '-'}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-slate-500">Full Wage</p>
+                                <p className="font-medium text-slate-300">Rs. {Number(row.full_shift_wage || 0).toFixed(2)}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-emerald-500/70">Payable</p>
+                                <p className="font-bold text-emerald-400">Rs. {Number(row.payable_wage || row.shift_wage_earned || 0).toFixed(2)}</p>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-6 sm:text-right">
-                          <div>
-                            <p className="text-xs text-slate-500">Progress</p>
-                            <p className="font-medium text-slate-300">{row.approved_completion_percentage != null ? `${row.approved_completion_percentage}%` : '-'}</p>
+                        ))}
+
+                        {(!row.task_title && !row.missed_task_title) && (
+                          <div className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="font-semibold text-white">Task Session</p>
+                              <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                                <span className="rounded bg-white/5 px-2 py-1 uppercase">{row.shift_name}</span>
+                                <span>{Number(row.total_hours || 0).toFixed(2)} hrs</span>
+                                <span className="capitalize">{row.shift_status}</span>
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-6 sm:text-right">
+                              <div>
+                                <p className="text-xs text-slate-500">Progress</p>
+                                <p className="font-medium text-slate-300">{row.approved_completion_percentage != null ? `${row.approved_completion_percentage}%` : '-'}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-slate-500">Full Wage</p>
+                                <p className="font-medium text-slate-300">Rs. {Number(row.full_shift_wage || 0).toFixed(2)}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-emerald-500/70">Payable</p>
+                                <p className="font-bold text-emerald-400">Rs. {Number(row.payable_wage || row.shift_wage_earned || 0).toFixed(2)}</p>
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-xs text-slate-500">Full Wage</p>
-                            <p className="font-medium text-slate-300">Rs. {Number(row.full_shift_wage || 0).toFixed(2)}</p>
+                        )}
+
+                        {row.missed_task_title && row.missed_task_title.split(',').map((taskName: string, i: number) => (
+                          <div key={`missed-${i}`} className="flex flex-col gap-4 px-5 pb-4 pt-4 sm:flex-row sm:items-center sm:justify-between border-t border-dashed border-white/10">
+                            <div>
+                              <p className="font-semibold text-red-400/90">{taskName.trim()}</p>
+                              <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-red-400/70">
+                                <span className="rounded bg-red-900/20 px-2 py-1 uppercase">{row.shift_name}</span>
+                                <span>0.00 hrs</span>
+                                <span className="uppercase font-bold text-red-500">Missed</span>
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-6 sm:text-right opacity-60">
+                              <div>
+                                <p className="text-xs text-slate-500">Progress</p>
+                                <p className="font-medium text-slate-400">0%</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-slate-500">Full Wage</p>
+                                <p className="font-medium text-slate-400">Rs. {Number(row.full_shift_wage || 0).toFixed(2)}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-red-500/70">Payable</p>
+                                <p className="font-bold text-red-400">Rs. 0.00</p>
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-xs text-emerald-500/70">Payable</p>
-                            <p className="font-bold text-emerald-400">Rs. {Number(row.payable_wage || row.shift_wage_earned || 0).toFixed(2)}</p>
-                          </div>
-                        </div>
+                        ))}
                       </div>
                     ))}
                   </div>

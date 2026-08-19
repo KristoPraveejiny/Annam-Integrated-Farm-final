@@ -1,0 +1,2 @@
+import { pool } from './db.js';
+pool.query("SELECT sa.id, sa.check_in_time, sa.check_out_time, sa.total_hours, EXTRACT(EPOCH FROM (sa.check_out_time - sa.check_in_time))/3600 as raw_hours, ROUND(COALESCE(NULLIF(sa.total_hours, 0), EXTRACT(EPOCH FROM (sa.check_out_time - sa.check_in_time))/3600, 0)::numeric, 2) as calc_hours FROM shift_attendances sa LIMIT 5").then(res => console.log(res.rows)).catch(console.error).finally(() => pool.end());

@@ -145,7 +145,7 @@ export default function RecentFarmerUpdatesPage() {
 
     try {
       setReviewLoading(true);
-      const res = await apiFetch(`/api/tasks/${selectedUpdate.task_id}/review`, {
+      const res = await apiFetch(`/api/tasks/update/${selectedUpdate.id}/review`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, reason: reviewReason.trim() })

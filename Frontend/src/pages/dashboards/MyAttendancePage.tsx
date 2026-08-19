@@ -4,6 +4,7 @@ import { SectionHeading } from '../../components/ui/SectionHeading';
 import { FiCalendar, FiClock, FiSend, FiTrendingUp } from 'react-icons/fi';
 
 type AttendanceRow = {
+  missed_task_title: any;
   id: string;
   date: string;
   task_title?: string | null;
@@ -53,6 +54,31 @@ export default function MyAttendancePage() {
   const [advancePaymentMethod, setAdvancePaymentMethod] = useState('Cash');
   const [advanceAccountDetails, setAdvanceAccountDetails] = useState('');
   const [requestMonth, setRequestMonth] = useState(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [earningsStats, setEarningsStats] = useState<any>(null);
+
+  const fetchEarningsStats = async () => {
+    try {
+      const tokenRaw = localStorage.getItem('token');
+      const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
+      if (!requestMonth) return;
+      const [yearStr, monthStr] = requestMonth.split('-');
+      const res = await fetch(`/api/salary/my-earnings?month=${Number(monthStr)}&year=${yearStr}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEarningsStats(data.summary || null);
+      }
+    } catch (err) {
+      console.error('Error fetching earnings stats:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchEarningsStats();
+  }, [requestMonth]);
 
   useEffect(() => {
     fetchData();
@@ -79,17 +105,38 @@ export default function MyAttendancePage() {
 
       setSummary(attendanceData.summary || null);
       setTodayAttendance(attendanceData.todayAttendance || null);
-      setAttendances(attendanceData.attendances || []);
-      setAdvances(advanceData || []);
+      setAttendances(Array.isArray(attendanceData.attendances) ? attendanceData.attendances : []);
+      setAdvances(Array.isArray(advanceData) ? advanceData : []);
+      await fetchEarningsStats();
+    } catch (err) {
+      console.error('Error fetching attendance and advances:', err);
+      setAttendances([]);
+      setAdvances([]);
     } finally {
       setLoading(false);
     }
   };
 
   const submitAdvance = async () => {
+    setSuccessMessage('');
+    setErrorMessage('');
+
+    if (!advanceAmount || Number(advanceAmount) <= 0) {
+      setErrorMessage('Please enter a valid amount.');
+      return;
+    }
+    if (earningsStats && Number(advanceAmount) > earningsStats.remaining_payable) {
+      setErrorMessage(`Requested amount exceeds your maximum available advance of Rs. ${Number(earningsStats.remaining_payable).toFixed(2)}.`);
+      return;
+    }
+    if (!advancePaymentMethod) {
+      setErrorMessage('Please select a payment method.');
+      return;
+    }
+
     const tokenRaw = localStorage.getItem('token');
     const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
-    await fetch('/api/salary/advances/request', {
+    const res = await fetch('/api/salary/advances/request', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -103,11 +150,20 @@ export default function MyAttendancePage() {
         accountDetails: advanceAccountDetails,
       }),
     });
-    setAdvanceAmount('');
-    setAdvanceReason('');
-    setAdvanceAccountDetails('');
-    fetchData();
+
+    if (res.ok) {
+      setSuccessMessage('Salary advance requested successfully!');
+      setTimeout(() => setSuccessMessage(''), 4000);
+      setAdvanceAmount('');
+      setAdvanceReason('');
+      setAdvanceAccountDetails('');
+      fetchData();
+    } else {
+      const errData = await res.json();
+      setErrorMessage(errData.error || 'Failed to request salary advance');
+    }
   };
+
 
   const monthStats = useMemo(() => ([
     { label: 'Completed Shifts', value: String(summary?.completedShifts ?? 0) },
@@ -159,32 +215,57 @@ export default function MyAttendancePage() {
 
         <Card title="Salary Advance" subtitle="Request a mid-month payment">
           <div className="space-y-4">
-            <Field label="Amount" value={advanceAmount} onChange={(e) => setAdvanceAmount(e.target.value)} type="number" min="1" />
+            <Field label="Amount *" value={advanceAmount} onChange={(e) => setAdvanceAmount(e.target.value)} type="number" min="1" />
             <Field label="Reason" value={advanceReason} onChange={(e) => setAdvanceReason(e.target.value)} placeholder="Why do you need the advance?" />
             <label className="space-y-2">
-              <span className="text-sm font-semibold text-slate-500">Payment Method</span>
+              <span className="text-sm font-semibold text-slate-500">Payment Method *</span>
               <select value={advancePaymentMethod} onChange={(e) => setAdvancePaymentMethod(e.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-emerald-500">
                 <option value="Cash">Cash</option>
                 <option value="Bank Transfer">Bank Transfer</option>
-                <option value="Online">Online</option>
+                <option value="Online Bank Payout">Online Bank Payout</option>
               </select>
             </label>
-            {(advancePaymentMethod === 'Bank Transfer' || advancePaymentMethod === 'Online') && (
+            {(advancePaymentMethod === 'Bank Transfer' || advancePaymentMethod === 'Online Bank Payout') && (
               <label className="space-y-2">
                 <span className="text-sm font-semibold text-slate-500">Account Details</span>
-                <textarea 
-                  value={advanceAccountDetails} 
-                  onChange={(e) => setAdvanceAccountDetails(e.target.value)} 
-                  placeholder="Enter Bank Account / UPI / Phone Number details..."
+                <textarea
+                  value={advanceAccountDetails}
+                  onChange={(e) => setAdvanceAccountDetails(e.target.value)}
+                  placeholder="BOC\nAccount number\nBeneficiary name"
                   className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-emerald-500 min-h-[80px]"
                 />
               </label>
             )}
-            <button onClick={submitAdvance} className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-2 font-semibold text-white">
-              <FiSend /> Request Advance
-            </button>
+            <div className="flex items-center gap-4">
+              <button onClick={submitAdvance} className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-2 font-semibold text-white">
+                <FiSend /> Request Advance
+              </button>
+              {successMessage && (
+                <span className="text-sm font-semibold text-emerald-600">{successMessage}</span>
+              )}
+              {errorMessage && (
+                <span className="text-sm font-semibold text-rose-500">{errorMessage}</span>
+              )}
+            </div>
+            {earningsStats && (
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 space-y-2 text-sm text-slate-600">
+                <div className="flex justify-between">
+                  <span>Total Earned Salary (Net):</span>
+                  <span className="font-semibold text-slate-900">Rs. {Number(earningsStats.net_salary || 0).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Previous Advances Paid:</span>
+                  <span className="font-semibold text-rose-600">- Rs. {Number(earningsStats.advance_paid || 0).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Partial Salary Payments:</span>
+                  <span className="font-semibold text-rose-600">- Rs. {Number(earningsStats.partial_paid || 0).toFixed(2)}</span>
+                </div>
+
+              </div>
+            )}
             <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-600">
-              Approved advances will be deducted from the next payroll automatically.
+              Approved advances will be deducted from the remaining payable salary automatically. Only Paid advances will be deducted.
             </div>
           </div>
         </Card>
@@ -197,15 +278,44 @@ export default function MyAttendancePage() {
           ) : (
             <div className="space-y-2">
               {attendances.map((row) => (
-                <div key={row.id} className="flex items-center justify-between rounded-2xl border border-slate-100 px-4 py-3">
-                  <div>
-                    <p className="font-semibold text-slate-900">{new Date(row.date).toLocaleDateString()}</p>
-                    <p className="text-sm text-slate-500">{row.task_title || 'Task session'} - {row.session || 'N/A'}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold text-slate-900">{Number(row.total_hours || 0).toFixed(2)} hrs</p>
-                    <p className="text-sm text-emerald-600">{row.shift_status || 'Pending'}</p>
-                  </div>
+                <div key={row.id} className="flex flex-col gap-2 rounded-2xl border border-slate-100 px-4 py-3">
+                  {row.task_title && row.task_title.split(',').map((taskName: string, i: number) => (
+                    <div key={`completed-${i}`} className="flex items-center justify-between border-b border-slate-100 pb-2 last:border-b-0 last:pb-0">
+                      <div>
+                        <p className="font-semibold text-slate-900">{taskName.trim() || 'Task session'}</p>
+                        <p className="text-sm text-slate-500">{row.session || 'N/A'}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-slate-900">{Number(row.total_hours || 0).toFixed(2)} hrs</p>
+                        <p className="text-sm text-emerald-600 capitalize">{row.shift_status || 'Pending'}</p>
+                      </div>
+                    </div>
+                  ))}
+
+                  {(!row.task_title && !row.missed_task_title) && (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-slate-900">Task session</p>
+                        <p className="text-sm text-slate-500">{row.session || 'N/A'}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-slate-900">{Number(row.total_hours || 0).toFixed(2)} hrs</p>
+                        <p className="text-sm text-emerald-600 capitalize">{row.shift_status || 'Pending'}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {row.missed_task_title && row.missed_task_title.split(',').map((taskName: string, i: number) => (
+                    <div key={`missed-${i}`} className="flex items-center justify-between border-t border-slate-100 pt-2 mt-1">
+                      <div>
+                        <p className="text-sm text-red-500/80 font-medium line-through">{taskName.trim()}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-red-400">0.00 hrs</p>
+                        <p className="text-sm text-red-500 font-bold uppercase">Missed</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
@@ -226,9 +336,9 @@ export default function MyAttendancePage() {
                     </span>
                   </div>
                   <p className="mt-1 text-sm text-slate-600">{item.reason}</p>
-                  {(item.payment_method === 'Bank Transfer' || item.payment_method === 'Online') && (
+                  {(item.payment_method === 'Bank Transfer' || item.payment_method === 'Online' || item.payment_method === 'Online Bank Payout') && (
                     <div className="mt-2 rounded-lg bg-slate-50 p-2 text-xs text-slate-500">
-                      <strong>Method:</strong> {item.payment_method}<br/>
+                      <strong>Method:</strong> {item.payment_method}<br />
                       <strong>Details:</strong> {item.account_details || 'N/A'}
                     </div>
                   )}

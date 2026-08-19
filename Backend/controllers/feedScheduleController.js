@@ -20,6 +20,19 @@ async function ensureFeedSchedulesTable() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  try {
+    await pool.query(`ALTER TABLE feed_schedules ADD COLUMN assigned_worker_id UUID REFERENCES app_users(id) ON DELETE SET NULL`);
+  } catch (err) {
+    // Column might already exist
+  }
+
+  try {
+    await pool.query(`ALTER TABLE feed_schedules ADD COLUMN task_id UUID REFERENCES tasks(id) ON DELETE SET NULL`);
+  } catch (err) {
+    // Column might already exist
+  }
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS feed_logs (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -268,9 +281,11 @@ export async function getFeedSummary(req, res) {
 
     res.json({
       animalsFedToday: logs.rows.length,
-      pendingFeedings: schedules.filter((item) => String(item.status || '').toLowerCase() === 'planned').length,
-      missedFeedings: schedules.filter((item) => String(item.status || '').toLowerCase() === 'missed').length,
-      completionPercentage: schedules.length ? Math.round((logs.rows.length / schedules.length) * 100) : 0,
+      pendingFeedings: schedules.rows.filter((item) => String(item.status || '').toLowerCase() === 'planned').length,
+      missedFeedings: schedules.rows.filter((item) => String(item.status || '').toLowerCase() === 'missed').length,
+      completionPercentage: schedules.rows.length > 0 
+        ? Math.round((logs.rows.length / schedules.rows.length) * 100) 
+        : 0, 
       ...totals,
     });
   } catch (error) {

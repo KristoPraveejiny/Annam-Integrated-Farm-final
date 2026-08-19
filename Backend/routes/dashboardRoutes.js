@@ -39,7 +39,7 @@ router.get('/overview', verifyToken, async (req, res) => {
       safeCount(`SELECT COUNT(*)::int AS count FROM crop_cycles WHERE farm_id = $1 AND remaining_days > 0 AND remaining_days <= 7 AND is_historical = FALSE`, 'count', [farmId]),
       safeCount(`SELECT COUNT(*)::int AS count FROM crop_cycles WHERE farm_id = $1 AND remaining_days > 0 AND remaining_days <= 30 AND is_historical = FALSE`, 'count', [farmId]),
       safeCount(`SELECT COUNT(*)::int AS count FROM crop_cycles WHERE farm_id = $1 AND harvest_status = 'Overdue' AND is_historical = FALSE`, 'count', [farmId]),
-      safeCount(`SELECT SUM(CAST(REGEXP_REPLACE(area, '[^0-9.]', '', 'g') AS NUMERIC)) as sum FROM farm_fields WHERE farm_id = $1 AND status = 'active'`, 'sum', [farmId]),
+      safeCount(`SELECT SUM(CAST(REGEXP_REPLACE(area::text, '[^0-9.]', '', 'g') AS NUMERIC)) as sum FROM farm_fields WHERE farm_id = $1 AND status = 'active'`, 'sum', [farmId]),
       safeCount(`SELECT SUM(expected_yield) as sum FROM crop_cycles WHERE farm_id = $1 AND harvest_status != 'Harvested' AND is_historical = FALSE AND expected_yield IS NOT NULL`, 'sum', [farmId]),
     ]);
 
@@ -132,19 +132,30 @@ router.get('/workforce-attendance', verifyToken, async (req, res) => {
           sa.check_in_time,
           sa.check_out_time,
           u.full_name as farmer_name,
-          t.title as task_title,
-          COALESCE(s.shift_name, t.session::text) as session,
+          (
+            SELECT string_agg(t.title, ', ')
+            FROM tasks t
+            WHERE t.assigned_to_user_id = sa.worker_id
+              AND t.shift_id = sa.shift_id
+              AND DATE(COALESCE(t.completed_at, t.end_time, t.updated_at)) = DATE(sa.date)
+          ) as task_title,
+          COALESCE(
+            s.shift_name,
+            (
+              SELECT session::text FROM tasks t
+              WHERE t.assigned_to_user_id = sa.worker_id
+                AND DATE(COALESCE(t.completed_at, t.end_time, t.updated_at)) = DATE(sa.date)
+              LIMIT 1
+            )
+          ) as session,
           ROUND(COALESCE(s.base_wage, 0)::numeric, 2) as shift_wage,
           ROUND(
             GREATEST(COALESCE(sa.total_hours, 0) - COALESCE(s.standard_hours, 0), 0)
-            * COALESCE(NULLIF(s.base_wage, 0) / NULLIF(s.standard_hours, 0), s.hourly_rate, 0)
+            * COALESCE(s.overtime_rate, 0)
           ::numeric, 2) as overtime_pay
         FROM shift_attendances sa
         JOIN app_users u ON sa.worker_id = u.id
         LEFT JOIN shifts s ON sa.shift_id = s.id
-        LEFT JOIN tasks t ON t.assigned_to_user_id = sa.worker_id
-          AND t.shift_id = sa.shift_id
-          AND DATE(COALESCE(t.completed_at, t.end_time, t.updated_at)) = DATE(sa.date)
         WHERE sa.farm_id = $1
         ORDER BY sa.date DESC, sa.created_at DESC
         LIMIT 10

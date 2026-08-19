@@ -711,7 +711,7 @@ CREATE TABLE IF NOT EXISTS monthly_salary_payments (
     account_number_masked text,
     payment_method text,
     transaction_reference text,
-    payment_date timestamptz DEFAULT now(),
+    payment_date timestamptz NULL,
     payment_status text NOT NULL DEFAULT 'Paid',
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
@@ -826,5 +826,6 @@ C R E A T E   T A B L E   I F   N O T   E X I S T S   c h a t _ s e s s i o n s 
          s e n d e r   t e x t   N O T   N U L L , 
          m e s s a g e   t e x t   N O T   N U L L , 
          t i m e s t a m p   t i m e s t a m p t z   N O T   N U L L   D E F A U L T   n o w ( ) 
- ) ;  
+ ) ; 
+ 
  

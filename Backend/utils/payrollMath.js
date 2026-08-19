@@ -39,7 +39,7 @@ export function calculatePayrollMetrics(rows = [], { month, year, bonus = 0, ded
   let totalWorkingHours = 0;
 
   for (const row of rows) {
-    const isAbsent = String(row.shift_status || '').toLowerCase() === 'absent';
+    const isAbsent = String(row.shift_status || row.attendance_status || row.status || '').toLowerCase() === 'absent';
 
     if (!isAbsent) {
       completedShifts += 1;
@@ -51,14 +51,18 @@ export function calculatePayrollMetrics(rows = [], { month, year, bonus = 0, ded
       if (shiftName === 'evening') eveningShifts += 1;
     }
 
-    const baseWage = isAbsent ? 0 : toNumber(row.payable_wage ?? row.base_wage ?? row.shift_wage_earned);
+    const rawPayable = toNumber(row.payable_wage);
+    const rawBase = toNumber(row.base_wage ?? row.shift_wage_earned);
+    const baseWage = isAbsent ? 0 : (rawPayable > 0 ? rawPayable : rawBase);
+    
     const standardHours = toNumber(row.standard_hours);
     const derivedHourlyRate = toNumber(
       row.derived_hourly_rate
-      ?? (standardHours > 0 ? (toNumber(row.base_wage ?? row.shift_wage_earned) / standardHours) : row.hourly_rate)
+      ?? (standardHours > 0 ? (rawBase / standardHours) : row.hourly_rate)
     );
+    const overtimeRate = row.overtime_rate !== undefined && row.overtime_rate !== null ? toNumber(row.overtime_rate) : derivedHourlyRate;
     const overtimeHours = Math.max(toNumber(row.total_hours) - standardHours, 0);
-    const rowOvertimePay = isAbsent ? 0 : (toNumber(row.overtime_pay) || (overtimeHours > 0 ? overtimeHours * derivedHourlyRate : 0));
+    const rowOvertimePay = isAbsent ? 0 : (row.overtime_pay !== undefined && row.overtime_pay !== null ? toNumber(row.overtime_pay) : (overtimeHours > 0 ? overtimeHours * overtimeRate : 0));
 
     shiftWageEarned += baseWage;
     overtimePay += rowOvertimePay;

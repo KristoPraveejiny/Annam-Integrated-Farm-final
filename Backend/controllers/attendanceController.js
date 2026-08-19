@@ -67,10 +67,33 @@ export const getMyAttendance = async (req, res) => {
           sa.date,
           sa.check_in_time,
           sa.check_out_time,
-          sa.total_hours,
+          ROUND(COALESCE(NULLIF(sa.total_hours, 0), EXTRACT(EPOCH FROM (sa.check_out_time - sa.check_in_time))/3600, 0)::numeric, 2) as total_hours,
           sa.shift_status,
-          t.title as task_title,
-          COALESCE(s.shift_name, t.session::text) as session,
+          (
+            SELECT string_agg(t.title, ', ')
+            FROM tasks t
+            WHERE t.assigned_to_user_id = sa.worker_id
+              AND t.status NOT IN ('missed_shift', 'cancelled')
+              AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
+              AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
+          ) as task_title,
+          (
+            SELECT string_agg(t.title, ', ')
+            FROM tasks t
+            WHERE t.assigned_to_user_id = sa.worker_id
+              AND t.status = 'missed_shift'
+              AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
+              AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
+          ) as missed_task_title,
+          COALESCE(
+            s.shift_name,
+            (
+              SELECT session::text FROM tasks t
+              WHERE t.assigned_to_user_id = sa.worker_id
+                AND DATE(COALESCE(t.completed_at, t.end_time, t.updated_at)) = DATE(sa.date)
+              LIMIT 1
+            )
+          ) as session,
           sa.full_shift_wage,
           sa.approved_completion_percentage,
           sa.payable_wage,
@@ -78,16 +101,14 @@ export const getMyAttendance = async (req, res) => {
             CASE WHEN LOWER(sa.shift_status) = 'absent' THEN 0
             ELSE COALESCE(sa.payable_wage, COALESCE(s.base_wage, 0)) END
           ::numeric, 2) as shift_wage_earned,
+          s.overtime_rate,
           ROUND(
             CASE WHEN LOWER(sa.shift_status) = 'absent' THEN 0
             ELSE GREATEST(COALESCE(sa.total_hours, 0) - COALESCE(s.standard_hours, 0), 0)
-            * COALESCE(NULLIF(s.base_wage, 0) / NULLIF(s.standard_hours, 0), s.hourly_rate, 0) END
+            * COALESCE(s.overtime_rate, 0) END
           ::numeric, 2) as overtime_pay
         FROM shift_attendances sa
         LEFT JOIN shifts s ON sa.shift_id = s.id
-        LEFT JOIN tasks t ON t.assigned_to_user_id = sa.worker_id
-          AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
-          AND DATE(COALESCE(t.completed_at, t.end_time, t.updated_at)) = DATE(sa.date)
         WHERE sa.farm_id = $1
           AND sa.worker_id = $2
           AND EXTRACT(MONTH FROM sa.date) = $3
@@ -100,24 +121,45 @@ export const getMyAttendance = async (req, res) => {
           sa.date,
           sa.check_in_time,
           sa.check_out_time,
-          sa.total_hours,
+          ROUND(COALESCE(NULLIF(sa.total_hours, 0), EXTRACT(EPOCH FROM (sa.check_out_time - sa.check_in_time))/3600, 0)::numeric, 2) as total_hours,
           sa.shift_status,
-          t.title as task_title,
-          COALESCE(s.shift_name, t.session::text) as session,
+          (
+            SELECT string_agg(t.title, ', ')
+            FROM tasks t
+            WHERE t.assigned_to_user_id = sa.worker_id
+              AND t.status NOT IN ('missed_shift', 'cancelled')
+              AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
+              AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
+          ) as task_title,
+          (
+            SELECT string_agg(t.title, ', ')
+            FROM tasks t
+            WHERE t.assigned_to_user_id = sa.worker_id
+              AND t.status = 'missed_shift'
+              AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
+              AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
+          ) as missed_task_title,
+          COALESCE(
+            s.shift_name,
+            (
+              SELECT session::text FROM tasks t
+              WHERE t.assigned_to_user_id = sa.worker_id
+                AND DATE(COALESCE(t.completed_at, t.end_time, t.updated_at)) = DATE(sa.date)
+              LIMIT 1
+            )
+          ) as session,
           ROUND(
             CASE WHEN LOWER(sa.shift_status) = 'absent' THEN 0
             ELSE COALESCE(s.base_wage, 0) END
           ::numeric, 2) as shift_wage_earned,
+          s.overtime_rate,
           ROUND(
             CASE WHEN LOWER(sa.shift_status) = 'absent' THEN 0
             ELSE GREATEST(COALESCE(sa.total_hours, 0) - COALESCE(s.standard_hours, 0), 0)
-            * COALESCE(NULLIF(s.base_wage, 0) / NULLIF(s.standard_hours, 0), s.hourly_rate, 0) END
+            * COALESCE(s.overtime_rate, 0) END
           ::numeric, 2) as overtime_pay
         FROM shift_attendances sa
         LEFT JOIN shifts s ON sa.shift_id = s.id
-        LEFT JOIN tasks t ON t.assigned_to_user_id = sa.worker_id
-          AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
-          AND DATE(COALESCE(t.completed_at, t.end_time, t.updated_at)) = DATE(sa.date)
         WHERE sa.farm_id = $1
           AND sa.worker_id = $2
           AND DATE(sa.date) = CURRENT_DATE
@@ -207,9 +249,24 @@ export const getManagerAttendance = async (req, res) => {
           COALESCE(s.shift_name, 'Unknown') as shift_name,
           sa.check_in_time,
           sa.check_out_time,
-          sa.total_hours,
+          ROUND(COALESCE(NULLIF(sa.total_hours, 0), EXTRACT(EPOCH FROM (sa.check_out_time - sa.check_in_time))/3600, 0)::numeric, 2) as total_hours,
           sa.shift_status,
-          t.title as task_title,
+          (
+            SELECT string_agg(t.title, ', ')
+            FROM tasks t
+            WHERE t.assigned_to_user_id = sa.worker_id
+              AND t.status NOT IN ('missed_shift', 'cancelled')
+              AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
+              AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
+          ) as task_title,
+          (
+            SELECT string_agg(t.title, ', ')
+            FROM tasks t
+            WHERE t.assigned_to_user_id = sa.worker_id
+              AND t.status = 'missed_shift'
+              AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
+              AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
+          ) as missed_task_title,
           sa.full_shift_wage,
           sa.approved_completion_percentage,
           sa.payable_wage,
@@ -220,14 +277,11 @@ export const getManagerAttendance = async (req, res) => {
           ROUND(
             CASE WHEN LOWER(sa.shift_status) = 'absent' THEN 0
             ELSE GREATEST(COALESCE(sa.total_hours, 0) - COALESCE(s.standard_hours, 0), 0)
-            * COALESCE(NULLIF(s.base_wage, 0) / NULLIF(s.standard_hours, 0), s.hourly_rate, 0) END
+            * COALESCE(s.overtime_rate, 0) END
           ::numeric, 2) as overtime_pay
         FROM shift_attendances sa
         JOIN app_users u ON sa.worker_id = u.id
         LEFT JOIN shifts s ON sa.shift_id = s.id
-        LEFT JOIN tasks t ON t.assigned_to_user_id = sa.worker_id
-          AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
-          AND DATE(COALESCE(t.completed_at, t.end_time, t.updated_at)) = DATE(sa.date)
         WHERE ${filters.join(' AND ')}
         ORDER BY sa.date DESC, sa.created_at DESC
       `, params),
@@ -237,7 +291,7 @@ export const getManagerAttendance = async (req, res) => {
           u.full_name as worker_name,
           SUM(CASE WHEN LOWER(COALESCE(sa.shift_status, '')) != 'absent' THEN 1 ELSE 0 END)::int as completed_shifts,
           COUNT(DISTINCT CASE WHEN LOWER(COALESCE(sa.shift_status, '')) != 'absent' THEN DATE(sa.date) ELSE NULL END)::int as active_days,
-          COALESCE(SUM(CASE WHEN LOWER(COALESCE(sa.shift_status, '')) != 'absent' THEN COALESCE(sa.total_hours, 0) ELSE 0 END), 0)::numeric as total_working_hours,
+          COALESCE(SUM(CASE WHEN LOWER(COALESCE(sa.shift_status, '')) != 'absent' THEN COALESCE(NULLIF(sa.total_hours, 0), EXTRACT(EPOCH FROM (sa.check_out_time - sa.check_in_time))/3600, 0) ELSE 0 END), 0)::numeric as total_working_hours,
           COALESCE(SUM(CASE WHEN LOWER(COALESCE(sa.shift_status, '')) != 'absent' AND LOWER(COALESCE(s.shift_name, '')) = 'morning' THEN 1 ELSE 0 END), 0)::int as morning_shifts,
           COALESCE(SUM(CASE WHEN LOWER(COALESCE(sa.shift_status, '')) != 'absent' AND LOWER(COALESCE(s.shift_name, '')) = 'afternoon' THEN 1 ELSE 0 END), 0)::int as afternoon_shifts,
           COALESCE(SUM(CASE WHEN LOWER(COALESCE(sa.shift_status, '')) != 'absent' AND LOWER(COALESCE(s.shift_name, '')) = 'evening' THEN 1 ELSE 0 END), 0)::int as evening_shifts
@@ -314,7 +368,7 @@ export const getWorkerAttendanceProfile = async (req, res) => {
       SELECT 
         COUNT(*) as total_shifts,
         SUM(CASE WHEN shift_status IN ('Present', 'Approved') THEN 1 ELSE 0 END) as approved_shifts,
-        SUM(total_hours) as total_working_hours,
+        SUM(CASE WHEN LOWER(sa.shift_status) = 'absent' THEN 0 ELSE COALESCE(NULLIF(sa.total_hours, 0), EXTRACT(EPOCH FROM (sa.check_out_time - sa.check_in_time))/3600, 0) END) as total_working_hours,
         SUM(CASE WHEN check_in_time > (date + s.start_time) + INTERVAL '15 minutes' THEN 1 ELSE 0 END) as late_starts
       FROM shift_attendances sa
       LEFT JOIN shifts s ON sa.shift_id = s.id
