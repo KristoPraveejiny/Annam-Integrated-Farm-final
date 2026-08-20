@@ -22,7 +22,7 @@ router.get('/overview', verifyToken, async (req, res) => {
     const farmId = await getDefaultFarmId(userId);
     const [
       fieldsTotal, fieldsActive, fieldsUnderReview, farmers, customers, products, orders, livestockTotal, livestockHealthy, livestockFeedingDue,
-      cropsReady, harvestToday, harvestWeek, harvestMonth, harvestOverdue, totalAreaResult, expectedYieldResult
+      cropsReady, harvestToday, harvestWeek, harvestMonth, harvestOverdue, totalAreaResult, expectedYieldResult, perennialsBearing
     ] = await Promise.all([
       safeCount(`SELECT COUNT(*)::int AS count FROM farm_fields WHERE farm_id = $1`, 'count', [farmId]),
       safeCount(`SELECT COUNT(*)::int AS count FROM farm_fields WHERE farm_id = $1 AND LOWER(COALESCE(status::text, '')) IN ('active', 'open', 'available')`, 'count', [farmId]),
@@ -40,7 +40,12 @@ router.get('/overview', verifyToken, async (req, res) => {
       safeCount(`SELECT COUNT(*)::int AS count FROM crop_cycles WHERE farm_id = $1 AND remaining_days > 0 AND remaining_days <= 30 AND is_historical = FALSE`, 'count', [farmId]),
       safeCount(`SELECT COUNT(*)::int AS count FROM crop_cycles WHERE farm_id = $1 AND harvest_status = 'Overdue' AND is_historical = FALSE`, 'count', [farmId]),
       safeCount(`SELECT SUM(CAST(REGEXP_REPLACE(area::text, '[^0-9.]', '', 'g') AS NUMERIC)) as sum FROM farm_fields WHERE farm_id = $1 AND status = 'active'`, 'sum', [farmId]),
-      safeCount(`SELECT SUM(expected_yield) as sum FROM crop_cycles WHERE farm_id = $1 AND harvest_status != 'Harvested' AND is_historical = FALSE AND expected_yield IS NOT NULL`, 'sum', [farmId]),
+      // expected_yield is a one-off planning figure; it means nothing for a tree
+      // that yields every season, so perennials are left out of the total.
+      safeCount(`SELECT SUM(c.expected_yield) as sum FROM crop_cycles c LEFT JOIN crop_master m ON m.crop_name = c.crop_name WHERE c.farm_id = $1 AND c.harvest_status != 'Harvested' AND c.is_historical = FALSE AND c.expected_yield IS NOT NULL AND COALESCE(m.is_perennial, FALSE) = FALSE`, 'sum', [farmId]),
+      // Perennials currently bearing - trees that keep producing rather than
+      // finishing a single cycle.
+      safeCount(`SELECT COUNT(*)::int AS count FROM crop_cycles c JOIN crop_master m ON m.crop_name = c.crop_name WHERE c.farm_id = $1 AND m.is_perennial = TRUE AND c.is_historical = FALSE`, 'count', [farmId]),
     ]);
 
     const totalArea = totalAreaResult || 0;
@@ -65,6 +70,7 @@ router.get('/overview', verifyToken, async (req, res) => {
         harvestWeek,
         harvestMonth,
         harvestOverdue,
+        perennialsBearing,
         totalArea,
         expectedYield
       }

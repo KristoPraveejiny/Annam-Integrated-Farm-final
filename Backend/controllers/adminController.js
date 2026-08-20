@@ -1,4 +1,5 @@
 import { pool } from '../db.js';
+import { isSettledPayroll, summarisePayrollRow } from '../utils/payrollMath.js';
 
 export const getDashboardOverview = async (req, res) => {
   try {
@@ -291,11 +292,28 @@ export const getAdminDiseaseDetections = async (req, res) => {
 export const getAdminTasks = async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT t.*, f.name as farm_name, u.full_name as assigned_to_name, c.full_name as created_by_name
-      FROM tasks t 
-      LEFT JOIN farms f ON t.farm_id = f.id 
-      LEFT JOIN app_users u ON t.assigned_to_user_id = u.id 
+      SELECT t.*,
+        u.full_name as assigned_to_name,
+        c.full_name as created_by_name,
+        -- progress_percent is the legacy DDL column that the workflow never writes;
+        -- the live values live in completion_percentage / approved_progress.
+        COALESCE(
+          NULLIF(t.completion_percentage, 0),
+          NULLIF(t.approved_progress, 0),
+          t.progress_percent,
+          0
+        ) AS progress_percent,
+        ff.field_name,
+        ff.field_code,
+        cc.crop_name,
+        lg.species AS livestock_species,
+        lg.group_code AS livestock_group_code
+      FROM tasks t
+      LEFT JOIN app_users u ON t.assigned_to_user_id = u.id
       LEFT JOIN app_users c ON t.created_by_user_id = c.id
+      LEFT JOIN crop_cycles cc ON cc.id = t.crop_cycle_id
+      LEFT JOIN farm_fields ff ON ff.id = COALESCE(t.field_id, cc.field_id)
+      LEFT JOIN livestock_groups lg ON lg.id = t.livestock_group_id
       ORDER BY t.created_at DESC
     `);
     res.json(result.rows);
@@ -308,13 +326,29 @@ export const getAdminTasks = async (req, res) => {
 export const getAdminSalaries = async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT s.*, f.name as farm_name, u.full_name as worker_name 
-      FROM monthly_salary_payments s 
-      LEFT JOIN farms f ON s.farm_id = f.id 
-      LEFT JOIN app_users u ON s.worker_id = u.id 
-      ORDER BY s.created_at DESC
+      SELECT s.*,
+        u.full_name as worker_name,
+        COALESCE((
+          SELECT SUM(sl.amount)
+          FROM salary_ledger sl
+          WHERE sl.farm_id = s.farm_id
+            AND sl.worker_id = s.worker_id
+            AND sl.created_at >= (s.payment_month || '-01')::date
+            AND sl.created_at < ((s.payment_month || '-01')::date + INTERVAL '1 month')
+        ), 0)::numeric AS ledger_earnings
+      FROM monthly_salary_payments s
+      LEFT JOIN app_users u ON s.worker_id = u.id
+      ORDER BY u.full_name, s.payment_month DESC
     `);
-    res.json(result.rows);
+
+    // Settled rows keep their recorded history; everything else is restated from the
+    // ledger so this matches the manager and worker dashboards.
+    const rows = result.rows.map((row) => ({
+      ...row,
+      ...summarisePayrollRow(row, isSettledPayroll(row) ? 0 : row.ledger_earnings),
+    }));
+
+    res.json(rows);
   } catch (error) {
     console.error('Error fetching admin salaries:', error);
     res.status(500).json({ error: 'Failed to fetch salaries.' });

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { CropWeatherAdvicePanel } from '../../components/crops/CropWeatherAdvicePanel';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { FiDroplet, FiMapPin, FiEdit2, FiTrash2, FiSearch, FiPlus, FiCheckCircle, FiAlertTriangle, FiDownload, FiChevronLeft, FiChevronRight, FiCalendar, FiList, FiGrid, FiClock, FiMap, FiTag, FiFilter, FiPrinter, FiEye, FiFileText, FiTrendingUp } from 'react-icons/fi';
@@ -22,6 +23,8 @@ const HARVEST_STATUS_STYLES: Record<string, { label: string; dot: string; bg: st
   overdue: { label: 'Overdue', dot: 'bg-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/20', text: 'text-rose-300' },
   harvested: { label: 'Harvested', dot: 'bg-slate-400', bg: 'bg-slate-500/10', border: 'border-slate-500/20', text: 'text-slate-300' },
   growing: { label: 'Growing', dot: 'bg-sky-400', bg: 'bg-sky-500/10', border: 'border-sky-500/20', text: 'text-sky-300' },
+  bearing: { label: 'Bearing', dot: 'bg-teal-400', bg: 'bg-teal-500/10', border: 'border-teal-500/20', text: 'text-teal-300' },
+  maturing: { label: 'Maturing', dot: 'bg-indigo-400', bg: 'bg-indigo-500/10', border: 'border-indigo-500/20', text: 'text-indigo-300' },
 };
 
 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -62,6 +65,7 @@ export default function FarmManagerCropsPage() {
   });
   const [crops, setCrops] = useState<any[]>([]);
   const [fields, setFields] = useState<any[]>([]);
+  const [harvests, setHarvests] = useState<any[]>([]);
   const [showCropModal, setShowCropModal] = useState(false);
   const [showGrowthModal, setShowGrowthModal] = useState(false);
   const [newCrop, setNewCrop] = useState<any>({
@@ -101,6 +105,10 @@ export default function FarmManagerCropsPage() {
   };
 
   const getGrowthProgress = (crop: any) => {
+    // For a perennial the planting -> expected window is decades long, so
+    // deriving progress from it pins the tree at 100%. The server already
+    // tracks progress towards the NEXT pick.
+    if (crop.is_perennial && typeof crop.harvest_progress === 'number') return crop.harvest_progress;
     if (typeof crop.growth_percentage === 'number') return crop.growth_percentage;
     const planting = crop.planting_date ? new Date(crop.planting_date).getTime() : null;
     const harvest = crop.expected_harvest_date ? new Date(crop.expected_harvest_date).getTime() : null;
@@ -139,8 +147,17 @@ export default function FarmManagerCropsPage() {
         const expectedHarvestDate = crop.expected_harvest_date ? startOfDay(new Date(crop.expected_harvest_date)) : null;
         const remainingDays = typeof crop.remaining_days === 'number' ? crop.remaining_days : expectedHarvestDate ? daysBetween(today, expectedHarvestDate) : null;
         const progress = typeof crop.harvest_progress === 'number' ? crop.harvest_progress : getGrowthProgress(crop);
-        const statusKey =
-          crop.harvest_status === 'Harvested' || crop.status === 'harvested' || crop.status === 'completed'
+        // A perennial keeps bearing after every pick, so it never reaches the
+        // harvested/overdue end states the seasonal ladder below assumes.
+        const statusKey = crop.is_perennial
+          ? (crop.harvest_status === 'Maturing'
+              ? 'maturing'
+              : remainingDays === 0
+                ? 'today'
+                : remainingDays != null && remainingDays <= 7
+                  ? 'due'
+                  : 'bearing')
+          : crop.harvest_status === 'Harvested' || crop.status === 'harvested' || crop.status === 'completed'
             ? 'harvested'
             : remainingDays != null && remainingDays < 0
               ? 'overdue'
@@ -321,6 +338,13 @@ export default function FarmManagerCropsPage() {
         const blocksData = await blocksRes.json();
         setFields(blocksData);
 
+        // Harvests farmers recorded, so they appear on the harvest calendar.
+        const harvestsRes = await apiFetch('/api/analytics/harvest-events');
+        if (harvestsRes.ok) {
+          const harvestsData = await harvestsRes.json();
+          setHarvests(Array.isArray(harvestsData) ? harvestsData : []);
+        }
+
         const updatesRes = await apiFetch('/api/crop-observations/recent');
         if (updatesRes.ok) {
           setRecentUpdates(await updatesRes.json());
@@ -479,16 +503,17 @@ export default function FarmManagerCropsPage() {
 
       {/* Tab Content */}
       {activeTab === 'dashboard' && (
-        <div className="grid gap-6 xl:grid-cols-3">
-          <Card title={t("Total Crops")} subtitle={t("All registered crops")}>
-            <p className="text-5xl font-black text-emerald-400 mt-2">{crops.length}</p>
-          </Card>
-          <Card title={t("Active Fields")} subtitle={t("Currently in use")}>
-            <p className="text-5xl font-black text-lime-400 mt-2">{fields.length}</p>
-          </Card>
-          <Card title={t("Disease Alerts")} subtitle={t("Requires attention")}>
-            <p className="text-5xl font-black text-amber-500 mt-2">2</p>
-          </Card>
+        <div className="space-y-6">
+          <div className="grid gap-6 xl:grid-cols-2">
+            <Card title={t("Total Crops")} subtitle={t("All registered crops")}>
+              <p className="text-5xl font-black text-emerald-400 mt-2">{crops.length}</p>
+            </Card>
+            <Card title={t("Active Fields")} subtitle={t("Currently in use")}>
+              <p className="text-5xl font-black text-lime-400 mt-2">{fields.length}</p>
+            </Card>
+          </div>
+
+          <CropWeatherAdvicePanel />
         </div>
       )}
 
@@ -538,10 +563,18 @@ export default function FarmManagerCropsPage() {
                     </td>
                     <td className="px-6 py-4">{c.planting_date ? new Date(c.planting_date).toLocaleDateString() : ''}</td>
                     <td className="px-6 py-4 text-slate-300">{c.expected_harvest_date ? new Date(c.expected_harvest_date).toLocaleDateString() : '-'}</td>
-                    <td className="px-6 py-4 text-slate-300">{c.actual_harvest_date ? new Date(c.actual_harvest_date).toLocaleDateString() : '-'}</td>
+                    <td className="px-6 py-4 text-slate-300">
+                      {c.actual_harvest_date ? new Date(c.actual_harvest_date).toLocaleDateString() : '-'}
+                      {/* A perennial has been picked many times; the date above is the latest. */}
+                      {c.is_perennial && c.harvest_count > 0 && (
+                        <span className="ml-2 text-xs text-slate-500">({c.harvest_count} harvests)</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded-md text-xs font-semibold ${c.harvest_status === 'Harvested' ? 'bg-emerald-500/10 text-emerald-300' :
-                          c.harvest_status === 'Ready for Harvest' ? 'bg-amber-500/10 text-amber-300' :
+                          c.harvest_status === 'Bearing' ? 'bg-teal-500/10 text-teal-300' :
+                          c.harvest_status === 'Maturing' ? 'bg-indigo-500/10 text-indigo-300' :
+                          c.harvest_status === 'Ready for Harvest' || c.harvest_status === 'Harvest Due' ? 'bg-amber-500/10 text-amber-300' :
                             'bg-slate-500/10 text-slate-300'
                         }`}>
                         {c.harvest_status || '-'}
@@ -556,7 +589,7 @@ export default function FarmManagerCropsPage() {
                               : 'bg-slate-500/10 text-slate-400 border-slate-500/20'
                           }`}
                       >
-                        {c.status === 'harvested' ? 'Completed' : c.status}
+                        {c.is_perennial ? 'Bearing' : c.status === 'harvested' ? 'Completed' : c.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right space-x-4">
@@ -575,7 +608,7 @@ export default function FarmManagerCropsPage() {
         </Card>
       )}
 
-      {activeTab === 'calendar' && <EnterpriseHarvestCalendar crops={crops} fields={fields} t={t} />}
+      {activeTab === 'calendar' && <EnterpriseHarvestCalendar crops={crops} fields={fields} harvests={harvests} t={t} />}
 
       {activeTab === 'growth' && (
         <div className="space-y-6">
@@ -676,9 +709,10 @@ export default function FarmManagerCropsPage() {
           <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
             <Card title={t("Growth Alerts")} subtitle={t("Based on crop data and task records")}>
               <div className="space-y-3">
-                {crops.filter((crop) => getGrowthProgress(crop) < 45).length === 0 ? (
+                {/* A perennial sitting at low progress is simply between picks, not delayed. */}
+                {crops.filter((crop) => !crop.is_perennial && getGrowthProgress(crop) < 45).length === 0 ? (
                   <p className="text-sm text-slate-400">{t("No alerts right now.")}</p>
-                ) : crops.filter((crop) => getGrowthProgress(crop) < 45).map((crop) => (
+                ) : crops.filter((crop) => !crop.is_perennial && getGrowthProgress(crop) < 45).map((crop) => (
                   <div key={crop.id} className="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4 text-sm text-amber-100">
                     <p className="font-semibold">{crop.crop_name}</p>
                     <p className="mt-1 text-amber-50/80">{t("Growth delayed or needs review")}</p>

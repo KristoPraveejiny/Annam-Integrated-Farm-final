@@ -1,5 +1,8 @@
 import { pool } from '../db.js';
 import { getDefaultFarmId } from './livestockController.js';
+import { getWeatherSummary, getWeatherByCity, getTomorrowForecast, getTomorrowForecastByCity } from '../services/weatherService.js';
+import { buildAdvice } from '../services/feedAdviceService.js';
+import { generateFeedWeatherAdvice } from '../services/openRouterService.js';
 
 async function ensureFeedRequirementsTable() {
   await pool.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
@@ -227,5 +230,82 @@ export async function deleteFeedRequirement(req, res) {
   } catch (error) {
     console.error('Failed to delete feed requirement:', error);
     res.status(500).json({ error: 'Failed to delete feed requirement' });
+  }
+}
+
+// Weather-based feeding advice. The adjustments are calculated from heat-stress
+// models; the AI only writes the explanation, and is cached for an hour per farm
+// so opening the Feed tab does not fire a model call every time.
+const adviceCache = new Map();
+const ADVICE_TTL_MS = 60 * 60 * 1000;
+
+export async function getFeedWeatherAdvice(req, res) {
+  try {
+    const farmId = await getDefaultFarmId(req.user.userId);
+    const language = req.query.language || 'en';
+
+    const farmRes = await pool.query('SELECT latitude, longitude FROM farms WHERE id = $1', [farmId]);
+    const { latitude, longitude } = farmRes.rows[0] || {};
+
+    let weather = null;
+    let forecast = null;
+    if (latitude && longitude) {
+      [weather, forecast] = await Promise.all([
+        getWeatherSummary(latitude, longitude),
+        getTomorrowForecast(latitude, longitude),
+      ]);
+    }
+    // Farms without coordinates still get advice, via the default city.
+    const fallbackCity = process.env.DEFAULT_CITY || 'Vavuniya';
+    if (!weather) {
+      weather = await getWeatherByCity(fallbackCity);
+    }
+    if (!forecast) {
+      forecast = await getTomorrowForecastByCity(fallbackCity);
+    }
+    if (!weather) {
+      return res.status(503).json({ error: 'Weather data is unavailable right now.' });
+    }
+
+    const requirements = await pool.query(
+      `
+        SELECT id, animal_type AS "animalType", breed_or_variety AS "breedOrVariety",
+               daily_feed_amount AS "dailyFeedAmount", daily_water_requirement AS "dailyWaterRequirement"
+        FROM feed_requirements
+        WHERE farm_id = $1
+        ORDER BY animal_type ASC, breed_or_variety ASC
+      `,
+      [farmId],
+    );
+
+    const rows = buildAdvice(requirements.rows, weather);
+    // Tomorrow lets the manager order feed and fill tanks a day ahead. Heat
+    // stress is a peak-of-day problem, so it is graded on the forecast high
+    // rather than the daily average.
+    const tomorrowRows = forecast
+      ? buildAdvice(requirements.rows, { ...forecast, temperature: forecast.max_temperature ?? forecast.temperature })
+      : null;
+
+    // Cache on the weather that actually drives the numbers, so the narrative
+    // refreshes when conditions change rather than on a fixed clock alone.
+    const cacheKey = `${farmId}:${language}:${Math.round(weather.temperature)}:${Math.round(weather.humidity)}:${forecast?.date || 'none'}`;
+    const cached = adviceCache.get(cacheKey);
+    let narrative = cached && Date.now() - cached.at < ADVICE_TTL_MS ? cached.value : null;
+
+    if (!narrative && rows.length > 0) {
+      narrative = await generateFeedWeatherAdvice(weather, rows, language, forecast ? { weather: forecast, rows: tomorrowRows } : null);
+      if (narrative) adviceCache.set(cacheKey, { at: Date.now(), value: narrative });
+    }
+
+    res.json({
+      weather,
+      rows,
+      tomorrow: forecast ? { weather: forecast, rows: tomorrowRows } : null,
+      narrative,
+      generated_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Failed to build feed weather advice:', error);
+    res.status(500).json({ error: 'Failed to build feeding advice.' });
   }
 }

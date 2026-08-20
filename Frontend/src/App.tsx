@@ -16,6 +16,9 @@ import NotificationsPage from './pages/NotificationsPage';
 import OtpVerificationPage from './pages/auth/OtpVerificationPage';
 import RegisterPage from './pages/auth/RegisterPage';
 import ReportsAnalyticsPage from './pages/ReportsAnalyticsPage';
+import FarmExpensesPage from './pages/FarmExpensesPage';
+import ProductionRecordsPage from './pages/ProductionRecordsPage';
+import LivestockProductionPage from './pages/LivestockProductionPage';
 import WorkforceManagementPage from './pages/WorkforceManagementPage';
 import { AppShell } from './components/layout/AppShell';
 import FarmManagerCropsPage from './pages/dashboards/FarmManagerCropsPage';
@@ -26,6 +29,7 @@ import TaskReviewPage from './pages/dashboards/TaskReviewPage';
 import FarmerTasksPage from './pages/dashboards/FarmerTasksPage';
 import TaskActivityPage from './pages/dashboards/TaskActivityPage';
 import FarmerCropUpdatesPage from './pages/dashboards/FarmerCropUpdatesPage';
+import FarmerHarvestPage from './pages/dashboards/FarmerHarvestPage';
 import FarmerLivestockPage from './pages/dashboards/FarmerLivestockPage';
 import FarmerLivestockUpdatesPage from './pages/dashboards/FarmerLivestockUpdatesPage';
 import FieldManagementPage from './pages/FarmManager/FieldManagementPage';
@@ -160,6 +164,21 @@ export default function App() {
           <ReportsAnalyticsPage />
         </AppShell>
       } />
+      <Route path="/dashboard/super-admin/expenses" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <FarmExpensesPage scope="admin" />
+        </AppShell>
+      } />
+      <Route path="/dashboard/super-admin/production-records" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <ProductionRecordsPage scope="admin" />
+        </AppShell>
+      } />
+      <Route path="/dashboard/super-admin/livestock-production" element={
+        <AppShell role="super-admin" items={publicNavItems['super-admin']}>
+          <LivestockProductionPage scope="admin" />
+        </AppShell>
+      } />
       <Route path="/dashboard/super-admin/notifications" element={
         <AppShell role="super-admin" items={publicNavItems['super-admin']}>
           <NotificationManagementPage />
@@ -224,6 +243,21 @@ export default function App() {
       <Route path="/dashboard/farm-manager/reports" element={
         <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
           <ReportsAnalyticsPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/farm-manager/expenses" element={
+        <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
+          <FarmExpensesPage scope="manager" />
+        </AppShell>
+      } />
+      <Route path="/dashboard/farm-manager/production-records" element={
+        <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
+          <ProductionRecordsPage scope="manager" />
+        </AppShell>
+      } />
+      <Route path="/dashboard/farm-manager/livestock-production" element={
+        <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
+          <LivestockProductionPage scope="manager" />
         </AppShell>
       } />
       <Route path="/dashboard/farm-manager/tasks" element={
@@ -305,6 +339,11 @@ export default function App() {
       <Route path="/dashboard/farmer-worker/crop-updates" element={
         <AppShell role="farmer-worker" items={publicNavItems['farmer-worker']}>
           <FarmerCropUpdatesPage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/farmer-worker/harvest" element={
+        <AppShell role="farmer-worker" items={publicNavItems['farmer-worker']}>
+          <FarmerHarvestPage />
         </AppShell>
       } />
       <Route path="/dashboard/farmer-worker/livestock" element={

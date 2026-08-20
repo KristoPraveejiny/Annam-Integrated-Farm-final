@@ -92,8 +92,15 @@ export async function getLivestockGroups(req, res) {
     const farmId = await getDefaultFarmId(userId);
     await ensureDefaultGroups(farmId);
 
+    // animal_count lets callers (e.g. livestock task assignment) hide groups that
+    // have no animals registered yet.
     const result = await pool.query(
-      'SELECT id, group_code, species FROM livestock_groups WHERE farm_id = $1 ORDER BY created_at ASC',
+      `SELECT g.id, g.group_code, g.species, COUNT(a.id)::int AS animal_count
+       FROM livestock_groups g
+       LEFT JOIN livestock_animals a ON a.group_id = g.id
+       WHERE g.farm_id = $1
+       GROUP BY g.id, g.group_code, g.species, g.created_at
+       ORDER BY g.created_at ASC`,
       [farmId]
     );
     res.json(result.rows);

@@ -7,14 +7,14 @@ import { AssignTaskModal } from '../../components/tasks/AssignTaskModal';
 import { FiPlus, FiEdit2, FiTrash2, FiSearch, FiDroplet, FiDownload, FiMessageCircle, FiFileText, FiAlertTriangle } from 'react-icons/fi';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { deleteFeedRequirement, getFeedRequirements, upsertFeedRequirement, getFeedLogs, getFeedSummary, type FeedRequirement, type FeedLog } from '../../api/livestock';
+import { deleteFeedRequirement, getFeedRequirements, upsertFeedRequirement, getFeedLogs, getFeedWeatherAdvice, type FeedRequirement, type FeedLog, type FeedWeatherAdvice } from '../../api/livestock';
 import { createLivestockHealthEvent, getLivestockHealthEvents, type LivestockHealthEvent } from '../../api/livestockHealth';
 import html2pdf from 'html2pdf.js';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 import { apiFetch } from '../../utils/apiFetch';
 
 export default function FarmManagerLivestockPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const [activeTab, setActiveTab] = useState((location.state as any)?.activeTab || 'overview');
@@ -23,7 +23,9 @@ export default function FarmManagerLivestockPage() {
   const [feedConfigs, setFeedConfigs] = useState<FeedRequirement[]>([]);
   const [healthEvents, setHealthEvents] = useState<LivestockHealthEvent[]>([]);
   const [feedLogs, setFeedLogs] = useState<FeedLog[]>([]);
-  const [feedSummary, setFeedSummary] = useState<any>({});
+  const [feedAdvice, setFeedAdvice] = useState<FeedWeatherAdvice | null>(null);
+  const [adviceLoading, setAdviceLoading] = useState(false);
+  const [adviceError, setAdviceError] = useState('');
   const [livestockTasks, setLivestockTasks] = useState<any[]>([]);
   const [farmers, setFarmers] = useState<any[]>([]);
   const [shifts, setShifts] = useState<any[]>([]);
@@ -201,14 +203,28 @@ export default function FarmManagerLivestockPage() {
     }
   };
 
-  const fetchFeedSummary = async () => {
+  // The advice depends on today's weather, so it is fetched when the Feed tab is
+  // opened rather than on every page load.
+  const fetchFeedAdvice = async () => {
     try {
-      const data = await getFeedSummary();
-      setFeedSummary(data);
+      setAdviceLoading(true);
+      setAdviceError('');
+      const data = await getFeedWeatherAdvice(i18n.language || 'en');
+      setFeedAdvice(data);
     } catch (error) {
-      console.error('Failed to fetch feed summary:', error);
+      console.error('Failed to load feeding advice:', error);
+      setAdviceError('Weather advice is unavailable right now.');
+    } finally {
+      setAdviceLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (activeTab === 'overview' && !feedAdvice && !adviceLoading) {
+      fetchFeedAdvice();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -221,7 +237,6 @@ export default function FarmManagerLivestockPage() {
       await fetchFarmers();
       await fetchShifts();
       await fetchFeedLogs();
-      await fetchFeedSummary();
       setLoading(false);
     };
     loadData();
@@ -400,7 +415,7 @@ export default function FarmManagerLivestockPage() {
 
       {/* Tabs */}
       <div className="flex space-x-3 border-b border-white/10 pb-4 overflow-x-auto">
-        {['overview', 'list', 'task', 'feed', 'health'].map((tab) => (
+        {['overview', 'list', 'task', 'health'].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -417,7 +432,8 @@ export default function FarmManagerLivestockPage() {
 
       {/* Tab Content */}
       {activeTab === 'overview' && (
-        <div className="grid gap-6 xl:grid-cols-4">
+        <div className="space-y-6">
+          <div className="grid gap-6 xl:grid-cols-4">
           <Card title={t("Total Animals")} subtitle={t("All registered livestock")}>
             <p className="text-5xl font-black text-emerald-400 mt-2">{livestock.length}</p>
           </Card>
@@ -434,6 +450,81 @@ export default function FarmManagerLivestockPage() {
           <Card title={t("Today's Feed Tasks")} subtitle={t("Pending feed deliveries")}>
             <p className="text-5xl font-black text-lime-400 mt-2">3</p>
           </Card>
+          </div>
+
+          {/* Feeding lives here rather than in its own tab, so the day's plan
+              sits next to the herd's headline numbers. */}
+          <div className="space-y-6">
+          <FeedWeatherAdvicePanel
+            advice={feedAdvice}
+            loading={adviceLoading}
+            error={adviceError}
+            onRefresh={fetchFeedAdvice}
+            t={t}
+          />
+          <Card title={t("Feed Management")} subtitle={t("View feeding requirements and edit feed settings per animal type")}>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {feedConfigs.map((config) => (
+                <div key={config.id} className="rounded-3xl border border-white/10 bg-slate-950/40 p-5 shadow-lg">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-300">{config.animalType}</p>
+                      <h4 className="mt-2 text-xl font-bold text-white">{config.breedOrVariety}</h4>
+                    </div>
+                    <FiDroplet className="text-2xl text-emerald-300" />
+                  </div>
+                  <div className="mt-4 space-y-3 text-sm text-slate-300">
+                    <div className="rounded-2xl bg-white/5 px-4 py-3">Feed: <span className="font-semibold text-white">{config.dailyFeedAmount}</span></div>
+                    <div className="rounded-2xl bg-white/5 px-4 py-3">Water: <span className="font-semibold text-white">{config.dailyWaterRequirement}</span></div>
+                    <div className="rounded-2xl bg-white/5 px-4 py-3">Type: <span className="font-semibold text-white">{config.feedType}</span></div>
+                  </div>
+                  <div className="mt-4 flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleFeedEdit(config)}
+                      className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20"
+                    >
+                      <FiEdit2 /> Edit
+                    </button>
+                    {!config.isDefault ? (
+                      <button
+                        type="button"
+                        onClick={() => handleFeedDelete(config.id)}
+                        className="inline-flex items-center gap-2 rounded-full border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/20"
+                      >
+                        <FiTrash2 /> Delete
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card title="Feeding Logs" subtitle="Completed feedings and differences">
+            <div className="space-y-3">
+              {feedLogs.length === 0 ? (
+                <p className="text-sm text-slate-400">No feeding logs yet.</p>
+              ) : feedLogs.slice(0, 6).map((log) => (
+                <div key={log.id} className="rounded-3xl border border-white/10 bg-slate-950/35 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">{log.animalTag || log.livestock_id}</p>
+                      <p className="mt-1 text-xs text-slate-400">{log.feeding_session}</p>
+                    </div>
+                    <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">{log.status}</span>
+                  </div>
+                  <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
+                    <span>Feed: {log.feed_given}/{log.feed_required}</span>
+                    <span>Water: {log.water_given}/{log.water_required}</span>
+                    <span>Difference: {log.difference_feed} kg</span>
+                    <span>Worker: {log.workerName || '-'}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+          </div>
         </div>
       )}
 
@@ -591,86 +682,6 @@ export default function FarmManagerLivestockPage() {
         </Card>
       )}
 
-      {activeTab === 'feed' && (
-        <div className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-            {[
-              ['Animals Fed Today', feedSummary.animalsFedToday ?? 0],
-              ['Pending Feedings', feedSummary.pendingFeedings ?? 0],
-              ['Missed Feedings', feedSummary.missedFeedings ?? 0],
-              ['Completion %', `${feedSummary.completionPercentage ?? 0}%`],
-              ['Feed Used Today', `${feedSummary.actualFeed ?? 0} kg`],
-            ].map(([label, value]) => (
-              <Card key={label as string} title={label as string}>
-                <p className="mt-2 text-4xl font-black text-white">{value as string}</p>
-              </Card>
-            ))}
-          </div>
-          <Card title={t("Feed Management")} subtitle={t("View feeding requirements and edit feed settings per animal type")}>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {feedConfigs.map((config) => (
-                <div key={config.id} className="rounded-3xl border border-white/10 bg-slate-950/40 p-5 shadow-lg">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-300">{config.animalType}</p>
-                      <h4 className="mt-2 text-xl font-bold text-white">{config.breedOrVariety}</h4>
-                    </div>
-                    <FiDroplet className="text-2xl text-emerald-300" />
-                  </div>
-                  <div className="mt-4 space-y-3 text-sm text-slate-300">
-                    <div className="rounded-2xl bg-white/5 px-4 py-3">Feed: <span className="font-semibold text-white">{config.dailyFeedAmount}</span></div>
-                    <div className="rounded-2xl bg-white/5 px-4 py-3">Water: <span className="font-semibold text-white">{config.dailyWaterRequirement}</span></div>
-                    <div className="rounded-2xl bg-white/5 px-4 py-3">Type: <span className="font-semibold text-white">{config.feedType}</span></div>
-                  </div>
-                  <div className="mt-4 flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => handleFeedEdit(config)}
-                      className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/20"
-                    >
-                      <FiEdit2 /> Edit
-                    </button>
-                    {!config.isDefault ? (
-                      <button
-                        type="button"
-                        onClick={() => handleFeedDelete(config.id)}
-                        className="inline-flex items-center gap-2 rounded-full border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/20"
-                      >
-                        <FiTrash2 /> Delete
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          <Card title="Feeding Logs" subtitle="Completed feedings and differences">
-            <div className="space-y-3">
-              {feedLogs.length === 0 ? (
-                <p className="text-sm text-slate-400">No feeding logs yet.</p>
-              ) : feedLogs.slice(0, 6).map((log) => (
-                <div key={log.id} className="rounded-3xl border border-white/10 bg-slate-950/35 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-white">{log.animalTag || log.livestock_id}</p>
-                      <p className="mt-1 text-xs text-slate-400">{log.feeding_session}</p>
-                    </div>
-                    <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">{log.status}</span>
-                  </div>
-                  <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
-                    <span>Feed: {log.feed_given}/{log.feed_required}</span>
-                    <span>Water: {log.water_given}/{log.water_required}</span>
-                    <span>Difference: {log.difference_feed} kg</span>
-                    <span>Worker: {log.workerName || '-'}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
-      )}
-
       {activeTab === 'health' && (
         <div className="grid gap-6">
           <Card title={t("Health History")} subtitle={t("Recent animal health records")}>
@@ -752,7 +763,8 @@ export default function FarmManagerLivestockPage() {
         onCreated={fetchLivestockTasks}
         farmers={farmers}
         shifts={shifts}
-        relatedOptions={groups}
+        // Only groups that actually have animals registered can be assigned work.
+        relatedOptions={groups.filter((g) => Number(g.animal_count || 0) > 0)}
       />
 
       {showFeedModal && (
@@ -906,6 +918,212 @@ export default function FarmManagerLivestockPage() {
           setAnimalToDelete(null);
         }}
       />
+    </div>
+  );
+}
+
+const STRESS_STYLES: Record<string, { chip: string; label: string }> = {
+  none: { chip: 'bg-emerald-400/15 text-emerald-200 border-emerald-400/30', label: 'Comfortable' },
+  mild: { chip: 'bg-lime-400/15 text-lime-200 border-lime-400/30', label: 'Mild heat stress' },
+  moderate: { chip: 'bg-amber-400/15 text-amber-200 border-amber-400/30', label: 'Moderate heat stress' },
+  severe: { chip: 'bg-orange-500/15 text-orange-200 border-orange-500/30', label: 'Severe heat stress' },
+  emergency: { chip: 'bg-rose-500/20 text-rose-200 border-rose-500/40', label: 'Emergency' },
+  unknown: { chip: 'bg-white/10 text-white/70 border-white/20', label: 'Unknown' },
+};
+
+// Shows how much extra water and feed today's weather calls for. The figures
+// come from the server's heat-stress calculation; the AI text only explains them.
+function FeedWeatherAdvicePanel({
+  advice, loading, error, onRefresh, t,
+}: {
+  advice: FeedWeatherAdvice | null;
+  loading: boolean;
+  error: string;
+  onRefresh: () => void;
+  t: (key: string) => string;
+}) {
+  const weather = advice?.weather;
+
+  return (
+    <Card
+      title={t('Weather-based feeding advice')}
+      subtitle={t("How much extra water and feed today's weather calls for")}
+      action={
+        <Button variant="ghost" onClick={onRefresh} disabled={loading} className="!px-4 !py-2 text-xs">
+          {loading ? t('Checking...') : t('Refresh')}
+        </Button>
+      }
+    >
+      {loading && !advice ? (
+        <p className="text-sm text-slate-300">{t('Reading the weather and working out adjustments...')}</p>
+      ) : error ? (
+        <p className="text-sm text-amber-300">{error}</p>
+      ) : !advice ? null : (
+        <div className="space-y-5">
+          {weather && (
+            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3">
+              <span className="text-2xl font-black text-white">{Math.round(weather.temperature)}&deg;C</span>
+              <span className="text-sm capitalize text-slate-300">{weather.description}</span>
+              <span className="text-sm text-slate-400">{t('Humidity')} {Math.round(weather.humidity)}%</span>
+              <span className="text-sm text-slate-400">{t('Wind')} {weather.windSpeed} m/s</span>
+            </div>
+          )}
+
+          {advice.narrative?.headline && (
+            <p className="rounded-2xl border border-emerald-400/25 bg-emerald-400/10 px-4 py-3 text-sm font-semibold text-emerald-100">
+              {advice.narrative.headline}
+            </p>
+          )}
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {advice.rows.map((row) => {
+              const style = STRESS_STYLES[row.stress_level] || STRESS_STYLES.unknown;
+              const aiText = advice.narrative?.groups?.find(
+                (group) => group.animal?.toLowerCase().includes(String(row.breed).toLowerCase()),
+              )?.advice;
+
+              return (
+                <div key={row.id} className="rounded-3xl border border-white/10 bg-slate-950/40 p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-300">{row.animal_type}</p>
+                      <h4 className="mt-1 text-lg font-bold text-white">{row.breed}</h4>
+                    </div>
+                    <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${style.chip}`}>
+                      {t(style.label)}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <AdjustmentTile
+                      label={t('Water')}
+                      percent={row.water_change_percent}
+                      amount={row.extra_water}
+                      unit={row.water_unit}
+                      base={row.base_water}
+                      positiveIsGood
+                    />
+                    <AdjustmentTile
+                      label={t('Feed')}
+                      percent={row.feed_change_percent}
+                      amount={row.extra_feed}
+                      unit={row.feed_unit}
+                      base={row.base_feed}
+                    />
+                  </div>
+
+                  {aiText && <p className="mt-4 text-sm leading-relaxed text-slate-200">{aiText}</p>}
+
+                  <ul className="mt-3 space-y-1.5">
+                    {row.reasons.map((reason, index) => (
+                      <li key={index} className="flex gap-2 text-xs text-slate-400">
+                        <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-emerald-400" />
+                        <span>{reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  {row.thi !== null && row.kind === 'ruminant' && (
+                    <p className="mt-3 text-[11px] uppercase tracking-wider text-slate-500">THI {row.thi}</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {advice.tomorrow && (
+            <div className="rounded-2xl border border-sky-400/25 bg-sky-400/5 px-4 py-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-xs font-bold uppercase tracking-[0.22em] text-sky-300">{t('Tomorrow')}</p>
+                <span className="text-sm font-semibold text-white">
+                  {Math.round(advice.tomorrow.weather.min_temperature)}&ndash;{Math.round(advice.tomorrow.weather.max_temperature)}&deg;C
+                </span>
+                <span className="text-sm capitalize text-slate-300">{advice.tomorrow.weather.description}</span>
+                {advice.tomorrow.weather.rain_mm > 0 && (
+                  <span className="text-sm text-sky-200">{advice.tomorrow.weather.rain_mm} mm {t('rain')}</span>
+                )}
+              </div>
+
+              {/* Graded on tomorrow's high, since heat stress peaks in the afternoon. */}
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {advice.tomorrow.rows.map((row) => (
+                  <div key={row.id} className="flex items-center justify-between gap-3 rounded-xl bg-white/5 px-3 py-2">
+                    <span className="truncate text-sm font-semibold text-white">{row.breed}</span>
+                    <span className="shrink-0 text-xs font-bold tabular-nums text-slate-300">
+                      <span className="text-sky-300">{t('Water')} {row.water_change_percent > 0 ? '+' : ''}{row.water_change_percent}%</span>
+                      {' · '}
+                      <span className={row.feed_change_percent < 0 ? 'text-amber-300' : 'text-emerald-300'}>
+                        {t('Feed')} {row.feed_change_percent > 0 ? '+' : ''}{row.feed_change_percent}%
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {advice.narrative?.tomorrow && (
+                <p className="mt-3 text-sm leading-relaxed text-slate-200">{advice.narrative.tomorrow}</p>
+              )}
+            </div>
+          )}
+
+          {advice.narrative?.general_tips && advice.narrative.general_tips.length > 0 && (
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-emerald-300">{t("Today's checklist")}</p>
+              <ul className="mt-3 space-y-2">
+                {advice.narrative.general_tips.map((tip, index) => (
+                  <li key={index} className="flex gap-2 text-sm text-slate-200">
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400" />
+                    <span>{tip}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {!advice.narrative && (
+            <p className="text-xs text-slate-500">
+              {t('AI explanation unavailable - the amounts above are calculated from heat-stress models.')}
+            </p>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function AdjustmentTile({
+  label, percent, amount, unit, base, positiveIsGood = false,
+}: {
+  label: string;
+  percent: number;
+  amount: number | null;
+  unit: string;
+  base: number | null;
+  positiveIsGood?: boolean;
+}) {
+  const none = percent === 0;
+  const tone = none
+    ? 'text-slate-300'
+    : percent > 0
+      ? (positiveIsGood ? 'text-sky-300' : 'text-emerald-300')
+      : 'text-amber-300';
+
+  return (
+    <div className="rounded-2xl bg-white/5 px-3 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{label}</p>
+      <p className={`mt-1 text-xl font-black ${tone}`}>
+        {none ? 'Normal' : `${percent > 0 ? '+' : ''}${percent}%`}
+      </p>
+      {/* An absolute figure only exists when the stored requirement has a number in it. */}
+      {amount !== null && !none && (
+        <p className="mt-1 text-xs text-slate-300">
+          {amount > 0 ? '+' : ''}{amount} {unit.replace('/day', '')}
+          {base !== null && <span className="text-slate-500"> (of {base})</span>}
+        </p>
+      )}
+      {amount === null && !none && (
+        <p className="mt-1 text-xs text-slate-500">set a base amount to see litres</p>
+      )}
     </div>
   );
 }

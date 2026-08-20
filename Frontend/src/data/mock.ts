@@ -1,4 +1,4 @@
-import { FiBarChart2, FiBell, FiBox, FiCloud, FiDollarSign, FiHome, FiInbox, FiLayers, FiMessageCircle, FiSettings, FiShield, FiShoppingBag, FiUser, FiUsers, FiAlertTriangle, FiCheckCircle, FiMapPin, FiDroplet, FiHeart, FiActivity, FiClipboard } from 'react-icons/fi';
+import { FiBarChart2, FiBell, FiBox, FiCloud, FiDollarSign, FiHome, FiInbox, FiLayers, FiMessageCircle, FiSettings, FiShield, FiShoppingBag, FiUser, FiUsers, FiAlertTriangle, FiCheckCircle, FiMapPin, FiDroplet, FiHeart, FiActivity, FiClipboard, FiPackage } from 'react-icons/fi';
 
 export const metrics = [
   { label: 'Total Fields', value: '48', delta: '+12%', color: 'from-emerald-500 to-lime-400' },
@@ -66,6 +66,9 @@ export const publicNavItems = {
     { label: 'Task & Attendance Monitoring', href: '/dashboard/super-admin/tasks-attendance', icon: FiCheckCircle },
     { label: 'Salary & Payment Monitoring', href: '/dashboard/super-admin/salary-payment', icon: FiDollarSign },
     { label: 'Marketplace Management', href: '/dashboard/super-admin/marketplace', icon: FiShoppingBag },
+    { label: 'Farm Expenses', href: '/dashboard/super-admin/expenses', icon: FiDollarSign },
+    { label: 'Production Records', href: '/dashboard/super-admin/production-records', icon: FiPackage },
+    { label: 'Livestock Production', href: '/dashboard/super-admin/livestock-production', icon: FiHeart },
     { label: 'Reports & Analytics', href: '/dashboard/super-admin/reports', icon: FiBarChart2 },
     { label: 'Notification Management', href: '/dashboard/super-admin/notifications', icon: FiBell },
     { label: 'Feedback Management', href: '/dashboard/super-admin/feedback', icon: FiMessageCircle },
@@ -89,6 +92,9 @@ export const publicNavItems = {
     { label: 'Salary Approval', href: '/dashboard/farm-manager/salary-approval', icon: FiDollarSign },
     { label: 'Salary Payment', href: '/dashboard/farm-manager/salary-payment', icon: FiDollarSign },
     { label: 'Salary Report', href: '/dashboard/farm-manager/salary-report', icon: FiBarChart2 },
+    { label: 'Farm Expenses', href: '/dashboard/farm-manager/expenses', icon: FiDollarSign },
+    { label: 'Production Records', href: '/dashboard/farm-manager/production-records', icon: FiPackage },
+    { label: 'Livestock Production', href: '/dashboard/farm-manager/livestock-production', icon: FiHeart },
     { label: 'Analytics', href: '/dashboard/farm-manager/reports', icon: FiBarChart2 },
     { label: 'Weather', href: '/dashboard/farm-manager/ai-advisory', icon: FiCloud },
     { label: 'AI Chatbot', href: '/dashboard/farm-manager/ai-chat', icon: FiMessageCircle },
@@ -101,6 +107,7 @@ export const publicNavItems = {
     { label: 'My Tasks', href: '/dashboard/farmer-worker/tasks', icon: FiCheckCircle, matchExact: true },
     { label: 'My Products', href: '/dashboard/farmer-worker/marketplace', icon: FiShoppingBag },
     { label: 'Crop Updates', href: '/dashboard/farmer-worker/crop-updates', icon: FiLayers },
+    { label: 'Record Harvest', href: '/dashboard/farmer-worker/harvest', icon: FiPackage },
     { label: 'Livestock Updates', href: '/dashboard/farmer-worker/livestock-updates', icon: FiHeart },
     { label: 'Livestock Management', href: '/dashboard/farmer-worker/livestock', icon: FiHeart },
     { label: 'Weather Updates', href: '/dashboard/farmer-worker/ai-advisory', icon: FiCloud },

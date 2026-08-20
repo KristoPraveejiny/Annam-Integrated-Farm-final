@@ -105,10 +105,6 @@ export default function MyEarningsPage() {
         <Card title={t("Salary Breakdown")} subtitle={t("Shift wage and monthly adjustments")}>
           {summary ? (
             <div className="grid gap-3 sm:grid-cols-2">
-              <BreakdownStat label={t("Shift Wage Earned")} value={`Rs. ${Number(summary.shift_wage_earned ?? 0).toFixed(2)}`} />
-              <BreakdownStat label={t("Overtime Pay")} value={`Rs. ${Number(summary.overtime_pay ?? 0).toFixed(2)}`} />
-              <BreakdownStat label={t("Task Ledger Earnings")} value={`Rs. ${Number(summary.ledger_earnings ?? 0).toFixed(2)}`} />
-              <BreakdownStat label={t("Bonuses")} value={`Rs. ${Number(summary.bonus ?? 0).toFixed(2)}`} />
               <BreakdownStat label={t("Deductions")} value={`Rs. ${Number(summary.deductions ?? 0).toFixed(2)}`} />
               <BreakdownStat label={t("Gross Salary")} value={`Rs. ${Number(summary.gross_salary ?? 0).toFixed(2)}`} />
               <BreakdownStat label={t("Net Salary")} value={`Rs. ${Number(summary.net_salary ?? 0).toFixed(2)}`} />

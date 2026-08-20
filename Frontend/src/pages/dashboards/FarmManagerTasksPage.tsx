@@ -23,8 +23,6 @@ export default function FarmManagerTasksPage() {
   const [filterTask, setFilterTask] = useState('');
   const [filterCrop, setFilterCrop] = useState('All');
   const [filterRisk, setFilterRisk] = useState('All');
-  const [filterVerification, setFilterVerification] = useState('All');
-  const [filterReview, setFilterReview] = useState('All');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
 
@@ -51,6 +49,21 @@ export default function FarmManagerTasksPage() {
     const aiConfidence = task.latest_update?.ai_confidence || 0;
     const score = Number(task.verification_score || task.latest_update?.verification_score_details?.score || aiConfidence);
     return Number.isFinite(score) ? score : 0;
+  };
+
+  // working_hours is not always stamped on submission, so fall back to the real
+  // start -> final-evidence window before giving up.
+  const getWorkingHours = (task: any) => {
+    const stored = Number(task.working_hours);
+    if (Number.isFinite(stored) && stored > 0) return `${stored.toFixed(2)}h`;
+
+    if (!task.started_at) return '-';
+    const endRaw = task.completed_at || task.end_time || task.latest_update?.created_at || task.updated_at;
+    if (!endRaw) return '-';
+
+    const hours = (new Date(endRaw).getTime() - new Date(task.started_at).getTime()) / (1000 * 60 * 60);
+    if (!Number.isFinite(hours) || hours <= 0) return '-';
+    return `${hours.toFixed(2)}h`;
   };
 
   const getRiskLevel = (task: any) => {
@@ -116,11 +129,9 @@ export default function FarmManagerTasksPage() {
   
   const filteredTasks = tasks.filter(task => {
     const risk = getRiskLevel(task);
-    const score = getEvidenceScore(task);
     const workerName = String(task.assigned_to_name || '').toLowerCase();
     const taskName = String(task.title || '').toLowerCase();
     const crop = String(task.crop_name || 'N/A');
-    const status = getDisplayStatus(task);
     const submitted = task.latest_update?.created_at;
 
     if (filterWorker && !workerName.includes(filterWorker.toLowerCase())) return false;
@@ -131,20 +142,6 @@ export default function FarmManagerTasksPage() {
       if (filterRisk === 'High' && risk !== 'High Risk') return false;
       if (filterRisk === 'Medium' && risk !== 'Medium Risk') return false;
       if (filterRisk === 'Low' && risk !== 'Low Risk') return false;
-    }
-
-    if (filterVerification !== 'All') {
-      if (filterVerification === 'Verified' && score < 90) return false;
-      if (filterVerification === 'Warning' && (score < 50 || score >= 90)) return false;
-      if (filterVerification === 'High Risk' && score >= 50) return false;
-      if (filterVerification === 'Rejected' && score !== 0) return false; // assuming 0 is rejected score
-    }
-
-    if (filterReview !== 'All') {
-      if (filterReview === 'Pending' && status !== 'waiting_manager_approval') return false;
-      if (filterReview === 'Approved' && status !== 'approved' && status !== 'completed') return false;
-      if (filterReview === 'Rejected' && status !== 'rejected') return false;
-      if (filterReview === 'Rework Requested' && status !== 'rework_requested') return false;
     }
 
     if (filterDateFrom && submitted) {
@@ -209,20 +206,6 @@ export default function FarmManagerTasksPage() {
                 <option value="Medium">Medium Risk</option>
                 <option value="High">High Risk</option>
              </select>
-             <select value={filterVerification} onChange={e => setFilterVerification(e.target.value)} className="bg-slate-900 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:border-emerald-500 focus:outline-none">
-                <option value="All">All Verification</option>
-                <option value="Verified">Verified</option>
-                <option value="Warning">Warning</option>
-                <option value="High Risk">High Risk</option>
-                <option value="Rejected">Rejected</option>
-             </select>
-             <select value={filterReview} onChange={e => setFilterReview(e.target.value)} className="bg-slate-900 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:border-emerald-500 focus:outline-none">
-                <option value="All">All Reviews</option>
-                <option value="Pending">Pending</option>
-                <option value="Approved">Approved</option>
-                <option value="Rejected">Rejected</option>
-                <option value="Rework Requested">Rework Requested</option>
-             </select>
              <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="bg-slate-900 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:border-emerald-500 focus:outline-none [color-scheme:dark]" />
              <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="bg-slate-900 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:border-emerald-500 focus:outline-none [color-scheme:dark]" />
           </div>
@@ -237,7 +220,6 @@ export default function FarmManagerTasksPage() {
                 <th className="px-4 py-3">{t("Worker")}</th>
                 <th className="px-4 py-3">{t("Task")}</th>
                 <th className="px-4 py-3">{t("Crop")}</th>
-                <th className="px-4 py-3">{t("Activity")}</th>
                 <th className="px-4 py-3">{t("Shift")}</th>
                 <th className="px-4 py-3">{t("Submitted Date")}</th>
                 <th className="px-4 py-3">{t("Working Hours")}</th>
@@ -249,9 +231,9 @@ export default function FarmManagerTasksPage() {
             </thead>
             <tbody className="divide-y divide-white/5 bg-slate-950/60">
                {loading ? (
-                 <tr><td colSpan={11} className="px-4 py-4 text-center text-slate-500">Loading tasks...</td></tr>
+                 <tr><td colSpan={10} className="px-4 py-4 text-center text-slate-500">Loading tasks...</td></tr>
                ) : filteredTasks.length === 0 ? (
-                 <tr><td colSpan={11} className="px-4 py-4 text-center text-slate-500">{t("No tasks found")}</td></tr>
+                 <tr><td colSpan={10} className="px-4 py-4 text-center text-slate-500">{t("No tasks found")}</td></tr>
                ) : (
                 filteredTasks.map(task => {
                   const riskLevel = getRiskLevel(task);
@@ -270,14 +252,9 @@ export default function FarmManagerTasksPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">{task.crop_name || 'N/A'}</td>
-                    <td className="px-4 py-3">{task.activity_type || 'N/A'}</td>
                     <td className="px-4 py-3 capitalize">{task.session || 'morning'}</td>
                     <td className="px-4 py-3">{task.latest_update?.created_at ? new Date(task.latest_update.created_at).toLocaleString() : 'N/A'}</td>
-                    <td className="px-4 py-3">
-                      {task.started_at && task.completed_at ? 
-                        ((new Date(task.completed_at).getTime() - new Date(task.started_at).getTime()) / (1000 * 60 * 60)).toFixed(1) + 'h' 
-                      : '-'}
-                    </td>
+                    <td className="px-4 py-3">{getWorkingHours(task)}</td>
                     <td className="px-4 py-3 text-center">
                        <span className={`px-2 py-1 rounded text-xs font-bold ${score >= 90 ? 'bg-emerald-500/20 text-emerald-400' : score >= 50 ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400'}`}>
                          {score}%

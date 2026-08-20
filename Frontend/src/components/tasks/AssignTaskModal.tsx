@@ -181,6 +181,11 @@ export function AssignTaskModal({ mode, open, onClose, onCreated, farmers, shift
                     <option key={lg.id} value={lg.id}>{lg.group_code} - {lg.species}</option>
                   ))}
             </select>
+            {mode === 'livestock' && relatedOptions.length === 0 ? (
+              <p className="mt-1.5 text-xs text-amber-300">
+                {t('No livestock groups have animals registered yet. Add an animal under the List tab first.')}
+              </p>
+            ) : null}
           </div>
 
           <div className="grid grid-cols-3 gap-4 mt-4">

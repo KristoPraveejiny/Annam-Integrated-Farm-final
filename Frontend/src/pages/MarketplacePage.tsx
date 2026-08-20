@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { PublicHeader } from '../components/layout/PublicHeader';
 import { useTranslation } from 'react-i18next';
 import { notifyError, notifySuccess, notifyWarning } from '../utils/notifications';
+import { isLoggedIn } from '../utils/auth';
 
 export default function MarketplacePage() {
   const { t } = useTranslation();
@@ -17,6 +18,7 @@ export default function MarketplacePage() {
   const [search, setSearch] = useState('');
   const [showPreview, setShowPreview] = useState(false);
   const [quantities, setQuantities] = useState<{[key: string]: number}>({});
+  const [showAuthPrompt, setShowAuthPrompt] = useState(false);
   const navigate = useNavigate();
 
   const handleQuantityChange = (id: string, value: string) => {
@@ -56,6 +58,13 @@ export default function MarketplacePage() {
   };
 
   const handleAddToCart = async (product: any) => {
+    // Guests get told what to do rather than a failed request.
+    if (!isLoggedIn()) {
+      setShowAuthPrompt(true);
+      notifyWarning(t('Please login or register to add items to your cart.'));
+      return;
+    }
+
     try {
       const quantity = quantities[product.id] || 1;
       await addToCart({ product_id: product.id, quantity });
@@ -176,6 +185,40 @@ export default function MarketplacePage() {
         </div>
       </div>
     </div>
+
+      {showAuthPrompt && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={() => setShowAuthPrompt(false)}>
+          <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
+              <FiShoppingCart className="text-2xl" />
+            </div>
+            <h3 className="mt-4 text-lg font-bold text-slate-900">{t('Sign in to continue')}</h3>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">
+              {t('You need an account to add items to your cart and place an order. It only takes a minute.')}
+            </p>
+            <div className="mt-6 flex flex-col gap-3">
+              <button
+                onClick={() => navigate('/login')}
+                className="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
+              >
+                {t('Login')}
+              </button>
+              <button
+                onClick={() => navigate('/register')}
+                className="w-full rounded-2xl border border-emerald-200 px-4 py-3 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-50"
+              >
+                {t('Register')}
+              </button>
+              <button
+                onClick={() => setShowAuthPrompt(false)}
+                className="w-full text-sm font-semibold text-slate-500 transition-colors hover:text-slate-700"
+              >
+                {t('Keep browsing')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

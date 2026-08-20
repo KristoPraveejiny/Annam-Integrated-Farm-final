@@ -80,3 +80,132 @@ Please provide your advice structured EXACTLY as the following JSON. Do not incl
     return null;
   }
 }
+
+/**
+ * Turn the calculated feed/water adjustments into plain advice a farm manager
+ * can act on. The calculations are done before this call - the model only
+ * explains them - so a missing key or a failed call degrades to numbers
+ * without narrative rather than to nothing at all.
+ */
+export async function generateFeedWeatherAdvice(weatherSummary, adviceRows, languageCode = 'en', tomorrow = null) {
+  try {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) {
+      console.warn('OpenRouter API Key is not set.');
+      return null;
+    }
+
+    const languageNames = { en: 'English', ta: 'Tamil', si: 'Sinhalese' };
+    const targetLanguage = languageNames[languageCode] || 'English';
+
+    const prompt = `You are an livestock advisor for a Sri Lankan farm. Today's weather and the calculated feeding adjustments are given below.
+
+Weather: ${JSON.stringify(weatherSummary)}
+
+Calculated adjustments per animal group (already worked out from heat-stress models - do NOT change these numbers, only explain them):
+${JSON.stringify(adviceRows.map((row) => ({
+      animal: `${row.animal_type} ${row.breed}`,
+      stress_level: row.stress_level,
+      water_change_percent: row.water_change_percent,
+      feed_change_percent: row.feed_change_percent,
+      extra_water: row.extra_water,
+      water_unit: row.water_unit,
+      extra_feed: row.extra_feed,
+      feed_unit: row.feed_unit,
+    })))}
+
+${tomorrow ? `Tomorrow's forecast and its calculated adjustments:
+${JSON.stringify(tomorrow)}` : ''}
+
+Task: write short, practical guidance for the farm manager. Use very simple language and short sentences. Say clearly how much extra water and extra (or reduced) feed to give, and at what time of day. Mention shade, ventilation or cooling only if the weather calls for it.
+
+Write your entire response in ${targetLanguage}. Return raw JSON only, no markdown fences:
+
+{
+  "headline": "One short sentence summarising today's conditions for the animals",
+  "groups": [
+    { "animal": "exact animal name from the input", "advice": "2-3 short sentences of practical instruction" }
+  ],
+  "general_tips": ["3 to 5 short practical tips for today"],
+  "tomorrow": "One or two sentences on what to prepare for tomorrow - water to store, feed to order, shade to set up. Omit this field if no forecast was given."
+}
+`;
+
+    const response = await axios.post(
+      'https://openrouter.ai/api/v1/chat/completions',
+      {
+        model: 'google/gemini-2.5-flash',
+        max_tokens: 900,
+        messages: [{ role: 'user', content: prompt }],
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const content = response.data.choices[0].message.content;
+    const jsonStr = content.replace(/^```json/m, '').replace(/```$/m, '').trim();
+    return JSON.parse(jsonStr);
+  } catch (error) {
+    console.error('Error generating feed weather advice:', error.response?.data || error.message);
+    return null;
+  }
+}
+
+/**
+ * Plain-language wrapper around the calculated crop advisory. Same contract as
+ * the feed advice: the rules decide, the model only explains.
+ */
+export async function generateCropWeatherAdvice(payload, languageCode = 'en') {
+  try {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) {
+      console.warn('OpenRouter API Key is not set.');
+      return null;
+    }
+
+    const languageNames = { en: 'English', ta: 'Tamil', si: 'Sinhalese' };
+    const targetLanguage = languageNames[languageCode] || 'English';
+
+    const prompt = `You are an agronomy advisor for a Sri Lankan farm. Below are today's weather, tomorrow's forecast, the crops due for harvest, and the irrigation/harvest/planting decisions already calculated from agronomic rules.
+
+${JSON.stringify(payload)}
+
+Do NOT change any number or reverse any decision - explain them. Write short, practical sentences a farm manager can act on straight away. Mention timing of day where it matters.
+
+Write your entire response in ${targetLanguage}. Return raw JSON only, no markdown fences:
+
+{
+  "headline": "One short sentence on what today and tomorrow mean for the fields",
+  "today": { "irrigation": "1-2 sentences", "harvest": "1-2 sentences", "planting": "1-2 sentences" },
+  "tomorrow": { "irrigation": "1-2 sentences", "harvest": "1-2 sentences", "planting": "1-2 sentences" },
+  "priority_actions": ["3 to 5 short actions, most urgent first"]
+}
+`;
+
+    const response = await axios.post(
+      'https://openrouter.ai/api/v1/chat/completions',
+      {
+        model: 'google/gemini-2.5-flash',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }],
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const content = response.data.choices[0].message.content;
+    const jsonStr = content.replace(/^```json/m, '').replace(/```$/m, '').trim();
+    return JSON.parse(jsonStr);
+  } catch (error) {
+    console.error('Error generating crop weather advice:', error.response?.data || error.message);
+    return null;
+  }
+}

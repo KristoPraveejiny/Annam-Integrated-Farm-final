@@ -67,7 +67,28 @@ export const getMyAttendance = async (req, res) => {
           sa.date,
           sa.check_in_time,
           sa.check_out_time,
-          ROUND(COALESCE(NULLIF(sa.total_hours, 0), EXTRACT(EPOCH FROM (sa.check_out_time - sa.check_in_time))/3600, 0)::numeric, 2) as total_hours,
+          ROUND(GREATEST(
+            COALESCE(NULLIF(sa.total_hours, 0), EXTRACT(EPOCH FROM (sa.check_out_time - sa.check_in_time))/3600, 0),
+            COALESCE((
+              SELECT SUM(COALESCE(
+                NULLIF(t.working_hours, 0),
+                GREATEST(EXTRACT(EPOCH FROM (
+                  COALESCE(
+                    t.completed_at,
+                    t.end_time,
+                    (SELECT MAX(tu.created_at) FROM task_updates tu WHERE tu.task_id = t.id AND tu.progress_percentage >= 100),
+                    t.updated_at
+                  ) - t.started_at
+                )) / 3600, 0),
+                0
+              ))
+              FROM tasks t
+              WHERE t.assigned_to_user_id = sa.worker_id
+                AND t.status NOT IN ('missed_shift', 'cancelled')
+                AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
+                AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
+            ), 0)
+          )::numeric, 2) as total_hours,
           sa.shift_status,
           (
             SELECT string_agg(t.title, ', ')
@@ -82,7 +103,19 @@ export const getMyAttendance = async (req, res) => {
               'title', t.title,
               'type', CASE WHEN t.livestock_group_id IS NOT NULL THEN 'livestock'
                            WHEN t.crop_cycle_id IS NOT NULL THEN 'crop'
-                           ELSE 'general' END
+                           ELSE 'general' END,
+              'hours', ROUND(COALESCE(
+                NULLIF(t.working_hours, 0),
+                GREATEST(EXTRACT(EPOCH FROM (
+                  COALESCE(
+                    t.completed_at,
+                    t.end_time,
+                    (SELECT MAX(tu.created_at) FROM task_updates tu WHERE tu.task_id = t.id AND tu.progress_percentage >= 100),
+                    t.updated_at
+                  ) - t.started_at
+                )) / 3600, 0),
+                0
+              )::numeric, 2)
             ))
             FROM tasks t
             WHERE t.assigned_to_user_id = sa.worker_id
@@ -103,7 +136,19 @@ export const getMyAttendance = async (req, res) => {
               'title', t.title,
               'type', CASE WHEN t.livestock_group_id IS NOT NULL THEN 'livestock'
                            WHEN t.crop_cycle_id IS NOT NULL THEN 'crop'
-                           ELSE 'general' END
+                           ELSE 'general' END,
+              'hours', ROUND(COALESCE(
+                NULLIF(t.working_hours, 0),
+                GREATEST(EXTRACT(EPOCH FROM (
+                  COALESCE(
+                    t.completed_at,
+                    t.end_time,
+                    (SELECT MAX(tu.created_at) FROM task_updates tu WHERE tu.task_id = t.id AND tu.progress_percentage >= 100),
+                    t.updated_at
+                  ) - t.started_at
+                )) / 3600, 0),
+                0
+              )::numeric, 2)
             ))
             FROM tasks t
             WHERE t.assigned_to_user_id = sa.worker_id
@@ -147,7 +192,28 @@ export const getMyAttendance = async (req, res) => {
           sa.date,
           sa.check_in_time,
           sa.check_out_time,
-          ROUND(COALESCE(NULLIF(sa.total_hours, 0), EXTRACT(EPOCH FROM (sa.check_out_time - sa.check_in_time))/3600, 0)::numeric, 2) as total_hours,
+          ROUND(GREATEST(
+            COALESCE(NULLIF(sa.total_hours, 0), EXTRACT(EPOCH FROM (sa.check_out_time - sa.check_in_time))/3600, 0),
+            COALESCE((
+              SELECT SUM(COALESCE(
+                NULLIF(t.working_hours, 0),
+                GREATEST(EXTRACT(EPOCH FROM (
+                  COALESCE(
+                    t.completed_at,
+                    t.end_time,
+                    (SELECT MAX(tu.created_at) FROM task_updates tu WHERE tu.task_id = t.id AND tu.progress_percentage >= 100),
+                    t.updated_at
+                  ) - t.started_at
+                )) / 3600, 0),
+                0
+              ))
+              FROM tasks t
+              WHERE t.assigned_to_user_id = sa.worker_id
+                AND t.status NOT IN ('missed_shift', 'cancelled')
+                AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
+                AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
+            ), 0)
+          )::numeric, 2) as total_hours,
           sa.shift_status,
           (
             SELECT string_agg(t.title, ', ')
@@ -162,7 +228,19 @@ export const getMyAttendance = async (req, res) => {
               'title', t.title,
               'type', CASE WHEN t.livestock_group_id IS NOT NULL THEN 'livestock'
                            WHEN t.crop_cycle_id IS NOT NULL THEN 'crop'
-                           ELSE 'general' END
+                           ELSE 'general' END,
+              'hours', ROUND(COALESCE(
+                NULLIF(t.working_hours, 0),
+                GREATEST(EXTRACT(EPOCH FROM (
+                  COALESCE(
+                    t.completed_at,
+                    t.end_time,
+                    (SELECT MAX(tu.created_at) FROM task_updates tu WHERE tu.task_id = t.id AND tu.progress_percentage >= 100),
+                    t.updated_at
+                  ) - t.started_at
+                )) / 3600, 0),
+                0
+              )::numeric, 2)
             ))
             FROM tasks t
             WHERE t.assigned_to_user_id = sa.worker_id
@@ -183,7 +261,19 @@ export const getMyAttendance = async (req, res) => {
               'title', t.title,
               'type', CASE WHEN t.livestock_group_id IS NOT NULL THEN 'livestock'
                            WHEN t.crop_cycle_id IS NOT NULL THEN 'crop'
-                           ELSE 'general' END
+                           ELSE 'general' END,
+              'hours', ROUND(COALESCE(
+                NULLIF(t.working_hours, 0),
+                GREATEST(EXTRACT(EPOCH FROM (
+                  COALESCE(
+                    t.completed_at,
+                    t.end_time,
+                    (SELECT MAX(tu.created_at) FROM task_updates tu WHERE tu.task_id = t.id AND tu.progress_percentage >= 100),
+                    t.updated_at
+                  ) - t.started_at
+                )) / 3600, 0),
+                0
+              )::numeric, 2)
             ))
             FROM tasks t
             WHERE t.assigned_to_user_id = sa.worker_id
@@ -301,7 +391,28 @@ export const getManagerAttendance = async (req, res) => {
           COALESCE(s.shift_name, 'Unknown') as shift_name,
           sa.check_in_time,
           sa.check_out_time,
-          ROUND(COALESCE(NULLIF(sa.total_hours, 0), EXTRACT(EPOCH FROM (sa.check_out_time - sa.check_in_time))/3600, 0)::numeric, 2) as total_hours,
+          ROUND(GREATEST(
+            COALESCE(NULLIF(sa.total_hours, 0), EXTRACT(EPOCH FROM (sa.check_out_time - sa.check_in_time))/3600, 0),
+            COALESCE((
+              SELECT SUM(COALESCE(
+                NULLIF(t.working_hours, 0),
+                GREATEST(EXTRACT(EPOCH FROM (
+                  COALESCE(
+                    t.completed_at,
+                    t.end_time,
+                    (SELECT MAX(tu.created_at) FROM task_updates tu WHERE tu.task_id = t.id AND tu.progress_percentage >= 100),
+                    t.updated_at
+                  ) - t.started_at
+                )) / 3600, 0),
+                0
+              ))
+              FROM tasks t
+              WHERE t.assigned_to_user_id = sa.worker_id
+                AND t.status NOT IN ('missed_shift', 'cancelled')
+                AND (t.shift_id = sa.shift_id OR (t.shift_id IS NULL AND sa.shift_id IS NULL))
+                AND DATE(COALESCE(t.completed_at, t.shift_end_time, t.end_time, t.due_date, t.updated_at)) = DATE(sa.date)
+            ), 0)
+          )::numeric, 2) as total_hours,
           sa.shift_status,
           (
             SELECT string_agg(t.title, ', ')
@@ -316,7 +427,19 @@ export const getManagerAttendance = async (req, res) => {
               'title', t.title,
               'type', CASE WHEN t.livestock_group_id IS NOT NULL THEN 'livestock'
                            WHEN t.crop_cycle_id IS NOT NULL THEN 'crop'
-                           ELSE 'general' END
+                           ELSE 'general' END,
+              'hours', ROUND(COALESCE(
+                NULLIF(t.working_hours, 0),
+                GREATEST(EXTRACT(EPOCH FROM (
+                  COALESCE(
+                    t.completed_at,
+                    t.end_time,
+                    (SELECT MAX(tu.created_at) FROM task_updates tu WHERE tu.task_id = t.id AND tu.progress_percentage >= 100),
+                    t.updated_at
+                  ) - t.started_at
+                )) / 3600, 0),
+                0
+              )::numeric, 2)
             ))
             FROM tasks t
             WHERE t.assigned_to_user_id = sa.worker_id
@@ -337,7 +460,19 @@ export const getManagerAttendance = async (req, res) => {
               'title', t.title,
               'type', CASE WHEN t.livestock_group_id IS NOT NULL THEN 'livestock'
                            WHEN t.crop_cycle_id IS NOT NULL THEN 'crop'
-                           ELSE 'general' END
+                           ELSE 'general' END,
+              'hours', ROUND(COALESCE(
+                NULLIF(t.working_hours, 0),
+                GREATEST(EXTRACT(EPOCH FROM (
+                  COALESCE(
+                    t.completed_at,
+                    t.end_time,
+                    (SELECT MAX(tu.created_at) FROM task_updates tu WHERE tu.task_id = t.id AND tu.progress_percentage >= 100),
+                    t.updated_at
+                  ) - t.started_at
+                )) / 3600, 0),
+                0
+              )::numeric, 2)
             ))
             FROM tasks t
             WHERE t.assigned_to_user_id = sa.worker_id

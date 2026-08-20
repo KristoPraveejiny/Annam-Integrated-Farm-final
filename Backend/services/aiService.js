@@ -173,11 +173,22 @@ async function getFarmContext(farmId) {
         SELECT c.id, c.crop_name, c.variety, c.planting_date, c.expected_harvest_date, c.status,
                c.harvest_status, c.remaining_days, c.is_historical,
                c.season, c.expected_yield, c.yield_unit, c.notes,
-               f.field_name, f.soil_type AS field_soil_type, f.location AS field_location
+               f.field_name, f.soil_type AS field_soil_type, f.location AS field_location,
+               COALESCE(m.is_perennial, FALSE) AS is_perennial,
+               h.last_harvest_date,
+               COALESCE(h.harvest_count, 0)::int AS harvest_count
         FROM crop_cycles c
         LEFT JOIN farm_fields f ON f.id = c.field_id
+        LEFT JOIN crop_master m ON m.crop_name = c.crop_name
+        LEFT JOIN LATERAL (
+          SELECT MAX(harvest_date) AS last_harvest_date, COUNT(*) AS harvest_count
+          FROM crop_harvests ch WHERE ch.crop_cycle_id = c.id
+        ) h ON TRUE
         WHERE c.farm_id = $1 AND c.is_historical = FALSE
-        ORDER BY c.remaining_days ASC NULLS LAST
+        -- Perennials sit permanently at 0 remaining days, so ordering purely by
+        -- urgency would let the trees crowd real seasonal deadlines out of the
+        -- limited context window.
+        ORDER BY COALESCE(m.is_perennial, FALSE) ASC, c.remaining_days ASC NULLS LAST
         LIMIT 10
       `,
       [farmId],
@@ -282,7 +293,19 @@ function buildSystemPrompt({ language, role, farmContext }) {
     '',
     `Fields:\n${asBulletList(farmContext.fields, (field) => `${field.field_name || 'Unnamed field'} | soil: ${field.soil_type || 'Unknown'} | pH: ${field.soil_ph !== null ? field.soil_ph : 'Unknown'} | fertility: ${field.soil_fertility_level || 'Unknown'} | drainage: ${field.drainage_quality || 'Unknown'} | irrigation: ${field.irrigation_type || 'Unknown'} | location: ${field.location || 'Unknown'} | status: ${field.status || 'Unknown'}`)}`,
     '',
-    `Crops:\n${asBulletList(farmContext.crops, (crop) => `${crop.crop_name || 'Unknown crop'} | variety: ${crop.variety || 'Unknown'} | stage: ${crop.status || 'Unknown'} | planted: ${crop.planting_date || 'Unknown'} | harvest: ${crop.expected_harvest_date || 'Unknown'} (in ${crop.remaining_days} days) | harvest_status: ${crop.harvest_status} | field: ${crop.field_name || 'Unassigned'}`)}`,
+    `Crops:\n${asBulletList(farmContext.crops, (crop) => {
+      const due = crop.remaining_days === null || crop.remaining_days === undefined
+        ? 'unknown'
+        : `${crop.remaining_days} days`;
+      const base = `${crop.crop_name || 'Unknown crop'} | variety: ${crop.variety || 'Unknown'} | field: ${crop.field_name || 'Unassigned'}`;
+
+      // A perennial is never "overdue" - it is a living tree between picks.
+      if (crop.is_perennial) {
+        return `${base} | type: perennial (keeps bearing) | planted: ${crop.planting_date || 'Unknown'} | last picked: ${crop.last_harvest_date || 'never'} | harvests to date: ${crop.harvest_count} | next harvest: ${crop.expected_harvest_date || 'Unknown'} (in ${due}) | status: ${crop.harvest_status || 'Unknown'}`;
+      }
+
+      return `${base} | stage: ${crop.status || 'Unknown'} | planted: ${crop.planting_date || 'Unknown'} | harvest: ${crop.expected_harvest_date || 'Unknown'} (in ${due}) | harvest_status: ${crop.harvest_status || 'Unknown'}`;
+    })}`,
     '',
     `Livestock:\n${asBulletList(farmContext.livestock, (animal) => `${animal.tag_code || 'Unknown tag'} | ${animal.species || 'Unknown species'} | breed: ${animal.breed || 'Unknown'} | health: ${animal.health_status || 'Unknown'} | weight: ${animal.current_weight_kg ?? 'N/A'}`)}`,
     '',

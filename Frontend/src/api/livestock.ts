@@ -47,6 +47,57 @@ export type FeedLog = {
   status: string;
 };
 
+export type FeedAdviceRow = {
+  id: string;
+  animal_type: string;
+  breed: string;
+  kind: 'ruminant' | 'poultry';
+  stress_level: 'none' | 'mild' | 'moderate' | 'severe' | 'emergency' | 'unknown';
+  thi: number | null;
+  water_change_percent: number;
+  feed_change_percent: number;
+  base_water: number | null;
+  base_feed: number | null;
+  extra_water: number | null;
+  extra_feed: number | null;
+  water_unit: string;
+  feed_unit: string;
+  reasons: string[];
+};
+
+export type ForecastDay = {
+  date: string;
+  temperature: number;
+  max_temperature: number;
+  min_temperature: number;
+  humidity: number;
+  windSpeed: number;
+  rain_mm: number;
+  rain_chance: number;
+  description: string;
+};
+
+export type FeedWeatherAdvice = {
+  weather: { temperature: number; humidity: number; description: string; windSpeed: number };
+  rows: FeedAdviceRow[];
+  tomorrow: { weather: ForecastDay; rows: FeedAdviceRow[] } | null;
+  narrative: {
+    headline: string;
+    groups: { animal: string; advice: string }[];
+    general_tips: string[];
+    tomorrow?: string;
+  } | null;
+  generated_at: string;
+};
+
+export async function getFeedWeatherAdvice(language = 'en'): Promise<FeedWeatherAdvice> {
+  const response = await apiFetch(`/api/livestock/feed-requirements/weather-advice?language=${language}`);
+  if (!response.ok) {
+    throw new Error('Failed to load feeding advice');
+  }
+  return response.json();
+}
+
 export async function getFeedRequirements(): Promise<FeedRequirement[]> {
   const response = await apiFetch('/api/livestock/feed-requirements');
   if (!response.ok) {

@@ -3,13 +3,19 @@ import { Card } from '../../components/ui/Card';
 import { SectionHeading } from '../../components/ui/SectionHeading';
 import { FiCalendar, FiClock, FiSend, FiTrendingUp } from 'react-icons/fi';
 
+type TaskItem = {
+  title: string;
+  type: 'crop' | 'livestock' | 'general' | null;
+  hours?: number | string | null;
+};
+
 type AttendanceRow = {
   missed_task_title: any;
-  missed_task_details?: { title: string; type: 'crop' | 'livestock' | 'general' }[] | null;
+  missed_task_details?: TaskItem[] | null;
   id: string;
   date: string;
   task_title?: string | null;
-  task_details?: { title: string; type: 'crop' | 'livestock' | 'general' }[] | null;
+  task_details?: TaskItem[] | null;
   session?: string | null;
   shift_status?: string | null;
   total_hours?: number | string | null;
@@ -43,10 +49,26 @@ type Advance = {
   reviewed_at?: string | null;
 };
 
-function buildTaskItems(details: { title: string; type: 'crop' | 'livestock' | 'general' }[] | null | undefined, titleStr: string | null | undefined) {
+function buildTaskItems(details: TaskItem[] | null | undefined, titleStr: string | null | undefined): TaskItem[] {
   if (details && details.length > 0) return details;
   if (!titleStr) return [];
-  return titleStr.split(',').map((name) => ({ title: name.trim(), type: null as unknown as 'crop' | 'livestock' | 'general' }));
+  return titleStr.split(',').map((name) => ({ title: name.trim(), type: null, hours: null }));
+}
+
+function formatHours(value: number | string | null | undefined) {
+  return `${Number(value || 0).toFixed(2)} hrs`;
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) return 'N/A';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return 'N/A';
+  return parsed.toLocaleDateString(undefined, {
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 function TaskTypeBadge({ type }: { type?: 'crop' | 'livestock' | 'general' | null }) {
@@ -219,10 +241,10 @@ export default function MyAttendancePage() {
         <Card title="Today's Attendance" subtitle="Current day session status">
           {todayAttendance ? (
             <div className="space-y-3">
-              <Line label="Date" value={new Date(todayAttendance.date).toLocaleDateString()} />
-              <Line label="Task" value={todayAttendance.task_title || 'Task session'} />
+              <Line label="Date" value={formatDate(todayAttendance.date)} />
+              <TaskList items={buildTaskItems(todayAttendance.task_details, todayAttendance.task_title)} />
               <Line label="Session" value={todayAttendance.session || 'N/A'} />
-              <Line label="Hours" value={Number(todayAttendance.total_hours || 0).toFixed(2)} />
+              <Line label="Total Hours" value={formatHours(todayAttendance.total_hours)} />
               <Line label="Status" value={todayAttendance.shift_status || 'Pending'} />
             </div>
           ) : (
@@ -296,6 +318,15 @@ export default function MyAttendancePage() {
             <div className="space-y-2">
               {attendances.map((row) => (
                 <div key={row.id} className="flex flex-col gap-2 rounded-2xl border border-slate-100 px-4 py-3">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <p className="flex items-center gap-2 text-base font-bold text-slate-900">
+                      <FiCalendar className="text-emerald-600" />
+                      {formatDate(row.date)}
+                    </p>
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-600">
+                      Total {formatHours(row.total_hours)}
+                    </p>
+                  </div>
                   {buildTaskItems(row.task_details, row.task_title).map((item, i) => (
                     <div key={`completed-${i}`} className="flex items-center justify-between border-b border-slate-100 pb-2 last:border-b-0 last:pb-0">
                       <div>
@@ -306,7 +337,7 @@ export default function MyAttendancePage() {
                         <p className="text-sm text-slate-500">{row.session || 'N/A'}</p>
                       </div>
                       <div className="text-right">
-                        <p className="font-semibold text-slate-900">{Number(row.total_hours || 0).toFixed(2)} hrs</p>
+                        <p className="font-semibold text-slate-900">{formatHours(item.hours)}</p>
                         <p className="text-sm text-emerald-600 capitalize">{row.shift_status || 'Pending'}</p>
                       </div>
                     </div>
@@ -319,7 +350,7 @@ export default function MyAttendancePage() {
                         <p className="text-sm text-slate-500">{row.session || 'N/A'}</p>
                       </div>
                       <div className="text-right">
-                        <p className="font-semibold text-slate-900">{Number(row.total_hours || 0).toFixed(2)} hrs</p>
+                        <p className="font-semibold text-slate-900">{formatHours(row.total_hours)}</p>
                         <p className="text-sm text-emerald-600 capitalize">{row.shift_status || 'Pending'}</p>
                       </div>
                     </div>
@@ -386,6 +417,40 @@ function Field(props: React.InputHTMLAttributes<HTMLInputElement> & { label: str
         className={`w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-emerald-500 ${className || ''}`}
       />
     </label>
+  );
+}
+
+function TaskList({ items }: { items: TaskItem[] }) {
+  if (items.length === 0) {
+    return (
+      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+        <span className="text-slate-500">Tasks</span>
+        <span className="font-semibold text-slate-900">Task session</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between px-1">
+        <span className="text-slate-500">Tasks</span>
+        <span className="text-xs font-semibold text-slate-400">
+          {items.length} {items.length === 1 ? 'task' : 'tasks'}
+        </span>
+      </div>
+      {items.map((item, index) => (
+        <div
+          key={`${item.title}-${index}`}
+          className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+        >
+          <span className="min-w-0 break-words font-semibold text-slate-900">{item.title || 'Task session'}</span>
+          <span className="flex shrink-0 items-center gap-2">
+            <TaskTypeBadge type={item.type} />
+            <span className="text-sm font-semibold text-slate-600">{formatHours(item.hours)}</span>
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }
 

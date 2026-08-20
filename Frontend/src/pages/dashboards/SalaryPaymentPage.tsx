@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { SectionHeading } from '../../components/ui/SectionHeading';
-import { FiCheckCircle, FiDollarSign, FiSend, FiShield, FiX } from 'react-icons/fi';
+import { FiAlertCircle, FiCheckCircle, FiDollarSign, FiSend, FiShield, FiX } from 'react-icons/fi';
 
 type PayrollRow = {
   id: string;
@@ -116,12 +116,12 @@ export default function SalaryPaymentPage() {
     }
   };
 
-  const pendingPayrolls = useMemo(() => payrolls.filter((item) => String(item.payment_status || '').toLowerCase() !== 'paid' && String(item.payment_status || '').toLowerCase() !== 'fully paid'), [payrolls]);
-
-  const approvePayroll = async (id: string) => {
-    await api(`/api/salary/${id}/approve`, { method: 'PUT' });
-    fetchData();
-  };
+  // Pending requests are handled on the Salary Approval page; this page pays out the
+  // ones a manager has already reviewed.
+  const reviewedAdvances = useMemo(
+    () => advances.filter((item) => String(item.status || '').trim().toLowerCase() !== 'pending'),
+    [advances],
+  );
 
   const reviewAdvance = async (id: string, action: 'Approve' | 'Reject') => {
     await api(`/api/salary/advances/${id}/review`, {
@@ -196,6 +196,13 @@ export default function SalaryPaymentPage() {
     }
   };
 
+  // Same figure the modal shows in the hero and in the deduction notice.
+  const disburseAmount = payingAdvance
+    ? Number(payingAdvance.amount)
+    : Number(payingPayroll?.net_salary ?? 0)
+      - Number((payingPayroll as any)?.advance_paid ?? 0)
+      - Number((payingPayroll as any)?.partial_paid ?? 0);
+
   return (
     <div className="space-y-6 pb-10">
       <SectionHeading
@@ -218,294 +225,252 @@ export default function SalaryPaymentPage() {
         </div>
       </Card>
 
-      <div className="grid gap-6 xl:grid-cols-[1.4fr_0.6fr]">
-        <Card title="Payroll Queue" subtitle="Approve and pay workers individually">
-          {loading ? (
-            <p className="text-slate-500">Loading...</p>
-          ) : (
-            <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white">
-              <table className="min-w-full text-left text-sm">
-                <thead className="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider text-xs">
-                  <tr>
-                    <th className="px-4 py-3">Farmer</th>
-                    <th className="px-4 py-3">Month</th>
-                    <th className="px-4 py-3">Earned Salary</th>
-                    <th className="px-4 py-3">Advance Paid</th>
-                    <th className="px-4 py-3">Partial Paid</th>
-                    <th className="px-4 py-3">Deductions</th>
-                    <th className="px-4 py-3">Remaining Salary</th>
-                    <th className="px-4 py-3">Payment Status</th>
-                    <th className="px-4 py-3">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {pendingPayrolls.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="px-4 py-8 text-center text-slate-500">No payroll records for this period.</td>
-                    </tr>
-                  ) : (
-                    pendingPayrolls.map((row) => {
-                      const net = Number(row.net_salary ?? row.gross_salary ?? 0);
-                      const adv = Number((row as any).advance_paid ?? 0);
-                      const part = Number((row as any).partial_paid ?? 0);
-                      const ded = Number((row as any).deductions ?? 0);
-                      const remaining = Math.max(0, net - adv - part);
+      <Card title="Advance Requests" subtitle="Approve or reject salary advances">
+        {loading ? (
+          <p className="text-slate-500">Loading...</p>
+        ) : reviewedAdvances.length === 0 ? (
+          <p className="text-slate-500">No salary advance requests.</p>
+        ) : (
+          <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(320px,1fr))]">
+            {reviewedAdvances.map((item) => {
+              const bank = getBeneficiaryDetails(item.account_details);
+              const showBankDetails = normalizePaymentMethod(item.payment_method) !== 'Cash';
 
-                      return (
-                        <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="px-4 py-4 font-semibold text-slate-900">{row.worker_name}</td>
-                          <td className="px-4 py-4 text-slate-600">{row.payment_month}</td>
-                          <td className="px-4 py-4 text-slate-900 font-medium">Rs. {net.toFixed(2)}</td>
-                          <td className="px-4 py-4 text-rose-600 font-medium">Rs. {adv.toFixed(2)}</td>
-                          <td className="px-4 py-4 text-rose-600 font-medium">Rs. {part.toFixed(2)}</td>
-                          <td className="px-4 py-4 text-slate-500">Rs. {ded.toFixed(2)}</td>
-                          <td className="px-4 py-4 font-bold text-blue-600">Rs. {remaining.toFixed(2)}</td>
-                          <td className="px-4 py-4">
-                            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                              row.payment_status === 'Approved' ? 'bg-emerald-50 text-emerald-700' :
-                              row.payment_status === 'PARTIALLY PAID' ? 'bg-amber-50 text-amber-700' :
-                              row.payment_status === 'Payment Pending Confirmation' ? 'bg-indigo-50 text-indigo-700' :
-                              'bg-slate-50 text-slate-700'
-                            }`}>
-                              {row.payment_status}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4 space-x-2">
-                            {row.payment_status === 'Pending' && (
-                              <button 
-                                onClick={() => approvePayroll(row.id)} 
-                                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 shadow-sm transition-all"
-                              >
-                                Approve
-                              </button>
-                            )}
-                            {row.payment_status !== 'Pending' && (
-                              <button 
-                                onClick={() => { setPayingPayroll(row); setPaymentMethod(method as 'Cash' | 'Bank Transfer' | 'Online Bank Payout'); }} 
-                                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800 shadow-sm transition-all"
-                              >
-                                Pay Salary
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-
-        <Card title="Advance Requests" subtitle="Approve or reject salary advances">
-          <div className="space-y-3">
-            {advances.length === 0 ? (
-              <p className="text-slate-500">No salary advance requests.</p>
-            ) : advances.filter((item) => String(item.status || '').trim().toLowerCase() !== 'pending').map((item) => (
-              <div key={item.id} className="rounded-2xl border border-slate-100 p-4 space-y-2 bg-white hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-slate-900">{item.worker_name}</p>
-                    <p className="text-xs text-slate-500">{item.payroll_month} • {item.worker_phone || 'No phone'}</p>
+              return (
+                <div key={item.id} className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 transition-shadow hover:shadow-md">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-slate-900">{item.worker_name}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">{item.payroll_month} • {item.worker_phone || 'No phone'}</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                      item.status === 'Paid' ? 'bg-emerald-100 text-emerald-800' :
+                      item.status === 'Rejected' ? 'bg-rose-100 text-rose-800' :
+                      item.payment_status === 'Processing' ? 'bg-amber-100 text-amber-800' :
+                      'bg-slate-100 text-slate-800'
+                    }`}>
+                      {item.status === 'Approved' ? 'Advance Paid' : item.status}
+                    </span>
                   </div>
-                  <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded-full ${
-                    item.status === 'Paid' ? 'bg-emerald-100 text-emerald-800' :
-                    item.status === 'Rejected' ? 'bg-rose-100 text-rose-800' :
-                    item.payment_status === 'Processing' ? 'bg-amber-100 text-amber-800' :
-                    'bg-slate-100 text-slate-800'
-                  }`}>
-                    {item.status === 'Approved' ? 'Advance Paid' : item.status}
-                  </span>
-                </div>
-                <p className="text-sm text-slate-600 bg-slate-50/50 p-2 rounded-xl border border-slate-100/50"><strong>Reason:</strong> {item.reason}</p>
-                <div className="flex items-center justify-between border-t border-slate-100 pt-2 mt-2">
-                  <span className="text-xs font-semibold text-slate-400">Request Amount:</span>
-                  <span className="font-bold text-slate-900">Rs. {Number(item.amount).toFixed(2)}</span>
-                </div>
 
-                {item.manager_notes && (
-                  <p className="text-xs text-slate-500 italic"><strong>Manager notes:</strong> {item.manager_notes}</p>
-                )}
-                
-                {normalizePaymentMethod(item.payment_method) !== 'Cash' && (
-                  <div className="rounded-xl bg-slate-50/50 p-3 text-xs text-slate-600 border border-slate-100 space-y-1">
-                    <div className="flex justify-between gap-3"><span>Payment method</span><strong className="text-slate-900">{normalizePaymentMethod(item.payment_method)}</strong></div>
-                    <div className="flex justify-between gap-3"><span>Bank name</span><strong className="text-slate-900">{getBeneficiaryDetails(item.account_details).bankName}</strong></div>
-                    <div className="flex justify-between gap-3"><span>Account number</span><strong className="text-slate-900">{getBeneficiaryDetails(item.account_details).accountNumber}</strong></div>
-                    <div className="flex justify-between gap-3"><span>Beneficiary name</span><strong className="text-right text-slate-900">{getBeneficiaryDetails(item.account_details).beneficiaryName}</strong></div>
+                  <div className="flex items-baseline justify-between rounded-xl bg-slate-50 px-4 py-3">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Request amount</span>
+                    <span className="text-lg font-bold text-slate-900">Rs. {Number(item.amount).toFixed(2)}</span>
                   </div>
-                )}
 
-                <div className="flex flex-wrap gap-2 pt-2">
-                  {item.status === 'Pending' && (
-                    <>
-                      <button onClick={() => reviewAdvance(item.id, 'Approve')} className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 shadow-sm transition-all">Approve</button>
-                      <button onClick={() => rejectAdvance(item.id)} className="rounded-full bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 shadow-sm transition-all">Reject</button>
-                    </>
-                  )}
-                  {item.status === 'Approved - Payment Pending' && item.payment_status === 'PAYMENT_PENDING' && (
-                    <button onClick={() => openAdvancePayment(item, 'Cash')} className="rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 shadow-sm transition-all">Pay Advance</button>
-                  )}
-                  {item.payment_status === 'Payment Pending Confirmation' && (
-                    <button onClick={() => openAdvancePayment(item, 'Bank Transfer')} className="rounded-full bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 shadow-sm transition-all">Confirm Bank Transfer Reference</button>
-                  )}
-                  {item.payment_status === 'Payment Failed' && (
-                    <button onClick={() => openAdvancePayment(item, 'Online Bank Payout')} className="rounded-full bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-700 shadow-sm transition-all">Retry Payment</button>
-                  )}
+                  <dl className="grid grid-cols-[minmax(7rem,9rem)_1fr] gap-x-4 gap-y-2 text-sm">
+                    <dt className="text-slate-500">Reason</dt>
+                    <dd className="break-words text-slate-900">{item.reason || '—'}</dd>
+
+                    {item.manager_notes && (
+                      <>
+                        <dt className="text-slate-500">Manager notes</dt>
+                        <dd className="break-words text-slate-600">{item.manager_notes}</dd>
+                      </>
+                    )}
+
+                    <dt className="text-slate-500">Payment method</dt>
+                    <dd className="font-medium text-slate-900">{normalizePaymentMethod(item.payment_method)}</dd>
+
+                    {showBankDetails && (
+                      <>
+                        <dt className="text-slate-500">Bank</dt>
+                        <dd className="font-medium text-slate-900">{bank.bankName}</dd>
+
+                        <dt className="text-slate-500">Account</dt>
+                        <dd className="font-medium tabular-nums text-slate-900">{bank.accountNumber}</dd>
+
+                        <dt className="text-slate-500">Beneficiary</dt>
+                        <dd className="break-words font-medium text-slate-900">{bank.beneficiaryName}</dd>
+                      </>
+                    )}
+                  </dl>
+
+                  <div className="mt-auto flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+                    {item.status === 'Pending' && (
+                      <>
+                        <button onClick={() => reviewAdvance(item.id, 'Approve')} className="rounded-full bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-emerald-700">Approve</button>
+                        <button onClick={() => rejectAdvance(item.id)} className="rounded-full bg-rose-600 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-rose-700">Reject</button>
+                      </>
+                    )}
+                    {item.status === 'Approved - Payment Pending' && item.payment_status === 'PAYMENT_PENDING' && (
+                      <button onClick={() => openAdvancePayment(item, 'Cash')} className="rounded-full bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-blue-700">Pay Advance</button>
+                    )}
+                    {item.payment_status === 'Payment Pending Confirmation' && (
+                      <button onClick={() => openAdvancePayment(item, 'Bank Transfer')} className="rounded-full bg-indigo-600 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-indigo-700">Confirm Transfer Reference</button>
+                    )}
+                    {item.payment_status === 'Payment Failed' && (
+                      <button onClick={() => openAdvancePayment(item, 'Online Bank Payout')} className="rounded-full bg-rose-600 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-rose-700">Retry Payment</button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-        </Card>
-      </div>
+        )}
+      </Card>
 
       {/* Comprehensive Payment Modal */}
       {(payingAdvance || payingPayroll) && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto overscroll-contain">
-          <div className="my-2 w-full max-w-lg max-h-[calc(100vh-2rem)] overflow-y-auto rounded-3xl bg-white shadow-2xl border border-slate-200/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overscroll-contain bg-slate-900/70 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-slate-900/10">
             {/* Header */}
-            <div className="bg-slate-900 px-6 py-6 text-white relative">
-              <button 
-                onClick={() => { setPayingAdvance(null); setPayingPayroll(null); setTxnReference(''); setPayNotes(''); }}
-                className="absolute top-4 right-4 text-white/70 hover:text-white"
-              >
-                <FiX size={24} />
-              </button>
-              <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-md">
-                <FiShield size={24} className="text-emerald-400" />
+            <div className="flex items-start gap-4 border-b border-slate-200 bg-white px-6 py-5">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-900">
+                <FiShield size={20} className="text-emerald-400" />
               </div>
-              <h3 className="text-xl font-bold">Secure Payout Modal</h3>
-              <p className="text-slate-400 text-sm">Review details and select method.</p>
-            </div>
-            
-            {/* Body */}
-            <div className="px-6 py-6 space-y-6">
-              <div className="text-center bg-slate-50 rounded-2xl py-4 border border-slate-100">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Amount to Disburse</p>
-                <p className="mt-1 text-4xl font-black text-slate-900">
-                  Rs. {payingAdvance ? Number(payingAdvance.amount).toFixed(2) : (() => {
-                    const net = Number(payingPayroll?.net_salary ?? 0);
-                    const adv = Number((payingPayroll as any)?.advance_paid ?? 0);
-                    const part = Number((payingPayroll as any)?.partial_paid ?? 0);
-                    return (net - adv - part).toFixed(2);
-                  })()}
+              <div className="min-w-0 flex-1">
+                <h3 className="text-lg font-bold leading-tight text-slate-900">Confirm payout</h3>
+                <p className="mt-0.5 text-sm text-slate-500">
+                  {payingAdvance ? 'Salary advance' : 'Final monthly salary'} · {payingAdvance ? payingAdvance.payroll_month : payingPayroll?.payment_month}
                 </p>
               </div>
+              <button
+                onClick={() => { setPayingAdvance(null); setPayingPayroll(null); setTxnReference(''); setPayNotes(''); }}
+                aria-label="Close"
+                className="-mr-1 -mt-1 rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              >
+                <FiX size={20} />
+              </button>
+            </div>
 
-              <div className="space-y-4">
-                <div className="flex justify-between text-sm border-b border-slate-100 pb-2">
-                  <span className="text-slate-500">Recipient Name:</span>
-                  <span className="font-semibold text-slate-950">{payingAdvance ? payingAdvance.worker_name : payingPayroll?.worker_name}</span>
-                </div>
-                <div className="flex justify-between text-sm border-b border-slate-100 pb-2">
-                  <span className="text-slate-500">Payroll month:</span>
-                  <span className="font-semibold text-slate-950">{payingAdvance ? payingAdvance.payroll_month : payingPayroll?.payment_month}</span>
-                </div>
-                <div className="flex justify-between text-sm border-b border-slate-100 pb-2">
-                  <span className="text-slate-500">Payment Type:</span>
-                  <span className="font-semibold text-slate-950">{payingAdvance ? 'Salary Advance' : 'Final Monthly Salary'}</span>
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto px-6 py-6">
+              <div className="space-y-6">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Amount to disburse</p>
+                  <p className="mt-1 text-4xl font-black tracking-tight text-slate-900 tabular-nums">Rs. {disburseAmount.toFixed(2)}</p>
+                  <dl className="mt-4 grid gap-2 border-t border-slate-200 pt-4 text-sm">
+                    <div className="flex items-center justify-between gap-4">
+                      <dt className="text-slate-500">Recipient</dt>
+                      <dd className="text-right font-semibold text-slate-900">{payingAdvance ? payingAdvance.worker_name : payingPayroll?.worker_name}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <dt className="text-slate-500">Payroll month</dt>
+                      <dd className="text-right font-semibold text-slate-900">{payingAdvance ? payingAdvance.payroll_month : payingPayroll?.payment_month}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <dt className="text-slate-500">Payment type</dt>
+                      <dd className="text-right font-semibold text-slate-900">{payingAdvance ? 'Salary Advance' : 'Final Monthly Salary'}</dd>
+                    </div>
+                  </dl>
                 </div>
 
-                <label className="space-y-2 block">
-                  <span className="text-sm font-semibold text-slate-500">Select Payment Method *</span>
-                  <select 
-                    value={paymentMethod} 
+                <section className="space-y-3">
+                  <h4 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Payment method</h4>
+                  <select
+                    value={paymentMethod}
                     onChange={(e) => setPaymentMethod(e.target.value as any)}
                     disabled={payingAdvance?.payment_status === 'Payment Pending Confirmation'}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-blue-500"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition-colors focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                   >
                     <option value="Cash">Cash</option>
                     <option value="Bank Transfer">Bank Transfer</option>
                     <option value="Online Bank Payout">Online Bank Payout</option>
                   </select>
-                </label>
+                  {payingAdvance?.payment_status === 'Payment Pending Confirmation' && (
+                    <p className="text-xs text-slate-500">Method is locked while this transfer awaits reference confirmation.</p>
+                  )}
+                </section>
 
-                {/* Conditional Fields based on Payment Method */}
                 {(paymentMethod === 'Bank Transfer' || paymentMethod === 'Online Bank Payout') && (
-                  <div className="flex justify-between text-sm border border-slate-100 bg-slate-50/50 rounded-2xl p-4">
-                    <span className="text-slate-500">BOC Recipient Account:</span>
-                    <span className="font-bold text-slate-900">{getBeneficiaryDetails(payingAdvance?.account_details).accountNumber}</span>
-                  </div>
+                  <section className="space-y-3">
+                    <h4 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Beneficiary</h4>
+                    <dl className="overflow-hidden rounded-2xl border border-slate-200 text-sm">
+                      <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-4 py-3">
+                        <dt className="text-slate-500">Bank name</dt>
+                        <dd className="text-right font-semibold text-slate-900">{getBeneficiaryDetails(payingAdvance?.account_details).bankName}</dd>
+                      </div>
+                      <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-4 py-3">
+                        <dt className="text-slate-500">Account number</dt>
+                        <dd className="text-right font-semibold tabular-nums text-slate-900">{getBeneficiaryDetails(payingAdvance?.account_details).accountNumber}</dd>
+                      </div>
+                      <div className="flex items-center justify-between gap-4 px-4 py-3">
+                        <dt className="text-slate-500">Beneficiary name</dt>
+                        <dd className="text-right font-semibold text-slate-900">{getBeneficiaryDetails(payingAdvance?.account_details).beneficiaryName}</dd>
+                      </div>
+                    </dl>
+                  </section>
                 )}
 
                 {(paymentMethod === 'Bank Transfer' || paymentMethod === 'Online Bank Payout') && (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm space-y-2">
-                    <div className="flex justify-between gap-4"><span className="text-slate-500">Bank name</span><strong className="text-slate-900">{getBeneficiaryDetails(payingAdvance?.account_details).bankName}</strong></div>
-                    <div className="flex justify-between gap-4"><span className="text-slate-500">Account number</span><strong className="text-slate-900">{getBeneficiaryDetails(payingAdvance?.account_details).accountNumber}</strong></div>
-                    <div className="flex justify-between gap-4"><span className="text-slate-500">Beneficiary name</span><strong className="text-right text-slate-900">{getBeneficiaryDetails(payingAdvance?.account_details).beneficiaryName}</strong></div>
-                  </div>
-                )}
-
-                {(paymentMethod === 'Bank Transfer' || paymentMethod === 'Online Bank Payout') && (
-                  <label className="space-y-2 block">
-                    <span className="text-sm font-semibold text-slate-500">
-                      BOC Bank Transaction Reference
-                    </span>
+                  <section className="space-y-2">
+                    <h4 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">BOC transaction reference</h4>
                     <input
-                      type="text" 
-                      value={txnReference} 
+                      type="text"
+                      value={txnReference}
                       readOnly
                       placeholder="Generated automatically"
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-blue-500"
+                      className="w-full cursor-default rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-mono text-sm tracking-wide text-slate-900 outline-none"
                     />
-                    <p className="text-xs text-slate-400">
-                      Generated automatically for this dummy BOC transfer.
-                    </p>
-                  </label>
+                    <p className="text-xs text-slate-400">Generated automatically for this dummy BOC transfer.</p>
+                  </section>
                 )}
 
                 {paymentMethod === 'Online Bank Payout' && (
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                      <span className="font-semibold text-slate-900">Bank Transfer Details</span>
-                      <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">Ready to transfer</span>
+                  <section className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <h4 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Transfer route</h4>
+                      <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200">Ready to transfer</span>
                     </div>
-                    <div className="grid gap-2">
-                      <div className="flex items-center justify-between gap-4">
-                        <span className="text-slate-500">From BOC farm account</span>
-                        <strong className="text-right text-slate-900">{farmSourceAccount}</strong>
+                    <dl className="overflow-hidden rounded-2xl border border-slate-200 text-sm">
+                      <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-4 py-3">
+                        <dt className="text-slate-500">From BOC farm account</dt>
+                        <dd className="text-right font-semibold tabular-nums text-slate-900">{farmSourceAccount}</dd>
                       </div>
-                      <div className="flex items-center justify-between gap-4">
-                        <span className="text-slate-500">To BOC farmer account</span>
-                        <strong className="text-right text-slate-900">{getBeneficiaryDetails(payingAdvance?.account_details).accountNumber}</strong>
+                      <div className="flex items-center justify-between gap-4 border-b border-slate-100 px-4 py-3">
+                        <dt className="text-slate-500">To BOC farmer account</dt>
+                        <dd className="text-right font-semibold tabular-nums text-slate-900">{getBeneficiaryDetails(payingAdvance?.account_details).accountNumber}</dd>
                       </div>
-                      <div className="flex items-center justify-between gap-4">
-                        <span className="text-slate-500">Transfer reference</span>
-                        <strong className="text-right text-slate-900">{txnReference || 'Generating...'}</strong>
+                      <div className="flex items-center justify-between gap-4 px-4 py-3">
+                        <dt className="text-slate-500">Transfer reference</dt>
+                        <dd className="text-right font-mono text-xs font-semibold text-slate-900">{txnReference || 'Generating...'}</dd>
                       </div>
-                    </div>
-                  </div>
+                    </dl>
+                  </section>
                 )}
 
                 {payingPayroll && (
-                  <label className="space-y-2 block">
-                    <span className="text-sm font-semibold text-slate-500">Bonus (Add to this month's net salary)</span>
-                    <input 
-                      type="number" 
+                  <section className="space-y-2">
+                    <h4 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Bonus</h4>
+                    <input
+                      type="number"
                       placeholder="0"
                       onChange={(e) => setPayNotes(e.target.value)} // Temporarily recycle notes for bonus inside modal or keep simple notes
-                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-blue-500"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition-colors focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
                     />
-                  </label>
+                    <p className="text-xs text-slate-400">Added to this month's net salary.</p>
+                  </section>
                 )}
 
-                <div className="bg-rose-50 border border-rose-100 rounded-2xl p-4 text-xs text-rose-800 font-medium">
-                  After this payment, Rs. {payingAdvance ? Number(payingAdvance.amount).toFixed(2) : (() => {
-                    const net = Number(payingPayroll?.net_salary ?? 0);
-                    const adv = Number((payingPayroll as any)?.advance_paid ?? 0);
-                    const part = Number((payingPayroll as any)?.partial_paid ?? 0);
-                    return (net - adv - part).toFixed(2);
-                  })()} will be deducted from the farmer's remaining salary. Only Paid status transactions are subtracted.
+                <div className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <FiAlertCircle className="mt-0.5 shrink-0 text-amber-600" size={16} />
+                  <p className="text-xs leading-relaxed text-amber-900">
+                    Rs. {disburseAmount.toFixed(2)} will be deducted from the farmer's remaining salary after this payment.
+                    Only transactions with a <strong className="font-semibold">Paid</strong> status are subtracted.
+                  </p>
                 </div>
               </div>
+            </div>
 
-              <button 
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
+              <button
+                onClick={() => { setPayingAdvance(null); setPayingPayroll(null); setTxnReference(''); setPayNotes(''); }}
+                disabled={isSubmittingPay}
+                className="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-200 hover:text-slate-900 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
                 onClick={handleConfirmPayment}
                 disabled={isSubmittingPay}
-                className="w-full rounded-2xl bg-slate-900 py-4 text-center text-lg font-bold text-white shadow-lg transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-bold text-white shadow-sm transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isSubmittingPay ? 'Processing...' : payingAdvance?.payment_status === 'Payment Pending Confirmation' ? 'Confirm reference' : 'Disburse Payment'}
+                {isSubmittingPay && (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                )}
+                {isSubmittingPay ? 'Processing...' : payingAdvance?.payment_status === 'Payment Pending Confirmation' ? 'Confirm reference' : 'Disburse payment'}
               </button>
             </div>
           </div>

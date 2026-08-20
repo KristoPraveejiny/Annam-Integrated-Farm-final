@@ -81,21 +81,38 @@ export const importExcelData = async (filePath) => {
                     if (existCrop.rowCount === 0) {
                         // 1. Fetch growth period from crop_master
                         let growthPeriod = 90; // Default if not found
-                        const masterRes = await client.query(`SELECT average_growth_period FROM crop_master WHERE crop_name = $1`, [cropName]);
-                        if (masterRes.rowCount > 0) growthPeriod = masterRes.rows[0].average_growth_period;
+                        let isPerennial = false;
+                        let firstHarvestDuration = null;
+                        const masterRes = await client.query(`SELECT average_growth_period, is_perennial, first_harvest_duration FROM crop_master WHERE crop_name = $1`, [cropName]);
+                        if (masterRes.rowCount > 0) {
+                            growthPeriod = masterRes.rows[0].average_growth_period;
+                            isPerennial = masterRes.rows[0].is_perennial === true;
+                            firstHarvestDuration = masterRes.rows[0].first_harvest_duration;
+                        }
 
                         // 2. Calculate expected harvest date
-                        const expectedHarvestDate = new Date(plantingDate.getTime() + growthPeriod * 86400 * 1000);
+                        const expectedHarvestDate = new Date(plantingDate.getTime() + (firstHarvestDuration || growthPeriod) * 86400 * 1000);
 
-                        // 3. Calculate actual harvest date (e.g. expected + random offset between -7 and +7 days)
-                        const offset = Math.floor(Math.random() * 15) - 7;
-                        const actualHarvestDate = new Date(expectedHarvestDate.getTime() + offset * 86400 * 1000);
+                        if (isPerennial) {
+                            // The tree survives every harvest, so it is never a finished
+                            // historical cycle. Its countdown is derived from crop_harvests
+                            // by harvestService instead of a single fabricated date.
+                            await client.query(
+                                `INSERT INTO crop_cycles (farm_id, field_id, crop_name, variety, planting_date, expected_harvest_date, status, harvest_status, is_historical, harvest_progress, remaining_days)
+                                 VALUES ($1, $2, $3, $4, $5, $6, 'harvesting', 'Bearing', false, 0, 0)`,
+                                [farmId, fieldId, cropName, variety, plantingDate, expectedHarvestDate]
+                            );
+                        } else {
+                            // 3. Calculate actual harvest date (e.g. expected + random offset between -7 and +7 days)
+                            const offset = Math.floor(Math.random() * 15) - 7;
+                            const actualHarvestDate = new Date(expectedHarvestDate.getTime() + offset * 86400 * 1000);
 
-                        await client.query(
-                            `INSERT INTO crop_cycles (farm_id, field_id, crop_name, variety, planting_date, expected_harvest_date, actual_harvest_date, status, harvest_status, is_historical, harvest_progress, remaining_days)
-                             VALUES ($1, $2, $3, $4, $5, $6, $7, 'harvested', 'Harvested', true, 100, 0)`,
-                            [farmId, fieldId, cropName, variety, plantingDate, expectedHarvestDate, actualHarvestDate]
-                        );
+                            await client.query(
+                                `INSERT INTO crop_cycles (farm_id, field_id, crop_name, variety, planting_date, expected_harvest_date, actual_harvest_date, status, harvest_status, is_historical, harvest_progress, remaining_days)
+                                 VALUES ($1, $2, $3, $4, $5, $6, $7, 'harvested', 'Harvested', true, 100, 0)`,
+                                [farmId, fieldId, cropName, variety, plantingDate, expectedHarvestDate, actualHarvestDate]
+                            );
+                        }
                     }
                 }
             }

@@ -22,6 +22,36 @@ function dateKey(value) {
   return asString ? asString.slice(0, 10) : null;
 }
 
+// A payroll row is a snapshot taken when it was generated; tasks approved afterwards
+// only exist in salary_ledger. These helpers restate an unsettled row from the ledger so
+// the manager, admin and worker views can never drift apart.
+const SETTLED_PAYMENT_STATUSES = ['paid', 'fully paid'];
+
+export function isSettledPayroll(row) {
+  return SETTLED_PAYMENT_STATUSES.includes(String(row?.payment_status || '').trim().toLowerCase());
+}
+
+// salary_ledger already holds the approved task earnings, so it replaces the shift wage
+// rather than adding to it. Advances and partial payments count as deductions.
+export function summarisePayrollRow(row, ledgerEarnings = 0) {
+  const ledger = toNumber(ledgerEarnings);
+  const storedEarned = toNumber(row?.base_salary) || toNumber(row?.basic_salary) || toNumber(row?.gross_salary);
+  const earned = ledger > 0 ? ledger : storedEarned;
+
+  const bonus = toNumber(row?.bonus);
+  const paidOut = toNumber(row?.advance_paid) + toNumber(row?.partial_paid);
+  const deductions = toNumber(row?.deductions) + paidOut;
+  const remaining = Math.max(0, earned + bonus - deductions);
+
+  return {
+    earned: Number(earned.toFixed(2)),
+    bonus: Number(bonus.toFixed(2)),
+    paid_out: Number(paidOut.toFixed(2)),
+    deductions_total: Number(deductions.toFixed(2)),
+    remaining: Number(remaining.toFixed(2)),
+  };
+}
+
 export function daysInMonth(month, year) {
   const monthIndex = Math.max(1, Number(month) || 1);
   const yearValue = Number(year) || new Date().getFullYear();

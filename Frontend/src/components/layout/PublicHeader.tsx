@@ -1,6 +1,7 @@
 import { Button } from '../ui/Button';
 import { useTranslation } from 'react-i18next';
-import { FiGlobe, FiChevronDown } from 'react-icons/fi';
+import { FiGlobe, FiChevronDown, FiArrowLeft } from 'react-icons/fi';
+import { dashboardPathForRole, getStoredUser, isLoggedIn } from '../../utils/auth';
 
 type PublicHeaderProps = {
   active?: 'home' | 'about' | 'marketplace' | 'contact';
@@ -13,6 +14,11 @@ const linkInactive = 'text-slate-600';
 export function PublicHeader({ active }: PublicHeaderProps) {
   const { t, i18n } = useTranslation();
   const isActive = (name: NonNullable<PublicHeaderProps['active']>) => active === name;
+
+  // A signed-in visitor reaching a public page (typically the marketplace from
+  // their sidebar) gets a way back instead of Login/Register.
+  const signedIn = isLoggedIn();
+  const dashboardHref = dashboardPathForRole(getStoredUser()?.role);
 
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     i18n.changeLanguage(e.target.value);
@@ -40,8 +46,18 @@ export function PublicHeader({ active }: PublicHeaderProps) {
         </nav>
 
         <div className="flex items-center gap-4">
-          <a href="/login"><Button theme="light" variant="ghost">{t("Login")}</Button></a>
-          <a href="/register"><Button theme="light">{t("Register")}</Button></a>
+          {signedIn ? (
+            <a href={dashboardHref}>
+              <Button theme="light" className="gap-2">
+                <FiArrowLeft /> {t("Back to dashboard")}
+              </Button>
+            </a>
+          ) : (
+            <>
+              <a href="/login"><Button theme="light" variant="ghost">{t("Login")}</Button></a>
+              <a href="/register"><Button theme="light">{t("Register")}</Button></a>
+            </>
+          )}
           <div className="relative group">
             <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-emerald-600 group-hover:text-emerald-700 transition-colors">
               <FiGlobe className="h-4 w-4" />

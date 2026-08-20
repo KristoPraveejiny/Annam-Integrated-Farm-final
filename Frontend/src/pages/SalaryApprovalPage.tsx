@@ -11,6 +11,9 @@ interface PayrollRow {
   payment_status: string;
   gross_salary?: number | string | null;
   net_salary?: number | string | null;
+  deductions?: number | string | null;
+  advance_paid?: number | string | null;
+  partial_paid?: number | string | null;
 }
 
 interface AdvanceRow {
@@ -22,6 +25,10 @@ interface AdvanceRow {
   status: string;
   payment_status?: string | null;
 }
+
+// Payroll stays in this list until a manager approves it. Paying an advance flips the
+// status to "PARTIALLY PAID" without any approval, so that state must stay here too.
+const AWAITING_APPROVAL_STATUSES = ['pending', 'partially paid'];
 
 export default function SalaryApprovalPage() {
   const { t } = useTranslation();
@@ -45,7 +52,7 @@ export default function SalaryApprovalPage() {
 
       const headers = { Authorization: `Bearer ${token}` };
       const [res, advanceRes] = await Promise.all([
-        fetch(`/api/salary?month=${Number(month)}&year=${year}`, { headers }),
+        fetch(`/api/salary?month=${Number(month)}&year=${year}&status=${encodeURIComponent(AWAITING_APPROVAL_STATUSES.join(','))}`, { headers }),
         fetch('/api/salary/advances', { headers }),
       ]);
       const advanceData = await advanceRes.json();
@@ -53,7 +60,7 @@ export default function SalaryApprovalPage() {
       const data = await res.json();
       setPayrolls(
         Array.isArray(data)
-          ? data.filter((item) => String(item.payment_status || '').trim().toLowerCase() === 'pending')
+          ? data.filter((item) => AWAITING_APPROVAL_STATUSES.includes(String(item.payment_status || '').trim().toLowerCase()))
           : [],
       );
     } catch (err) {
@@ -105,7 +112,7 @@ export default function SalaryApprovalPage() {
   };
 
   return (
-    <div className="section-shell py-10">
+    <div className="section-shell space-y-6 py-10">
       <SectionHeading
         eyebrow={t("Manager")}
         title={t("Salary Approval")}
@@ -135,17 +142,26 @@ export default function SalaryApprovalPage() {
                 <tr>
                   <th className="px-4 py-3">{t("Worker")}</th>
                   <th className="px-4 py-3">{t("Month")}</th>
+                  <th className="px-4 py-3">{t("Deductions")}</th>
                   <th className="px-4 py-3">{t("Net Salary")}</th>
                   <th className="px-4 py-3">{t("Status")}</th>
                   <th className="px-4 py-3">{t("Action")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {payrolls.map((item) => (
+                {payrolls.map((item) => {
+                  // Match the worker's earnings page: advances and partial payments already
+                  // taken this month are deductions against the net salary.
+                  const earned = Number(item.net_salary ?? item.gross_salary ?? 0);
+                  const deductions = Number(item.deductions || 0) + Number(item.advance_paid || 0) + Number(item.partial_paid || 0);
+                  const net = Math.max(0, earned - deductions);
+
+                  return (
                   <tr key={item.id}>
                     <td className="px-4 py-3 font-medium text-slate-900">{item.worker_name}</td>
                     <td className="px-4 py-3 text-slate-600">{item.payment_month}</td>
-                    <td className="px-4 py-3 text-slate-600">Rs. {Number(item.net_salary || 0).toFixed(2)}</td>
+                    <td className="px-4 py-3 text-rose-600">- Rs. {deductions.toFixed(2)}</td>
+                    <td className="px-4 py-3 font-semibold text-slate-900">Rs. {net.toFixed(2)}</td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
                         <FiCheckCircle /> {item.payment_status}
@@ -160,7 +176,8 @@ export default function SalaryApprovalPage() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

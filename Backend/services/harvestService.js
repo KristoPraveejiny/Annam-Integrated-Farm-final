@@ -1,5 +1,98 @@
 import { pool } from '../db.js';
 
+const DAY_MS = 86400 * 1000;
+
+// pg returns DATE columns as local-midnight Date objects; comparing them
+// directly drifts by the timezone offset, so day maths is done on UTC midnights.
+const toUtcDay = (value) => {
+    const date = value instanceof Date ? value : new Date(value);
+    return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+};
+
+/**
+ * Perennials (coconut, mango, lemon, papaya) survive every harvest and keep
+ * bearing for years, so there is no single harvest date and no terminal
+ * "harvested" state. Progress counts down to the NEXT pick instead, measured
+ * from the last recorded harvest.
+ */
+const calculatePerennial = async (crop, master) => {
+    const plantingDay = toUtcDay(crop.planting_date);
+    const today = toUtcDay(new Date());
+
+    const firstHarvestDays = master.first_harvest_duration || master.average_growth_period;
+    const frequency = master.harvest_frequency || 365;
+
+    const lastHarvestRes = await pool.query(
+        `SELECT MAX(harvest_date) AS last_harvest FROM crop_harvests WHERE crop_cycle_id = $1`,
+        [crop.id]
+    );
+    const lastHarvestRaw = lastHarvestRes.rows[0]?.last_harvest || null;
+    const lastHarvest = lastHarvestRaw ? toUtcDay(lastHarvestRaw) : null;
+
+    // Before the tree has ever borne fruit it is simply maturing towards its
+    // first harvest; afterwards every cycle is one harvest interval long.
+    const anchor = lastHarvest ?? plantingDay;
+    const windowDays = lastHarvest ? frequency : firstHarvestDays;
+
+    const nextHarvestDate = new Date(anchor + windowDays * DAY_MS);
+    const elapsedDays = Math.floor((today - anchor) / DAY_MS);
+
+    let remainingDays = windowDays - elapsedDays;
+    if (remainingDays < 0) remainingDays = 0;
+
+    let progress = Math.floor((elapsedDays / windowDays) * 100);
+    if (progress > 100) progress = 100;
+    if (progress < 0) progress = 0;
+
+    const currentStatus = !lastHarvest
+        ? 'Maturing'
+        : remainingDays === 0 ? 'Harvest Due' : 'Bearing';
+
+    await pool.query(
+        `UPDATE crop_cycles
+         SET expected_harvest_date = $1, remaining_days = $2, harvest_progress = $3, harvest_status = $4,
+             actual_harvest_date = COALESCE($5, actual_harvest_date)
+         WHERE id = $6`,
+        [nextHarvestDate, remainingDays, progress, currentStatus, lastHarvestRaw, crop.id]
+    );
+
+    // Reminders still fire ahead of the next pick, but a perennial is never
+    // "overdue" - the fruit simply keeps ripening.
+    if (remainingDays > 0) {
+        let trigger = null;
+        if (remainingDays === 14) trigger = { priority: 'Normal', title: 'Upcoming Harvest (14 Days)' };
+        else if (remainingDays === 7) trigger = { priority: 'High', title: 'Harvest Preparation (7 Days)' };
+        else if (remainingDays === 1) trigger = { priority: 'Urgent', title: 'Harvest Tomorrow' };
+
+        if (trigger && crop.remaining_days !== remainingDays) {
+            await notifyFarm(
+                crop.farm_id,
+                'harvest',
+                trigger.title,
+                `${crop.crop_name} is ready for its next harvest in ${remainingDays} days.`,
+                trigger.priority
+            );
+        }
+    }
+
+    return { expectedHarvestDate: nextHarvestDate, remainingDays, progress, currentStatus };
+};
+
+const notifyFarm = async (farmId, type, title, message, priority) => {
+    const usersRes = await pool.query(`
+        SELECT owner_id as id FROM farms WHERE id = $1
+        UNION
+        SELECT user_id as id FROM farm_memberships WHERE farm_id = $1
+    `, [farmId]);
+
+    for (const u of usersRes.rows) {
+        await pool.query(`
+            INSERT INTO notifications (user_id, farm_id, type, title, message, priority, channel)
+            VALUES ($1, $2, $3, $4, $5, $6, 'in-app')
+        `, [u.id, farmId, type, title, message, priority]);
+    }
+};
+
 export const calculateHarvestForCrop = async (cropId) => {
     try {
         const cropRes = await pool.query(`SELECT * FROM crop_cycles WHERE id = $1`, [cropId]);
@@ -9,6 +102,10 @@ export const calculateHarvestForCrop = async (cropId) => {
         const masterRes = await pool.query(`SELECT * FROM crop_master WHERE crop_name = $1`, [crop.crop_name]);
         if (masterRes.rowCount === 0) return; // No master data, can't calculate
         const master = masterRes.rows[0];
+
+        if (master.is_perennial) {
+            return await calculatePerennial(crop, master);
+        }
 
         const plantingDate = new Date(crop.planting_date);
         const growthPeriod = master.average_growth_period;
@@ -96,7 +193,19 @@ export const calculateHarvestForCrop = async (cropId) => {
 
 export const updateAllHarvests = async () => {
     try {
-        const crops = await pool.query(`SELECT id FROM crop_cycles WHERE (harvest_status IS NULL OR harvest_status != 'Harvested') AND is_historical = FALSE AND status != 'harvested' AND status != 'completed'`);
+        // Perennials are always recalculated - they never reach a terminal
+        // "harvested" state, so a stray flag must not freeze their countdown.
+        const crops = await pool.query(`
+            SELECT c.id
+            FROM crop_cycles c
+            LEFT JOIN crop_master m ON m.crop_name = c.crop_name
+            WHERE COALESCE(m.is_perennial, FALSE) = TRUE
+               OR (
+                    (c.harvest_status IS NULL OR c.harvest_status != 'Harvested')
+                    AND c.is_historical = FALSE
+                    AND c.status != 'harvested'
+                  )
+        `);
         for (const crop of crops.rows) {
             await calculateHarvestForCrop(crop.id);
         }

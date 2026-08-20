@@ -253,7 +253,22 @@ async function upsertMonthlyPayrollAfterApproval({ farmId, managerId, workerId, 
   const overtimePay = Number(attendance.overtime_pay || 0);
   const bonus = 0;
   const deductions = 0;
-  const gross = Number((shiftWageEarned + overtimePay + bonus - deductions).toFixed(2));
+
+  // salary_ledger already holds the approved task earnings. When it has entries it is the
+  // authoritative total (the same rule the worker's earnings page uses), otherwise fall
+  // back to the shift wage so the manager and worker never see different numbers.
+  const ledgerRes = await pool.query(`
+    SELECT COALESCE(SUM(amount), 0)::numeric AS total
+    FROM salary_ledger
+    WHERE farm_id = $1 AND worker_id = $2
+      AND created_at >= $3::date
+      AND created_at < ($3::date + INTERVAL '1 month')
+  `, [farmId, workerId, monthStart]);
+  const ledgerEarnings = Number(ledgerRes.rows[0]?.total || 0);
+
+  const gross = ledgerEarnings > 0
+    ? Number((ledgerEarnings + bonus - deductions).toFixed(2))
+    : Number((shiftWageEarned + overtimePay + bonus - deductions).toFixed(2));
   const monthDays = daysInMonth(paymentMonthNumber, paymentYear);
 
   const existing = await pool.query(
@@ -1215,6 +1230,25 @@ export async function reviewTask(req, res) {
         }
       }
 
+      // Some submission paths never stamp completed_at / working_hours, which left the task
+      // showing 0 hours. Backfill them here from the actual start -> final-evidence window.
+      if (!updatedTask.completed_at || !Number(updatedTask.working_hours)) {
+        const stamped = await pool.query(`
+          UPDATE tasks
+          SET completed_at = COALESCE(completed_at, $2::timestamptz),
+              working_hours = COALESCE(
+                NULLIF(working_hours, 0),
+                GREATEST(EXTRACT(EPOCH FROM ($2::timestamptz - COALESCE(started_at, $2::timestamptz))) / 3600, 0)
+              )
+          WHERE id = $1
+          RETURNING completed_at, working_hours
+        `, [taskId, checkOutTime]);
+        if (stamped.rows.length > 0) {
+          updatedTask.completed_at = stamped.rows[0].completed_at;
+          updatedTask.working_hours = stamped.rows[0].working_hours;
+        }
+      }
+
       let attendanceStatus = 'present';
       if (task.status === 'late_submission') {
         attendanceStatus = 'late_present';
@@ -1235,17 +1269,41 @@ export async function reviewTask(req, res) {
           fullShiftWage = shiftRes.rows[0].base_wage || 0;
         }
 
+        // Aggregate hours across every approved task of this worker for the same shift/day,
+        // otherwise a second approval would overwrite the first task's hours.
+        const shiftTotals = await pool.query(`
+          SELECT
+            COALESCE(SUM(COALESCE(
+              NULLIF(t.working_hours, 0),
+              GREATEST(EXTRACT(EPOCH FROM (COALESCE(t.completed_at, t.end_time, t.updated_at) - t.started_at)) / 3600, 0),
+              0
+            )), 0)::numeric AS total_hours,
+            MIN(COALESCE(t.started_at, t.updated_at)) AS first_check_in,
+            MAX(COALESCE(t.completed_at, t.end_time, t.updated_at)) AS last_check_out
+          FROM tasks t
+          WHERE t.farm_id = $1
+            AND t.assigned_to_user_id = $2
+            AND t.shift_id = $3
+            AND LOWER(t.status) IN ('approved', 'completed')
+            AND DATE(COALESCE(t.completed_at, t.end_time, t.updated_at)) = $4::date
+        `, [farmId, workerId, updatedTask.shift_id, attendanceDate]);
+
+        const totals = shiftTotals.rows[0] || {};
+        const aggregatedHours = Number(totals.total_hours || 0) || Number(updatedTask.working_hours || 0);
+        const aggregatedCheckIn = totals.first_check_in || checkInTime;
+        const aggregatedCheckOut = totals.last_check_out || checkOutTime;
+
         // Update or insert shift attendance with correct approved completion percentage and payable wage
         const payableWage = (Number(fullShiftWage) * (Number(cumulativeProgress) / 100)).toFixed(2);
         if (existingAttendance.rows.length > 0) {
           await pool.query(`
             UPDATE shift_attendances SET check_in_time = $1, check_out_time = $2, total_hours = $3, shift_status = $4, full_shift_wage = $6, approved_completion_percentage = $7, payable_wage = $8, updated_at = NOW() WHERE id = $5
-          `, [checkInTime, checkOutTime, updatedTask.working_hours, attendanceStatus, existingAttendance.rows[0].id, fullShiftWage, cumulativeProgress, payableWage]);
+          `, [aggregatedCheckIn, aggregatedCheckOut, aggregatedHours, attendanceStatus, existingAttendance.rows[0].id, fullShiftWage, cumulativeProgress, payableWage]);
         } else {
           await pool.query(`
             INSERT INTO shift_attendances (worker_id, date, shift_id, check_in_time, check_out_time, total_hours, shift_status, farm_id, full_shift_wage, approved_completion_percentage, payable_wage)
             VALUES ($1, $2::date, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-          `, [workerId, attendanceDate, updatedTask.shift_id, checkInTime, checkOutTime, updatedTask.working_hours, attendanceStatus, farmId, fullShiftWage, cumulativeProgress, payableWage]);
+          `, [workerId, attendanceDate, updatedTask.shift_id, aggregatedCheckIn, aggregatedCheckOut, aggregatedHours, attendanceStatus, farmId, fullShiftWage, cumulativeProgress, payableWage]);
         }
       }
 
@@ -1529,12 +1587,30 @@ export async function reviewTaskUpdate(req, res) {
           [update.assigned_to_user_id, update.shift_id, attendanceDate]
         );
 
+        // Sum the hours of every approved/completed task in this shift/day so multiple
+        // tasks accumulate instead of the attendance row showing a single task's hours.
+        const shiftTotals = await pool.query(`
+          SELECT COALESCE(SUM(COALESCE(
+            NULLIF(t.working_hours, 0),
+            GREATEST(EXTRACT(EPOCH FROM (COALESCE(t.completed_at, t.end_time, t.updated_at) - t.started_at)) / 3600, 0),
+            0
+          )), 0)::numeric AS total_hours
+          FROM tasks t
+          WHERE t.farm_id = $1
+            AND t.assigned_to_user_id = $2
+            AND t.shift_id = $3
+            AND LOWER(t.status) IN ('approved', 'completed')
+            AND DATE(COALESCE(t.completed_at, t.end_time, t.updated_at)) = $4::date
+        `, [farmId, update.assigned_to_user_id, update.shift_id, attendanceDate]);
+        const aggregatedHours = Number(shiftTotals.rows[0]?.total_hours || 0);
+
         if (existingAttendance.rows.length > 0) {
           await pool.query(`
-            UPDATE shift_attendances 
-            SET full_shift_wage = $1, approved_completion_percentage = $2, payable_wage = $3, shift_status = 'Present', updated_at = NOW()
+            UPDATE shift_attendances
+            SET full_shift_wage = $1, approved_completion_percentage = $2, payable_wage = $3, shift_status = 'Present',
+                total_hours = GREATEST(COALESCE(total_hours, 0), $5::numeric), updated_at = NOW()
             WHERE id = $4
-          `, [fullShiftWage, cumulativeProgress, payableWage, existingAttendance.rows[0].id]);
+          `, [fullShiftWage, cumulativeProgress, payableWage, existingAttendance.rows[0].id, aggregatedHours]);
         } else {
           // If not exists, insert it
           const checkInTime = update.created_at || new Date();
@@ -1542,7 +1618,7 @@ export async function reviewTaskUpdate(req, res) {
           await pool.query(`
             INSERT INTO shift_attendances (
               worker_id, date, shift_id, check_in_time, check_out_time, total_hours, shift_status, farm_id, full_shift_wage, approved_completion_percentage, payable_wage
-            ) VALUES ($1, $2::date, $3, $4, $5, 0, 'Present', $6, $7, $8, $9)
+            ) VALUES ($1, $2::date, $3, $4, $5, $10, 'Present', $6, $7, $8, $9)
           `, [
             update.assigned_to_user_id,
             attendanceDate,
@@ -1552,7 +1628,8 @@ export async function reviewTaskUpdate(req, res) {
             farmId,
             fullShiftWage,
             cumulativeProgress,
-            payableWage
+            payableWage,
+            aggregatedHours
           ]);
         }
 

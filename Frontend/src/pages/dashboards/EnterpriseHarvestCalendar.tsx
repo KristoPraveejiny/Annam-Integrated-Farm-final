@@ -14,6 +14,9 @@ const statusStyles: Record<string, { label: string; dot: string; bg: string; bor
   overdue: { label: 'Overdue', dot: 'bg-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/20', text: 'text-rose-300' },
   harvested: { label: 'Harvested', dot: 'bg-slate-400', bg: 'bg-slate-500/10', border: 'border-slate-500/20', text: 'text-slate-300' },
   growing: { label: 'Growing', dot: 'bg-sky-400', bg: 'bg-sky-500/10', border: 'border-sky-500/20', text: 'text-sky-300' },
+  bearing: { label: 'Bearing', dot: 'bg-teal-400', bg: 'bg-teal-500/10', border: 'border-teal-500/20', text: 'text-teal-300' },
+  maturing: { label: 'Maturing', dot: 'bg-indigo-400', bg: 'bg-indigo-500/10', border: 'border-indigo-500/20', text: 'text-indigo-300' },
+  recorded: { label: 'Harvest Recorded', dot: 'bg-lime-400', bg: 'bg-lime-500/10', border: 'border-lime-500/20', text: 'text-lime-300' },
 };
 
 const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -21,7 +24,7 @@ const addDays = (date: Date, days: number) => { const next = new Date(date); nex
 const startOfWeek = (date: Date) => addDays(startOfDay(date), -((startOfDay(date).getDay() + 6) % 7));
 const formatKey = (date: Date) => date.toISOString().slice(0, 10);
 
-export function EnterpriseHarvestCalendar({ crops, fields, t }: { crops: any[]; fields: any[]; t: (value: string) => string }) {
+export function EnterpriseHarvestCalendar({ crops, fields, t, harvests = [] }: { crops: any[]; fields: any[]; t: (value: string) => string; harvests?: any[] }) {
   const [view, setView] = useState<CalendarView>('month');
   const [cursor, setCursor] = useState(() => new Date());
   const [filters, setFilters] = useState<Record<string, string[]>>({ crop: [], field: [], status: [], month: [], season: [], variety: [] });
@@ -30,18 +33,47 @@ export function EnterpriseHarvestCalendar({ crops, fields, t }: { crops: any[]; 
 
   const events = useMemo(() => {
     const today = startOfDay(new Date());
-    return crops.filter((crop) => !crop.is_historical).map((crop) => {
+
+    // Harvests a farmer actually recorded, shown on the day they happened
+    // alongside the upcoming/expected harvest markers below.
+    const recordedEvents = harvests.map((harvest) => {
+      const field = fields.find((item) => String(item.id) === String(harvest.field_id));
+      const date = harvest.harvest_date ? startOfDay(new Date(harvest.harvest_date)) : today;
+      return {
+        id: `harvest-${harvest.id}`,
+        crop: harvest,
+        harvest,
+        field,
+        date,
+        remaining: Math.round((date.getTime() - today.getTime()) / 86400000),
+        progress: 100,
+        statusKey: 'recorded',
+        title: harvest.crop_name,
+        subtitle: harvest.field_name || field?.field_name || 'Unassigned',
+        variety: harvest.variety || '-',
+        season: harvest.season || '-',
+        color: statusStyles.recorded,
+      };
+    });
+
+    const cycleEvents = crops.filter((crop) => !crop.is_historical).map((crop) => {
       const field = fields.find((item) => String(item.id) === String(crop.field_id));
       const date = crop.expected_harvest_date ? startOfDay(new Date(crop.expected_harvest_date)) : crop.planting_date ? startOfDay(new Date(crop.planting_date)) : today;
       const remaining = crop.remaining_days ?? Math.round((date.getTime() - today.getTime()) / 86400000);
       const progress = typeof crop.harvest_progress === 'number' ? crop.harvest_progress : Number(crop.growth_percentage ?? 0);
-      const statusKey = crop.harvest_status === 'Harvested' || crop.status === 'completed' ? 'harvested' : remaining < 0 ? 'overdue' : remaining === 0 ? 'today' : remaining <= 7 ? 'due' : progress >= 70 ? 'ready' : 'growing';
-      return { id: crop.id, crop, field, date, remaining, progress, statusKey, title: crop.crop_name, subtitle: field?.field_name || 'Unassigned', variety: crop.variety || '-', season: crop.season || '-', color: statusStyles[statusKey] };
-    }).filter((event) => {
+      // A perennial keeps bearing, so it never reaches the harvested/overdue
+      // end states the seasonal ladder below assumes.
+      const statusKey = crop.is_perennial
+        ? (crop.harvest_status === 'Maturing' ? 'maturing' : remaining === 0 ? 'today' : remaining <= 7 ? 'due' : 'bearing')
+        : crop.harvest_status === 'Harvested' || crop.status === 'completed' ? 'harvested' : remaining < 0 ? 'overdue' : remaining === 0 ? 'today' : remaining <= 7 ? 'due' : progress >= 70 ? 'ready' : 'growing';
+      return { id: crop.id, crop, harvest: null, field, date, remaining, progress, statusKey, title: crop.crop_name, subtitle: field?.field_name || 'Unassigned', variety: crop.variety || '-', season: crop.season || '-', color: statusStyles[statusKey] };
+    });
+
+    return [...cycleEvents, ...recordedEvents].filter((event) => {
       const matches = (key: string, value: string) => filters[key].length === 0 || filters[key].includes(value);
       return matches('crop', event.title) && matches('field', event.subtitle) && matches('status', event.statusKey) && matches('month', monthNames[event.date.getMonth()]) && matches('season', event.season) && matches('variety', event.variety);
     }).sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [crops, fields, filters]);
+  }, [crops, fields, filters, harvests]);
 
   const month = cursor.getMonth();
   const year = cursor.getFullYear();
@@ -232,18 +264,45 @@ export function EnterpriseHarvestCalendar({ crops, fields, t }: { crops: any[]; 
                 </div>
               </div>
 
-              <div className="mt-4">
-                <div className="mb-2 flex items-center justify-between text-sm text-slate-300">
-                  <span>Growing Progress</span>
-                  <span>{Math.round(activeEvent.progress)}%</span>
+              {activeEvent.harvest ? (
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-2xl border border-lime-500/20 bg-lime-500/10 p-4">
+                    <div className="text-xs uppercase tracking-[0.2em] text-slate-400">Quantity harvested</div>
+                    <div className="mt-2 text-white">
+                      {Number(activeEvent.harvest.quantity || 0).toLocaleString()} {activeEvent.harvest.unit}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div className="text-xs uppercase tracking-[0.2em] text-slate-400">Recorded by</div>
+                    <div className="mt-2 text-white">{activeEvent.harvest.recorded_by_name || 'Imported record'}</div>
+                  </div>
+                  {Number(activeEvent.harvest.total_revenue) > 0 && (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div className="text-xs uppercase tracking-[0.2em] text-slate-400">Value</div>
+                      <div className="mt-2 text-white">Rs. {Number(activeEvent.harvest.total_revenue).toFixed(2)}</div>
+                    </div>
+                  )}
+                  {activeEvent.harvest.notes && (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div className="text-xs uppercase tracking-[0.2em] text-slate-400">Notes</div>
+                      <div className="mt-2 text-white">{activeEvent.harvest.notes}</div>
+                    </div>
+                  )}
                 </div>
-                <div className="h-3 rounded-full bg-white/10">
-                  <div
-                    className="h-3 rounded-full bg-gradient-to-r from-emerald-500 to-lime-400"
-                    style={{ width: `${Math.max(5, Math.min(100, activeEvent.progress))}%` }}
-                  />
+              ) : (
+                <div className="mt-4">
+                  <div className="mb-2 flex items-center justify-between text-sm text-slate-300">
+                    <span>Growing Progress</span>
+                    <span>{Math.round(activeEvent.progress)}%</span>
+                  </div>
+                  <div className="h-3 rounded-full bg-white/10">
+                    <div
+                      className="h-3 rounded-full bg-gradient-to-r from-emerald-500 to-lime-400"
+                      style={{ width: `${Math.max(5, Math.min(100, activeEvent.progress))}%` }}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="mt-6 flex justify-end">
                 <Button onClick={() => setActiveEvent(null)}>Close</Button>

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Card } from '../components/ui/Card';
 import { SectionHeading } from '../components/ui/SectionHeading';
 import { MonthlyPaymentFormModal } from '../components/Salary/MonthlyPaymentFormModal';
+import { PayrollQueueCard, type PayrollQueueRow } from '../components/Salary/PayrollQueueCard';
 import { FiCheckCircle } from 'react-icons/fi';
 
 interface ReportRow {
@@ -14,24 +15,31 @@ interface ReportRow {
   is_paid?: boolean;
 }
 
+const QUEUE_STATUSES = 'pending,approved,partially paid,payment pending confirmation';
+
+const authToken = () => {
+  const tokenRaw = localStorage.getItem('token');
+  return tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
+};
+
 export default function SalaryReportPage() {
   const [report, setReport] = useState<ReportRow[]>([]);
+  const [payrolls, setPayrolls] = useState<PayrollQueueRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [queueLoading, setQueueLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedWorker, setSelectedWorker] = useState<ReportRow | null>(null);
 
   useEffect(() => {
     fetchReport();
+    fetchPayrollQueue();
   }, []);
 
   const fetchReport = async () => {
     try {
       setLoading(true);
-      const tokenRaw = localStorage.getItem('token');
-      const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
-      
       const res = await fetch('/api/salary/report', {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${authToken()}` }
       });
       const data = await res.json();
       setReport(data);
@@ -42,18 +50,66 @@ export default function SalaryReportPage() {
     }
   };
 
+  const fetchPayrollQueue = async () => {
+    try {
+      setQueueLoading(true);
+      const res = await fetch(`/api/salary?status=${encodeURIComponent(QUEUE_STATUSES)}`, {
+        headers: { Authorization: `Bearer ${authToken()}` }
+      });
+      const data = await res.json();
+      setPayrolls(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to fetch payroll queue', err);
+      setPayrolls([]);
+    } finally {
+      setQueueLoading(false);
+    }
+  };
+
+  const approvePayroll = async (row: PayrollQueueRow) => {
+    await fetch(`/api/salary/${row.id}/approve`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${authToken()}` }
+    });
+    fetchPayrollQueue();
+  };
+
+  const payPayroll = (row: PayrollQueueRow) => {
+    setSelectedWorker({
+      worker_id: row.worker_id,
+      worker_name: row.worker_name,
+      payment_month: row.payment_month,
+      total_completed_tasks: String(row.total_completed_tasks ?? 0),
+      total_approved_sessions: String(row.total_approved_sessions ?? 0),
+      basic_salary: String(Number(row.net_salary ?? row.gross_salary ?? 0)),
+    });
+    setIsModalOpen(true);
+  };
+
+  const refreshAll = () => {
+    fetchReport();
+    fetchPayrollQueue();
+  };
+
   const openPaymentModal = (worker: ReportRow) => {
     setSelectedWorker(worker);
     setIsModalOpen(true);
   };
 
   return (
-    <div className="section-shell py-10">
-      <SectionHeading 
-        eyebrow="Manager" 
-        title="Salary Report" 
-        description="View monthly salary report and process payments." 
-        tone="light" 
+    <div className="section-shell space-y-6 py-10">
+      <SectionHeading
+        eyebrow="Manager"
+        title="Salary Report"
+        description="View monthly salary report and process payments."
+        tone="light"
+      />
+
+      <PayrollQueueCard
+        rows={payrolls}
+        loading={queueLoading}
+        onApprove={approvePayroll}
+        onPay={payPayroll}
       />
 
       <Card title="Worker Salary Report" subtitle="Total completed sessions and amounts">
@@ -113,7 +169,7 @@ export default function SalaryReportPage() {
           totalCompletedTasks={Number(selectedWorker.total_completed_tasks)}
           totalApprovedSessions={Number(selectedWorker.total_approved_sessions)}
           basicSalary={Number(selectedWorker.basic_salary)}
-          onPaymentSuccess={fetchReport}
+          onPaymentSuccess={refreshAll}
         />
       )}
     </div>

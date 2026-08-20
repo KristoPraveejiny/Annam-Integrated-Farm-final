@@ -1,7 +1,7 @@
 import { pool } from '../db.js';
 import { getDefaultFarmId } from './livestockController.js';
 import { syncAttendanceFromCompletedTasks } from './taskController.js';
-import { calculatePayrollMetrics } from '../utils/payrollMath.js';
+import { calculatePayrollMetrics, isSettledPayroll, summarisePayrollRow } from '../utils/payrollMath.js';
 import { sendEmail } from '../services/emailService.js';
 import { randomUUID } from 'crypto';
 import { getPayoutProvider } from '../services/payoutProvider.js';
@@ -99,8 +99,10 @@ export async function getFarmerSalaryStats(farmId, workerId, payrollMonth) {
     const ledgerEarnings = Number(ledgerRes.rows[0].total || 0);
 
     const metrics = calculatePayrollMetrics(attendances.rows, { month: monthNum, year: yearNum, deductions: 0 });
-    netSalary = metrics.netSalary + ledgerEarnings;
-    grossSalary = metrics.grossSalary + ledgerEarnings;
+    // Ledger entries already are the approved task earnings, so they replace the shift
+    // wage rather than adding to it (otherwise the same work is counted twice).
+    netSalary = ledgerEarnings > 0 ? ledgerEarnings : metrics.netSalary;
+    grossSalary = ledgerEarnings > 0 ? ledgerEarnings : metrics.grossSalary;
   }
 
   // 2. Calculate total successful PAID advances for that month.
@@ -306,26 +308,59 @@ export const getPayroll = async (req, res) => {
   try {
     const userId = req.user.userId;
     const farmId = await getDefaultFarmId(userId);
-    const { month, year } = req.query;
+    const { month, year, status } = req.query;
 
+    // Callers default to the paid payroll; the approval screen asks for pending rows.
+    const statusFilter = String(status || '')
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean);
+    const allowedStatuses = statusFilter.length > 0 ? statusFilter : ['paid', 'fully paid'];
+
+    const params = [farmId, allowedStatuses];
     let query = `
       SELECT p.*, u.full_name as worker_name
       FROM monthly_salary_payments p
       JOIN app_users u ON p.worker_id = u.id
       WHERE p.farm_id = $1
-        AND LOWER(BTRIM(COALESCE(p.payment_status, ''))) IN ('paid', 'fully paid')
+        AND LOWER(BTRIM(COALESCE(p.payment_status, ''))) = ANY($2::text[])
     `;
-    const params = [farmId];
 
     if (month && year) {
-      query += ` AND p.payment_month = $2`;
+      query += ` AND p.payment_month = $3`;
       params.push(`${year}-${month.toString().padStart(2, '0')}`);
     }
 
     query += ` ORDER BY p.created_at DESC`;
 
     const result = await pool.query(query, params);
-    res.json(result.rows);
+
+    // Refresh every row that is not fully settled yet so the manager sees the same earned
+    // total the worker does instead of the stale generated snapshot.
+    const rows = await Promise.all(result.rows.map(async (row) => {
+      if (isSettledPayroll(row)) return row;
+
+      const ledgerRes = await pool.query(`
+        SELECT COALESCE(SUM(amount), 0)::numeric AS total
+        FROM salary_ledger
+        WHERE farm_id = $1 AND worker_id = $2
+          AND created_at >= ($3 || '-01')::date
+          AND created_at < (($3 || '-01')::date + INTERVAL '1 month')
+      `, [farmId, row.worker_id, row.payment_month]);
+
+      const ledgerEarnings = Number(ledgerRes.rows[0]?.total || 0);
+      if (ledgerEarnings <= 0) return row;
+
+      const totals = summarisePayrollRow(row, ledgerEarnings);
+      const gross = Number((totals.earned + totals.bonus).toFixed(2));
+      return {
+        ...row,
+        gross_salary: gross,
+        net_salary: Number(Math.max(0, gross - Number(row.deductions || 0)).toFixed(2)),
+      };
+    }));
+
+    res.json(rows);
   } catch (err) {
     console.error('Error fetching payroll:', err);
     res.status(500).json({ error: 'Failed to fetch payroll' });
