@@ -1,4 +1,5 @@
 import os
+import dj_database_url
 from dotenv import load_dotenv
 
 # Trigger reload to load new EMAIL_HOST_PASSWORD from .env
@@ -38,14 +39,11 @@ CORS_ALLOW_HEADERS = [
 ]
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": "annam_integrated_farm",
-        "USER": "postgres",
-        "PASSWORD": "Kristo@18",
-        "HOST": "localhost",
-        "PORT": "5432",
-    }
+    "default": dj_database_url.parse(
+        os.getenv("DATABASE_URL"),
+        conn_max_age=600,
+        ssl_require=True,
+    )
 }
 
 import os

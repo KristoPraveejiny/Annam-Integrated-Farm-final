@@ -162,6 +162,8 @@ export default function CartPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [removingId, setRemovingId] = useState<string | null>(null);
+  // null = paying for the whole cart; otherwise the one line being bought.
+  const [payingItemId, setPayingItemId] = useState<string | null>(null);
 
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentStep, setPaymentStep] = useState<PaymentStep>('summary');
@@ -192,7 +194,18 @@ export default function CartPage() {
     [],
   );
 
-  const advanceAmount = useMemo(() => cartData.totalAmount * 0.25, [cartData.totalAmount]);
+  // Everything downstream - totals, advance, receipt - works off this list, so
+  // one item and the whole cart follow exactly the same payment path.
+  const payingItems = useMemo(
+    () => (payingItemId ? cartData.items.filter((item) => item.cart_item_id === payingItemId) : cartData.items),
+    [cartData.items, payingItemId],
+  );
+  const payableTotal = useMemo(
+    () => payingItems.reduce((sum, item) => sum + Number(item.quantity) * Number(item.cart_price), 0),
+    [payingItems],
+  );
+  const advanceAmount = useMemo(() => payableTotal * 0.25, [payableTotal]);
+  const cartAdvance = useMemo(() => cartData.totalAmount * 0.25, [cartData.totalAmount]);
   const selectedMethodInfo = paymentMethods.find((method) => method.id === selectedMethod) || paymentMethods[1];
   const todayLabel = new Date().toLocaleString([], {
     year: 'numeric',
@@ -218,7 +231,8 @@ export default function CartPage() {
     }
   };
 
-  const openPaymentFlow = () => {
+  const openPaymentFlow = (cartItemId: string | null = null) => {
+    setPayingItemId(cartItemId);
     if (cartData.items.length === 0) {
       notifyWarning('Your cart is empty.');
       return;
@@ -240,6 +254,7 @@ export default function CartPage() {
   const closePaymentFlow = () => {
     if (processing) return;
     setPaymentOpen(false);
+    setPayingItemId(null);
     setPaymentStep('summary');
     setTransactionPin('');
     setReferenceId('');
@@ -286,6 +301,7 @@ export default function CartPage() {
       await placeOrder({
         advanceAmount,
         paymentMethod: selectedMethod,
+        cart_item_id: payingItemId,
         senderDetails,
       });
 
@@ -296,7 +312,7 @@ export default function CartPage() {
         method: selectedMethodInfo.name,
         referenceId,
         senderDetails,
-        items: cartData.items.map((item) => ({
+        items: payingItems.map((item) => ({
           product_name: item.product_name,
           quantity: item.quantity,
           cart_price: item.cart_price,
@@ -370,8 +386,8 @@ export default function CartPage() {
   const isSuccess = paymentStep === 'success' && receipt;
 
   return (
-    <div className="section-shell flex h-full min-h-0 flex-col overflow-hidden py-4 sm:py-0">
-      <div className="mb-4 shrink-0 flex flex-col gap-4 rounded-[2rem] border border-white/10 bg-white/[0.08] p-5 shadow-[0_18px_50px_rgba(2,6,23,0.22)] backdrop-blur-2xl lg:flex-row lg:items-end lg:justify-between">
+    <div className="section-shell space-y-4 py-6">
+      <div className="flex flex-col gap-4 rounded-[2rem] border border-white/10 bg-white/[0.08] p-5 shadow-[0_18px_50px_rgba(2,6,23,0.22)] backdrop-blur-2xl lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.28em] text-emerald-300/80">Secure Customer Checkout</p>
           <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">{t('Your Cart')}</h1>
@@ -387,11 +403,11 @@ export default function CartPage() {
         </div>
       </div>
 
-      <div className="grid flex-1 min-h-0 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className="grid items-start gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <Card
           title={t('Order Summary')}
           subtitle={t('Review the items in your cart before making payment')}
-          className="flex min-h-0 flex-col overflow-hidden border-white/10 bg-white/[0.08] backdrop-blur-2xl"
+          className="border-white/10 bg-white/[0.08] backdrop-blur-2xl"
         >
           {loading ? (
             <p className="p-4 text-slate-300">Loading cart...</p>
@@ -406,8 +422,8 @@ export default function CartPage() {
               <p className="mt-1 text-sm text-slate-400">Add products to continue to secure payment.</p>
             </div>
           ) : (
-            <div className="flex min-h-0 flex-1 flex-col gap-4">
-              <div className="min-h-0 flex-1 overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950/30">
+            <div className="flex flex-col gap-4">
+              <div className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950/30">
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-white/10 text-left text-sm">
                     <thead className="bg-slate-950/60 text-slate-300">
@@ -446,15 +462,24 @@ export default function CartPage() {
                           <td className="px-4 py-4 text-right font-semibold text-white">
                             Rs. {(item.quantity * item.cart_price).toFixed(2)}
                           </td>
-                          <td className="px-4 py-4 text-right">
-                            <button
-                              type="button"
-                              onClick={() => handleRemove(item.cart_item_id)}
-                              disabled={removingId === item.cart_item_id}
-                              className="inline-flex items-center gap-2 rounded-full border border-rose-400/20 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:opacity-60"
-                            >
-                              {removingId === item.cart_item_id ? 'Removing...' : 'Remove'}
-                            </button>
+                          <td className="px-4 py-4">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openPaymentFlow(item.cart_item_id)}
+                                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-4 py-1.5 text-xs font-bold text-slate-950 shadow-[0_8px_20px_rgba(16,185,129,0.25)] transition hover:bg-emerald-400"
+                              >
+                                <FiCreditCard /> {t('Pay here')}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRemove(item.cart_item_id)}
+                                disabled={removingId === item.cart_item_id}
+                                className="inline-flex items-center gap-2 rounded-full border border-rose-400/20 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:opacity-60"
+                              >
+                                {removingId === item.cart_item_id ? t('Removing...') : t('Remove')}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -465,13 +490,16 @@ export default function CartPage() {
 
               <div className="grid gap-4 rounded-[1.5rem] border border-emerald-400/15 bg-emerald-500/10 p-4 sm:grid-cols-3">
                 <InfoTile label="Cart Total" value={`Rs. ${cartData.totalAmount.toFixed(2)}`} />
-                <InfoTile label="Advance Due" value={`Rs. ${advanceAmount.toFixed(2)}`} />
-                <InfoTile label="Status" value="Ready to pay" />
+                <InfoTile label="Advance Due (25%)" value={`Rs. ${cartAdvance.toFixed(2)}`} />
+                <InfoTile label="Items" value={`${cartData.items.length}`} />
               </div>
 
-              <div className="sticky bottom-0 flex justify-end rounded-[1.25rem] border border-white/10 bg-slate-950/85 p-3 backdrop-blur-xl">
-                <Button onClick={openPaymentFlow} disabled={cartData.items.length === 0} className="min-w-56 rounded-full bg-emerald-600 px-6 py-3 text-white shadow-[0_18px_40px_rgba(16,185,129,0.25)] hover:bg-emerald-500">
-                  Proceed to Secure Payment
+              <div className="flex flex-col gap-3 rounded-[1.25rem] border border-white/10 bg-slate-950/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-slate-300">
+                  {t('Pay for everything at once, or use')} <span className="font-semibold text-emerald-300">{t('Pay here')}</span> {t('on a single item.')}
+                </p>
+                <Button onClick={() => openPaymentFlow(null)} disabled={cartData.items.length === 0} className="shrink-0 rounded-full bg-emerald-600 px-6 py-3 text-white shadow-[0_18px_40px_rgba(16,185,129,0.25)] hover:bg-emerald-500">
+                  {t('Pay for all items')}
                 </Button>
               </div>
             </div>
@@ -613,10 +641,19 @@ export default function CartPage() {
                       className="grid min-h-0 gap-4 lg:grid-cols-[1.15fr_0.85fr]"
                     >
                       <section className="flex min-h-0 flex-col rounded-[1.6rem] border border-white/10 bg-white/[0.055] p-4 shadow-[0_20px_50px_rgba(2,6,23,0.25)] sm:p-5">
-                        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-emerald-300/80">Order Summary</p>
-                        <h3 className="mt-2 text-xl font-black sm:text-2xl">Review before payment</h3>
+                        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-emerald-300/80">
+                          {payingItemId ? t('Single item payment') : t('Order Summary')}
+                        </p>
+                        <h3 className="mt-2 text-xl font-black sm:text-2xl">
+                          {payingItemId ? payingItems[0]?.product_name || t('Review before payment') : t('Review before payment')}
+                        </h3>
+                        <p className="mt-1 text-xs text-slate-400">
+                          {payingItemId
+                            ? t('You are paying for this item only. The rest of your cart stays untouched.')
+                            : `${payingItems.length} ${t('items in this payment')}`}
+                        </p>
                         <div className="thin-scrollbar mt-4 min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1">
-                          {cartData.items.map((item) => (
+                          {payingItems.map((item) => (
                             <div key={item.cart_item_id} className="flex items-center justify-between rounded-2xl border border-white/8 bg-slate-950/28 px-4 py-2.5">
                               <div>
                                 <p className="text-sm font-semibold text-white">{item.product_name}</p>
@@ -968,9 +1005,9 @@ function generateTransactionId() {
 
 function PreviewRow({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3">
-      <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">{label}</span>
-      <span className={`text-right text-sm font-semibold ${highlight ? 'text-emerald-300' : 'text-white'}`}>{value}</span>
+    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3">
+      <span className="shrink-0 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">{label}</span>
+      <span className={`min-w-0 flex-1 break-words text-right text-sm font-semibold ${highlight ? 'text-emerald-300' : 'text-white'}`}>{value}</span>
     </div>
   );
 }

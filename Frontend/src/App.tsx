@@ -71,6 +71,7 @@ import FarmerProductsPage from './pages/marketplace/FarmerProductsPage';
 import ProductApprovalPage from './pages/marketplace/ProductApprovalPage';
 import CustomerMarketplacePage from './pages/marketplace/CustomerMarketplacePage';
 import CartPage from './pages/marketplace/CartPage';
+import ProductDetailPage from './pages/marketplace/ProductDetailPage';
 import OrdersPage from './pages/marketplace/OrdersPage';
 
 export default function App() {
@@ -91,6 +92,8 @@ export default function App() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/otp-verification" element={<OtpVerificationPage />} />
       <Route path="/marketplace" element={<MarketplacePage />} />
+      {/* Public product page - where a scanned product QR code lands. */}
+      <Route path="/product/:id" element={<ProductDetailPage />} />
       <Route path="/about" element={<AboutPage />} />
       <Route path="/ai-advisory" element={<AIAdvisoryPage />} />
       <Route path="/disease-detection" element={<DiseaseDetectionPage />} />

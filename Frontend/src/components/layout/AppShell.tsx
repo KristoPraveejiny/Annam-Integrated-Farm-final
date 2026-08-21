@@ -113,7 +113,10 @@ export function AppShell({ role, items, children }: AppShellProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-900 to-slate-800 text-white">
+    // `dark-surface` marks everything inside the dashboard shell as sitting on a
+    // dark background, so the stylesheet can lift light-theme grey text to a
+    // legible tone (see styles/index.css).
+    <div className="dark-surface min-h-screen bg-gradient-to-br from-emerald-900 to-slate-800 text-white">
       <div className="flex min-h-screen">
         <aside className={`fixed inset-y-0 left-0 z-40 w-72 transform border-r border-white/15 bg-slate-950/35 backdrop-blur-2xl transition-transform duration-300 lg:static lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
           <div className="flex h-full flex-col px-5 py-6">

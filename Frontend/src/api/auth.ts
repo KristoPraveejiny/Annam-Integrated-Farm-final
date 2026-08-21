@@ -1,6 +1,8 @@
 // Point to Django Backend for OTP verification Auth
 
-const DJANGO_BASE_URL = "http://localhost:8000/api";
+// Proxied by Vite: the '/django-api' prefix is stripped, so this resolves to
+// Django's /api/... - relative so it works from a phone as well as localhost.
+const DJANGO_BASE_URL = "/django-api/api";
 
 async function _handleResponse(res: Response): Promise<any> {
     const contentType = res.headers.get('content-type') || '';
@@ -63,7 +65,7 @@ export async function verifyLoginOtp(email: string, otp: string) {
     return _handleResponse(res);
 }
 
-const NODE_BASE_URL = 'http://localhost:5000/api';
+const NODE_BASE_URL = '/api';
 
 export async function sendPasswordResetOtp(email: string) {
     const res = await fetch(`${NODE_BASE_URL}/auth/password-reset/send-otp`, {

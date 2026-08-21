@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { getMarketplaceProducts, addToCart } from '../../api/marketplace';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 import { useTranslation } from 'react-i18next';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 
@@ -88,7 +89,7 @@ export default function CustomerMarketplacePage() {
             <Card key={p.id} className="flex flex-col h-full overflow-hidden">
               <div className="relative h-48 overflow-hidden rounded-t-2xl bg-gray-100">
                 {p.image_url ? (
-                  <img src={p.image_url ? (p.image_url.startsWith('http') ? p.image_url : `http://localhost:5000${p.image_url}`) : ''} alt={p.name} className="h-full w-full object-cover transition-transform duration-500 hover:scale-105 cursor-pointer" onClick={() => setPreviewImg(p.image_url ? (p.image_url.startsWith('http') ? p.image_url : `http://localhost:5000${p.image_url}`) : '') } />
+                  <img src={resolveMediaUrl(p.image_url)} alt={p.name} className="h-full w-full object-cover transition-transform duration-500 hover:scale-105 cursor-pointer" onClick={() => setPreviewImg(resolveMediaUrl(p.image_url))} />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-400">No Image</div>
                 )}

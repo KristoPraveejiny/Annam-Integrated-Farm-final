@@ -166,6 +166,46 @@ export const rejectProduct = async (req, res) => {
 // CUSTOMER FUNCTIONS
 // ==========================================
 
+// A single product, looked up by id alone. This backs the QR flow: the code
+// carries nothing but the product id, so whatever is in the database at scan
+// time is what the customer sees.
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const getMarketplaceProductById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Postgres raises on a malformed uuid, which would surface as a 500 for
+    // what is really just a bad link.
+    if (!UUID_PATTERN.test(String(id || ''))) {
+      return res.status(404).json({ error: 'Product not found.' });
+    }
+
+    // Unlike the listing query this does not filter on available_quantity:
+    // a sold-out product still has to render, or a printed QR label would
+    // stop working the moment stock ran out.
+    const result = await pool.query(
+      `SELECT p.*, f.name AS farm_name, u.full_name AS farmer_name
+       FROM products p
+       JOIN farms f ON p.farm_id = f.id
+       LEFT JOIN app_users u ON u.id = p.farmer_id
+       WHERE p.id = $1 AND p.status = 'approved'`,
+      [id],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Product not found or not available.' });
+    }
+
+    // Prices change; a scanned page must never come from a cache.
+    res.set('Cache-Control', 'no-store');
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error in getMarketplaceProductById:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 export const getMarketplaceProducts = async (req, res) => {
   try {
     const { category, search } = req.query;
@@ -297,6 +337,9 @@ export const placeOrder = async (req, res) => {
     const {
       advanceAmount,
       paymentMethod,
+      // Optional: buy one line of the cart instead of the whole cart. Omitted
+      // by the "pay for everything" button, which keeps its original behaviour.
+      cart_item_id = null,
       senderDetails: senderDetailsInput = {},
     } = req.body;
     const senderDetails = {
@@ -337,10 +380,11 @@ export const placeOrder = async (req, res) => {
       `SELECT ci.*, p.name as product_name, p.unit, p.available_quantity
        FROM cart_items ci
        JOIN products p ON p.id = ci.product_id
-       WHERE ci.cart_id = $1`,
-      [cart_id]
+       WHERE ci.cart_id = $1
+         AND ($2::uuid IS NULL OR ci.id = $2::uuid)`,
+      [cart_id, cart_item_id]
     );
-    if (itemsRes.rows.length === 0) throw new Error('Cart is empty');
+    if (itemsRes.rows.length === 0) throw new Error(cart_item_id ? 'That item is no longer in your cart' : 'Cart is empty');
     const items = itemsRes.rows;
 
     let subtotal = 0;
@@ -394,8 +438,11 @@ export const placeOrder = async (req, res) => {
       });
     }
 
-    // Clear cart
-    await client.query('DELETE FROM cart_items WHERE cart_id = $1', [cart_id]);
+    // Clear what was actually ordered - the single line, or the whole cart.
+    await client.query(
+      'DELETE FROM cart_items WHERE cart_id = $1 AND ($2::uuid IS NULL OR id = $2::uuid)',
+      [cart_id, cart_item_id]
+    );
 
     // Insert advance payment record if provided
     if (advanceAmount && advanceAmount > 0) {

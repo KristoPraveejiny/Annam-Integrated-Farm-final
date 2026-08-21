@@ -8,6 +8,7 @@ import {
   approveProduct,
   rejectProduct,
   getMarketplaceProducts,
+  getMarketplaceProductById,
   addToCart,
   removeFromCart,
   viewCart,
@@ -22,6 +23,9 @@ const router = express.Router();
 
 // Public routes
 router.get('/products', getMarketplaceProducts);
+// Single product by id - the target of a scanned product QR code. Public so a
+// customer can view what they scanned before deciding to sign in.
+router.get('/products/:id', getMarketplaceProductById);
 
 // All other routes require authentication
 router.use(verifyToken);

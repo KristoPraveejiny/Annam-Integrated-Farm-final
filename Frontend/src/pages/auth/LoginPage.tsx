@@ -157,6 +157,15 @@ export default function LoginPage() {
         if (response.user) {
           localStorage.setItem('user', JSON.stringify(response.user));
         }
+        // A customer sent here mid-purchase (e.g. from a scanned product page)
+        // goes back to what they were buying rather than to their dashboard.
+        const returnTo = sessionStorage.getItem('redirectAfterLogin');
+        if (returnTo) {
+          sessionStorage.removeItem('redirectAfterLogin');
+          navigate(returnTo);
+          return;
+        }
+
         const role = response.user?.role;
         const dashRole = role?.replace('_', '-') === 'worker' ? 'farmer-worker' : role?.replace('_', '-');
         navigate(`/dashboard/${dashRole || 'farmer'}`);

@@ -5,6 +5,7 @@ import { getFarmerProducts, addProduct } from '../../api/marketplace';
 import { useTranslation } from 'react-i18next';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 import { apiFetch } from '../../utils/apiFetch';
+import { resolveMediaUrl } from '../../utils/mediaUrl';
 
 // A harvest or livestock collection already recorded on the farm. Picking one
 // fills the listing form so the farmer never retypes what they just recorded.
@@ -302,7 +303,7 @@ export default function FarmerProductsPage() {
                   <tr key={p.id}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        {p.image_url && <img src={p.image_url.startsWith('http') ? p.image_url : `http://localhost:5000${p.image_url}`} alt="" className="w-10 h-10 rounded-full mr-3 object-cover" />}
+                        {p.image_url && <img src={resolveMediaUrl(p.image_url)} alt="" className="w-10 h-10 rounded-full mr-3 object-cover" />}
                         <div>
                           <div className="text-sm font-medium text-gray-900">{p.name}</div>
                           <div className="text-xs text-gray-500">{t("Code:")} {p.product_code}</div>

@@ -1,4 +1,4 @@
-import { FiBarChart2, FiBell, FiBox, FiCloud, FiDollarSign, FiHome, FiInbox, FiLayers, FiMessageCircle, FiSettings, FiShield, FiShoppingBag, FiUser, FiUsers, FiAlertTriangle, FiCheckCircle, FiMapPin, FiDroplet, FiHeart, FiActivity, FiClipboard, FiPackage } from 'react-icons/fi';
+import { FiBarChart2, FiBell, FiBox, FiCloud, FiDollarSign, FiHome, FiInbox, FiLayers, FiMessageCircle, FiSettings, FiShoppingBag, FiUser, FiUsers, FiAlertTriangle, FiCheckCircle, FiMapPin, FiDroplet, FiHeart, FiActivity, FiClipboard, FiPackage } from 'react-icons/fi';
 
 export const metrics = [
   { label: 'Total Fields', value: '48', delta: '+12%', color: 'from-emerald-500 to-lime-400' },
@@ -121,10 +121,9 @@ export const publicNavItems = {
   'customer': [
     { label: 'Dashboard', href: '/dashboard/customer', icon: FiHome },
     { label: 'Feedback', href: '/dashboard/customer/feedback', icon: FiMessageCircle },
-    { label: 'Marketplace', href: '/dashboard/customer/marketplace', icon: FiShoppingBag },
+    { label: 'Marketplace', href: '/marketplace', icon: FiShoppingBag },
     { label: 'Cart', href: '/dashboard/customer/cart', icon: FiShoppingBag },
     { label: 'Orders & Payments', href: '/dashboard/customer/orders', icon: FiBox },
-    { label: 'QR Verify', href: '/dashboard/customer#qr', icon: FiShield },
     { label: 'Logout', href: '/', icon: FiMessageCircle },
   ],
   'guest': [

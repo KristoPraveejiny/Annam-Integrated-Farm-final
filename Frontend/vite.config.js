@@ -9,6 +9,9 @@ export default defineConfig({
         },
     },
     server: {
+        // Bind 0.0.0.0 so the dev server is reachable from a phone on the same
+        // network; Vite then prints a Network URL alongside the local one.
+        host: true,
         proxy: {
             // Proxy /django-api/* → Django on port 8000
             '/django-api': {

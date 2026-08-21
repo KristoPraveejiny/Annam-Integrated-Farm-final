@@ -468,3 +468,58 @@ body {
     transform: rotate(360deg);
   }
 }
+/* ---------------------------------------------------------------------------
+   Legible text on dark surfaces.
+
+   The dashboards render on a dark gradient, but much of their markup was
+   written with light-theme Tailwind greys (text-slate-500, text-gray-500,
+   text-slate-900 ...). On the dark shell those read as barely-visible ash.
+   Rewriting 600+ occurrences by hand would be churn, so the shell is marked
+   with `.dark-surface` and the greys are lifted here.
+
+   Light panels nested inside the dashboard (white tables, modals, preview
+   cards) keep the original palette - the second block restores it.
+--------------------------------------------------------------------------- */
+.dark-surface :is(.text-slate-400, .text-slate-500, .text-gray-400, .text-gray-500) {
+  color: #b4c2d1;
+}
+
+.dark-surface :is(.text-slate-600, .text-gray-600) {
+  color: #cfdae5;
+}
+
+.dark-surface :is(.text-slate-700, .text-slate-800, .text-slate-900, .text-gray-700, .text-gray-800, .text-gray-900) {
+  color: #f1f5f9;
+}
+
+/* Placeholders and dividers suffer from the same problem. */
+.dark-surface :is(.placeholder\:text-slate-400, .placeholder\:text-gray-400)::placeholder {
+  color: #9fb0c2;
+}
+
+/* --- Restore the light palette inside genuinely light panels --------------- */
+.dark-surface :is(.bg-white, .bg-gray-50, .bg-gray-100, .bg-slate-50, .bg-slate-100, .bg-emerald-50, [class*="bg-white/8"], [class*="bg-white/9"]) :is(.text-slate-400, .text-gray-400),
+.dark-surface :is(.bg-white, .bg-gray-50, .bg-gray-100, .bg-slate-50, .bg-slate-100, .bg-emerald-50) :is(.text-slate-400, .text-gray-400) {
+  color: #94a3b8;
+}
+
+.dark-surface :is(.bg-white, .bg-gray-50, .bg-gray-100, .bg-slate-50, .bg-slate-100, .bg-emerald-50, [class*="bg-white/8"], [class*="bg-white/9"]) :is(.text-slate-500, .text-gray-500) {
+  color: #64748b;
+}
+
+.dark-surface :is(.bg-white, .bg-gray-50, .bg-gray-100, .bg-slate-50, .bg-slate-100, .bg-emerald-50, [class*="bg-white/8"], [class*="bg-white/9"]) :is(.text-slate-600, .text-gray-600) {
+  color: #475569;
+}
+
+.dark-surface :is(.bg-white, .bg-gray-50, .bg-gray-100, .bg-slate-50, .bg-slate-100, .bg-emerald-50, [class*="bg-white/8"], [class*="bg-white/9"]) :is(.text-slate-700, .text-gray-700) {
+  color: #334155;
+}
+
+.dark-surface :is(.bg-white, .bg-gray-50, .bg-gray-100, .bg-slate-50, .bg-slate-100, .bg-emerald-50, [class*="bg-white/8"], [class*="bg-white/9"]) :is(.text-slate-800, .text-slate-900, .text-gray-800, .text-gray-900) {
+  color: #0f172a;
+}
+
+/* An element that is itself the light panel keeps its own text colour too. */
+.dark-surface :is(.bg-white, .bg-gray-50, .bg-slate-50, .bg-emerald-50).text-slate-500 { color: #64748b; }
+.dark-surface :is(.bg-white, .bg-gray-50, .bg-slate-50, .bg-emerald-50).text-slate-600 { color: #475569; }
+.dark-surface :is(.bg-white, .bg-gray-50, .bg-slate-50, .bg-emerald-50).text-slate-900 { color: #0f172a; }

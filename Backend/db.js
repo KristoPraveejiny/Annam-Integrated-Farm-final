@@ -1,9 +1,13 @@
 import './loadEnv.js';
+
 import { Pool } from 'pg';
 
 const databaseConfig = process.env.DATABASE_URL
   ? {
       connectionString: process.env.DATABASE_URL,
+      ssl: {
+        rejectUnauthorized: false,
+      },
     }
   : {
       host: process.env.DB_HOST || '127.0.0.1',

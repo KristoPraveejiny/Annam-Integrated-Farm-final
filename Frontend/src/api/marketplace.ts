@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:5000/api/marketplace';
+// Relative so requests go through the Vite proxy. A hardcoded localhost URL
+// would point a phone at itself.
+const API_BASE_URL = '/api/marketplace';
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token');
