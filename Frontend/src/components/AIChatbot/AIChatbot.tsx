@@ -113,7 +113,7 @@ function MessageBubble({ message, onSuggestionClick }: { message: ChatMessage; o
 
 export default function AIChatbot() {
   const location = useLocation();
-  const stateData = location.state as { crop?: string; predictedDisease?: string; confidence?: number; top_3?: any[]; imageUrl?: string; livestockSymptoms?: string; animal?: string; eventId?: string } | null;
+  const stateData = location.state as { crop?: string; predictedDisease?: string; confidence?: number; top_3?: any[]; imageUrl?: string; livestockSymptoms?: string; animal?: string; eventId?: string; detectionId?: string } | null;
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -192,7 +192,18 @@ export default function AIChatbot() {
             }
           }
 
-          await handleNewChat(autoPrompt, stateData.crop, stateData.predictedDisease, stateData.confidence, imageFile);
+          const title = stateData.crop
+            ? `${stateData.crop}: ${stateData.predictedDisease || 'Advice'}`
+            : 'New Conversation';
+          await handleNewChat(
+            autoPrompt,
+            stateData.crop,
+            stateData.predictedDisease,
+            stateData.confidence,
+            imageFile,
+            stateData.detectionId,
+            title
+          );
           // clear state to prevent re-triggering
           window.history.replaceState({}, document.title);
         };
@@ -222,7 +233,15 @@ export default function AIChatbot() {
     }
   };
 
-  const handleNewChat = async (initialText?: string, cropCtx?: string, diseaseCtx?: string, confCtx?: number, initialFile?: File) => {
+  const handleNewChat = async (
+    initialText?: string,
+    cropCtx?: string,
+    diseaseCtx?: string,
+    confCtx?: number,
+    initialFile?: File,
+    detectionId?: string,
+    sessionTitle?: string
+  ) => {
     setActiveSessionId(null);
     setMessages([]);
     setInput('');
@@ -232,9 +251,19 @@ export default function AIChatbot() {
 
     try {
       setLoading(true);
-      const session = await createSession('New Conversation');
-      setSessions(prev => [session, ...prev]);
+      const session = await createSession(sessionTitle || 'New Conversation', detectionId);
+      setSessions(prev => prev.some(s => s.id === session.id) ? prev : [session, ...prev]);
       setActiveSessionId(session.id);
+
+      // Coming back to a detection that already has a conversation: show what
+      // was said before rather than asking the opening question a second time.
+      if (session.reused) {
+        const existing = await fetchSessionMessages(session.id);
+        setMessages(existing);
+        setLoading(false);
+        inputRef.current?.focus();
+        return;
+      }
 
       if (initialText) {
         await sendMessage(initialText, session.id, initialFile, cropCtx, diseaseCtx, confCtx);

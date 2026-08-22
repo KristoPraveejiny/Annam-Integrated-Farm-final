@@ -28,6 +28,7 @@ type AdvanceRow = {
   manager_notes?: string | null;
   payment_method?: string | null;
   account_details?: string | null;
+  requested_at?: string | null;
 };
 
 const paymentMethods = ['Cash', 'Bank Transfer', 'Online Bank Payout'];
@@ -116,10 +117,15 @@ export default function SalaryPaymentPage() {
     }
   };
 
-  // Pending requests are handled on the Salary Approval page; this page pays out the
-  // ones a manager has already reviewed.
+  // Every advance shows here - pending ones first, since this card offers the
+  // approve/reject actions and a hidden request can never be acted on.
   const reviewedAdvances = useMemo(
-    () => advances.filter((item) => String(item.status || '').trim().toLowerCase() !== 'pending'),
+    () => [...advances].sort((a, b) => {
+      const aPending = String(a.status || '').trim().toLowerCase() === 'pending' ? 0 : 1;
+      const bPending = String(b.status || '').trim().toLowerCase() === 'pending' ? 0 : 1;
+      if (aPending !== bPending) return aPending - bPending;
+      return new Date(b.requested_at || 0).getTime() - new Date(a.requested_at || 0).getTime();
+    }),
     [advances],
   );
 

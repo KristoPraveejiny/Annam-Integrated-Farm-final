@@ -17,6 +17,8 @@ interface TopPrediction {
 }
 
 interface AnalysisResult {
+  /** disease_detection_history row id - keys the chat session for this scan. */
+  detectionId?: string;
   disease: string;
   confidence: number;
   top_3?: TopPrediction[];
@@ -252,8 +254,8 @@ export default function DiseaseDetectionPage() {
       }
 
       const data = await response.json();
-      setResult(data as AnalysisResult);
-      
+      setResult({ ...data, detectionId: data.historyId } as AnalysisResult);
+
       // Auto-fetch AI Recommendation for the PDF
       if (data.disease && data.disease.toLowerCase() !== 'healthy') {
         fetchAIRecommendation(selectedCrop, data.disease, data.confidence);
@@ -273,6 +275,10 @@ export default function DiseaseDetectionPage() {
     setLoadingRecommendation(true);
     setAiRecommendation('');
     try {
+      // Deliberately NOT tied to the detection: this session is created
+      // automatically to fill the PDF summary, and claiming the detection here
+      // would make the user's first "Ask AI Assistant" click land in it rather
+      // than opening a fresh chat with their own question.
       const session = await createSession(`Disease Alert: ${crop}`);
       const query = `The CNN model detected ${disease} in my ${crop} crop with ${confidence.toFixed(2)}% confidence. Please provide a detailed summary: 1. What is this disease? 2. Why does it happen? 3. What fertilizers, pesticides, or actions should I take to treat it?`;
       
@@ -380,9 +386,12 @@ export default function DiseaseDetectionPage() {
 
     // Format results to match active state
     setResult({
+      detectionId: item.id,
       disease: item.disease_name,
       confidence: item.confidence,
       crop_name: item.crop_name,
+      // Without this the chat opened from a history item had no photo to send.
+      image_url: item.uploaded_image,
       weatherSummary: item.weather_summary ? {
         temperature: item.weather_summary.temperature,
         humidity: 65, // default fallback
@@ -813,7 +822,7 @@ export default function DiseaseDetectionPage() {
                   <div className="flex flex-col items-center pt-4 space-y-3">
                     <p className="text-[#B0BEC5] font-medium text-sm">Not satisfied with this prediction?</p>
                     <button
-                      onClick={() => navigate('/dashboard/farm-manager/ai-chat', { state: { crop: result.crop_name || selectedCrop, predictedDisease: result.disease, confidence: result.confidence, top_3: result.top_3, imageUrl: result.image_url } })}
+                      onClick={() => navigate('/dashboard/farm-manager/ai-chat', { state: { crop: result.crop_name || selectedCrop, predictedDisease: result.disease, confidence: result.confidence, top_3: result.top_3, imageUrl: result.image_url, detectionId: result.detectionId } })}
                       className="px-8 py-4 bg-gradient-to-r from-emerald-600 via-[#00C853] to-emerald-400 hover:from-emerald-500 hover:to-emerald-300 text-[#081C15] font-extrabold text-lg rounded-2xl transition-all shadow-xl tracking-wider uppercase flex items-center gap-3"
                     >
                       <FiMessageSquare size={24} />
@@ -856,7 +865,7 @@ export default function DiseaseDetectionPage() {
             {/* Results Grid */}
             <div className="flex justify-end w-full mb-4">
                <button
-                 onClick={() => navigate('/dashboard/farm-manager/ai-chat', { state: { crop: result.crop_name || selectedCrop, predictedDisease: result.disease, confidence: result.confidence, top_3: result.top_3, imageUrl: result.image_url } })}
+                 onClick={() => navigate('/dashboard/farm-manager/ai-chat', { state: { crop: result.crop_name || selectedCrop, predictedDisease: result.disease, confidence: result.confidence, top_3: result.top_3, imageUrl: result.image_url, detectionId: result.detectionId } })}
                  className="px-6 py-2.5 bg-[#00C853] hover:bg-[#00E676] text-[#081C15] font-extrabold text-sm rounded-xl transition-colors shadow-lg flex items-center gap-2"
                >
                  <FiMessageSquare size={16} />

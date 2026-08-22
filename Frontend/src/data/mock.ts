@@ -1,4 +1,4 @@
-import { FiBarChart2, FiBell, FiBox, FiCloud, FiDollarSign, FiHome, FiInbox, FiLayers, FiMessageCircle, FiSettings, FiShoppingBag, FiUser, FiUsers, FiAlertTriangle, FiCheckCircle, FiMapPin, FiDroplet, FiHeart, FiActivity, FiClipboard, FiPackage } from 'react-icons/fi';
+import { FiBarChart2, FiBell, FiBox, FiCloud, FiDollarSign, FiHome, FiInbox, FiLayers, FiMessageCircle, FiSettings, FiShoppingBag, FiUser, FiUsers, FiAlertTriangle, FiCheckCircle, FiMapPin, FiDroplet, FiHeart, FiActivity, FiClipboard, FiPackage, FiCalendar, FiLogOut } from 'react-icons/fi';
 
 export const metrics = [
   { label: 'Total Fields', value: '48', delta: '+12%', color: 'from-emerald-500 to-lime-400' },
@@ -75,7 +75,7 @@ export const publicNavItems = {
     { label: 'Enquiries', href: '/dashboard/super-admin/inquiries', icon: FiInbox },
     { label: 'System Settings', href: '/dashboard/super-admin/settings', icon: FiSettings },
     { label: 'Audit Logs', href: '/dashboard/super-admin/audit-logs', icon: FiClipboard },
-    { label: 'Logout', href: '/', icon: FiMessageCircle },
+    { label: 'Logout', href: '/login', icon: FiLogOut, action: 'logout' as const },
   ],
   'farm-manager': [
     { label: 'Dashboard', href: '/dashboard/farm-manager', icon: FiHome },
@@ -83,6 +83,7 @@ export const publicNavItems = {
     { label: 'Crops', href: '/dashboard/farm-manager/crops', icon: FiLayers },
     { label: 'Crop Task', href: '/dashboard/farm-manager/tasks', icon: FiCheckCircle, matchExact: true },
     { label: 'Attendance Management', href: '/dashboard/farm-manager/attendance', icon: FiActivity },
+    { label: 'Leave Management', href: '/dashboard/farm-manager/leave', icon: FiCalendar },
     { label: 'Livestock', href: '/dashboard/farm-manager/livestock', icon: FiUser },
     { label: 'Farmer Updates', href: '/dashboard/farm-manager/recent-updates', icon: FiClipboard },
     { label: 'Disease Detection', href: '/dashboard/farm-manager/disease-detection', icon: FiAlertTriangle },
@@ -99,7 +100,7 @@ export const publicNavItems = {
     { label: 'Weather', href: '/dashboard/farm-manager/ai-advisory', icon: FiCloud },
     { label: 'AI Chatbot', href: '/dashboard/farm-manager/ai-chat', icon: FiMessageCircle },
     { label: 'Feedback', href: '/dashboard/farm-manager/feedback', icon: FiMessageCircle },
-    { label: 'Logout', href: '/', icon: FiMessageCircle },
+    { label: 'Logout', href: '/login', icon: FiLogOut, action: 'logout' as const },
   ],
   'farmer-worker': [
     { label: 'Dashboard', href: '/dashboard/farmer-worker', icon: FiHome },
@@ -112,11 +113,12 @@ export const publicNavItems = {
     { label: 'Livestock Management', href: '/dashboard/farmer-worker/livestock', icon: FiHeart },
     { label: 'Weather Updates', href: '/dashboard/farmer-worker/ai-advisory', icon: FiCloud },
     { label: 'My Attendance', href: '/dashboard/farmer-worker/attendance', icon: FiActivity },
+    { label: 'Leave Requests', href: '/dashboard/farmer-worker/leave', icon: FiCalendar },
     { label: 'My Earnings', href: '/dashboard/farmer-worker/earnings', icon: FiDollarSign },
 
     { label: 'AI Chatbot', href: '/dashboard/farmer-worker/ai-chat', icon: FiMessageCircle },
     { label: 'Profile', href: '/dashboard/farmer-worker/profile', icon: FiUser },
-    { label: 'Logout', href: '/', icon: FiMessageCircle },
+    { label: 'Logout', href: '/login', icon: FiLogOut, action: 'logout' as const },
   ],
   'customer': [
     { label: 'Dashboard', href: '/dashboard/customer', icon: FiHome },
@@ -124,7 +126,7 @@ export const publicNavItems = {
     { label: 'Marketplace', href: '/marketplace', icon: FiShoppingBag },
     { label: 'Cart', href: '/dashboard/customer/cart', icon: FiShoppingBag },
     { label: 'Orders & Payments', href: '/dashboard/customer/orders', icon: FiBox },
-    { label: 'Logout', href: '/', icon: FiMessageCircle },
+    { label: 'Logout', href: '/login', icon: FiLogOut, action: 'logout' as const },
   ],
   'guest': [
     { label: 'Overview', href: '/dashboard/guest', icon: FiHome },

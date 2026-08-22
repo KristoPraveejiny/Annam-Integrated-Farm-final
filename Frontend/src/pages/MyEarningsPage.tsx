@@ -133,19 +133,29 @@ export default function MyEarningsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {ledger.map((item) => (
-                  <tr key={item.id}>
-                    <td className="px-4 py-3 text-slate-600">{new Date(item.date).toLocaleDateString()}</td>
-                    <td className="px-4 py-3 font-medium text-slate-900">{item.task_title}</td>
-                    <td className="px-4 py-3 text-emerald-600 font-bold">+{item.approved_progress}%</td>
-                    <td className="px-4 py-3 font-medium text-slate-900">Rs. {Number(item.amount).toFixed(2)}</td>
-                    <td className="px-4 py-3">
-                      <span className="capitalize font-medium text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full text-xs">
-                        {t(item.status)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {ledger.map((item) => {
+                  // A rework/rejection posts a negative reversal entry, so it must not be
+                  // rendered with the green "earned" styling.
+                  const amount = Number(item.amount);
+                  const isReversal = amount < 0;
+                  return (
+                    <tr key={item.id}>
+                      <td className="px-4 py-3 text-slate-600">{new Date(item.date).toLocaleDateString()}</td>
+                      <td className="px-4 py-3 font-medium text-slate-900">{item.task_title}</td>
+                      <td className={`px-4 py-3 font-bold ${isReversal ? 'text-rose-600' : 'text-emerald-600'}`}>
+                        {isReversal ? '—' : `+${item.approved_progress}%`}
+                      </td>
+                      <td className="px-4 py-3 font-medium text-slate-900">
+                        {isReversal ? `- Rs. ${Math.abs(amount).toFixed(2)}` : `Rs. ${amount.toFixed(2)}`}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`capitalize font-medium px-2 py-1 rounded-full text-xs ${isReversal ? 'text-rose-600 bg-rose-50' : 'text-emerald-600 bg-emerald-50'}`}>
+                          {t(item.status)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

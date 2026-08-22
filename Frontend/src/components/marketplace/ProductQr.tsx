@@ -3,6 +3,14 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { FiAlertTriangle, FiDownload } from 'react-icons/fi';
 import { useTranslation } from 'react-i18next';
 
+declare global {
+  interface Window {
+    /** Dev machine's LAN IPv4, injected by the inject-lan-host Vite plugin. */
+    __LAN_HOST__?: string;
+  }
+}
+
+
 /**
  * The origin a scanned QR should point at.
  *
@@ -14,7 +22,19 @@ import { useTranslation } from 'react-i18next';
 export function publicOrigin(): string {
   const configured = import.meta.env.VITE_PUBLIC_ORIGIN as string | undefined;
   if (configured) return configured.replace(/\/$/, '');
-  return typeof window === 'undefined' ? '' : window.location.origin;
+
+  const current = typeof window === 'undefined' ? '' : window.location.origin;
+
+  // Browsing on localhost would otherwise bake "localhost" into the code, which
+  // resolves to the phone itself when scanned. Swap in the dev machine's LAN
+  // address (injected by vite.config.ts) while keeping the port actually in use.
+  const lanHost = typeof window === 'undefined' ? null : window.__LAN_HOST__;
+  if (current && isLocalOrigin(current) && lanHost) {
+    const { protocol, port } = window.location;
+    return `${protocol}//${lanHost}${port ? `:${port}` : ''}`;
+  }
+
+  return current;
 }
 
 export function productUrl(productId: string): string {

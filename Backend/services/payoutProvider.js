@@ -9,7 +9,7 @@ export class PayoutProvider {
 export class MockPayoutProvider extends PayoutProvider {
   async initiatePayout({ amount, sourceAccount, recipientAccount, reference }) {
     console.log(`[DEVELOPMENT / TEST MODE] Simulating transfer of Rs. ${amount} from ${sourceAccount || 'farm default account'} to ${recipientAccount} with reference: ${reference}`);
-    
+
     // Simulate 1000ms network delay
     await new Promise(resolve => setTimeout(resolve, 1000));
 
@@ -39,6 +39,7 @@ export class MockPayoutProvider extends PayoutProvider {
 }
 
 export function getPayoutProvider() {
-  // In development/test mode, we return the mock provider.
+  // PayHere is a collection gateway and has no payout/disbursement API, so
+  // salary payouts stay on the simulated provider until a payout rail is added.
   return new MockPayoutProvider();
 }

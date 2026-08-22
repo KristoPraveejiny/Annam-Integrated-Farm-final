@@ -141,18 +141,22 @@ export async function getReportById(req, res) {
 export async function updateReportStatus(req, res) {
   try {
     const { id } = req.params;
-    const { status, manager_notes } = req.body;
+    const { status, manager_notes, report_pdf_url, report_pdf_name } = req.body;
     const userId = req.user.userId;
 
+    // COALESCE keeps an existing PDF when the manager saves without touching
+    // the attachment, so re-opening the report still shows it.
     const result = await pool.query(`
       UPDATE disease_reports
       SET status = COALESCE($1, status),
           manager_notes = COALESCE($2, manager_notes),
+          report_pdf_url = COALESCE($5, report_pdf_url),
+          report_pdf_name = COALESCE($6, report_pdf_name),
           resolved_at = CASE WHEN $1 = 'Resolved' THEN NOW() ELSE resolved_at END,
           resolved_by = CASE WHEN $1 = 'Resolved' THEN $3 ELSE resolved_by END
       WHERE id = $4
       RETURNING *
-    `, [status, manager_notes, userId, id]);
+    `, [status, manager_notes, userId, id, report_pdf_url || null, report_pdf_name || null]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Report not found' });
@@ -286,5 +290,27 @@ export async function rewardWorker(req, res) {
     await pool.query('ROLLBACK');
     console.error('Error rewarding worker:', err);
     res.status(500).json({ error: 'Failed to reward worker' });
+  }
+}
+
+/**
+ * Stores a generated disease-report PDF and returns its URL.
+ *
+ * The manager builds the PDF in the browser when assigning a task; it has to be
+ * persisted somewhere the assigned worker can reach, since a browser-side blob
+ * dies with the page.
+ */
+export async function uploadReportPdf(req, res) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    res.status(201).json({
+      url: `/uploads/activities/${req.file.filename}`,
+      name: req.file.originalname
+    });
+  } catch (err) {
+    console.error('Error storing report PDF:', err);
+    res.status(500).json({ error: 'Failed to store report PDF' });
   }
 }

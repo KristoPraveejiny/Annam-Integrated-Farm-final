@@ -56,7 +56,12 @@ export const generatePDF = async (elementId: string, filename: string) => {
  * @param content The text content (can include newlines).
  * @param filename The name of the downloaded PDF file.
  */
-export const generateTextPDF = (title: string, content: string, filename: string) => {
+/**
+ * Builds the report document. Split out from generateTextPDF so the same PDF can
+ * either be downloaded by the manager or uploaded to the server and handed to a
+ * worker with their task.
+ */
+const buildTextPDF = (title: string, content: string) => {
   const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -90,5 +95,15 @@ export const generateTextPDF = (title: string, content: string, filename: string
     currentY += 6; // line height
   }
 
-  pdf.save(`${filename}.pdf`);
+  return pdf;
+};
+
+export const generateTextPDF = (title: string, content: string, filename: string) => {
+  buildTextPDF(title, content).save(`${filename}.pdf`);
+};
+
+/** The same report as a File, ready to upload. */
+export const buildTextPDFFile = (title: string, content: string, filename: string): File => {
+  const blob = buildTextPDF(title, content).output('blob');
+  return new File([blob], `${filename}.pdf`, { type: 'application/pdf' });
 };

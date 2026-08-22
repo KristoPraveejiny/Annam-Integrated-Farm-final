@@ -13,7 +13,8 @@ import {
 } from 'react-icons/fi';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { viewCart, placeOrder, removeFromCart } from '../../api/marketplace';
+import { viewCart, removeFromCart, createPayhereCheckout, confirmPayhereOrder, cancelPayhereOrder } from '../../api/marketplace';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { notifyError, notifySuccess, notifyWarning } from '../../utils/notifications';
 
@@ -151,13 +152,13 @@ const sriLankaBankApps = [
 
 const stepItems: Array<{ key: PaymentStep; label: string }> = [
   { key: 'summary', label: 'Order Summary' },
-  { key: 'method', label: 'Payment Method' },
-  { key: 'verify', label: 'Payment Verification' },
+  { key: 'processing', label: 'Card Payment' },
   { key: 'success', label: 'Payment Success' },
 ];
 
 export default function CartPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [cartData, setCartData] = useState<{ items: any[]; totalAmount: number }>({ items: [], totalAmount: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -168,7 +169,6 @@ export default function CartPage() {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentStep, setPaymentStep] = useState<PaymentStep>('summary');
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethodId>('commercial');
-  const [transactionPin, setTransactionPin] = useState('');
   const [processing, setProcessing] = useState(false);
   const [referenceId, setReferenceId] = useState('');
   const [receipt, setReceipt] = useState<ReceiptDetails | null>(null);
@@ -239,7 +239,6 @@ export default function CartPage() {
     }
     setPaymentOpen(true);
     setPaymentStep('summary');
-    setTransactionPin('');
     setReceipt(null);
     setReferenceId(generateReferenceId());
     setSenderDetails({
@@ -256,7 +255,6 @@ export default function CartPage() {
     setPaymentOpen(false);
     setPayingItemId(null);
     setPaymentStep('summary');
-    setTransactionPin('');
     setReferenceId('');
     setReceipt(null);
     setSenderDetails({
@@ -268,69 +266,120 @@ export default function CartPage() {
     });
   };
 
-  const handleContinueToMethod = () => {
-    setPaymentStep('method');
-  };
-
-  const handlePayClick = () => {
-    const missingFields = [
-      senderDetails.senderName,
-      senderDetails.senderBankName,
-      senderDetails.senderAccountNumber,
-      senderDetails.senderPhone,
-    ].some((value) => !value.trim());
-
-    if (missingFields) {
-      notifyWarning('Please fill all sender details.');
-      return;
-    }
-
-    setPaymentStep('verify');
-  };
-
+  // PayHere hosts the payment page, so the browser posts a signed form to
+  // PayHere and returns to ?payhere_order_id=... where the order is confirmed.
   const handleVerifyAndPay = async () => {
-    if (!transactionPin.trim()) {
-      notifyWarning('Please enter OTP / Transaction PIN.');
-      return;
-    }
-
     try {
       setProcessing(true);
       setPaymentStep('processing');
-      await new Promise((resolve) => setTimeout(resolve, 1600));
-      await placeOrder({
-        advanceAmount,
-        paymentMethod: selectedMethod,
-        cart_item_id: payingItemId,
-        senderDetails,
-      });
 
-      const successReceipt: ReceiptDetails = {
-        transactionId: generateTransactionId(),
-        amountPaid: advanceAmount,
-        paymentDate: new Date().toLocaleString(),
-        method: selectedMethodInfo.name,
+      const checkout = await createPayhereCheckout({ cart_item_id: payingItemId });
+
+      sessionStorage.setItem('pendingPayhereCheckout', JSON.stringify({
         referenceId,
-        senderDetails,
+        orderNumber: checkout.orderNumber,
+        amountPaid: checkout.advanceAmount,
         items: payingItems.map((item) => ({
           product_name: item.product_name,
           quantity: item.quantity,
           cart_price: item.cart_price,
         })),
-      };
+      }));
 
-      setReceipt(successReceipt);
-      setPaymentStep('success');
-      notifySuccess('Payment verified successfully.');
-      setTransactionPin('');
-      fetchCart();
+      // PayHere's checkout only accepts a form POST, not a GET redirect.
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = checkout.action;
+      Object.entries(checkout.fields).forEach(([name, value]) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = String(value ?? '');
+        form.appendChild(input);
+      });
+      document.body.appendChild(form);
+      form.submit();
     } catch (err: any) {
-      notifyError(err.response?.data?.error || 'Failed to place order.');
-      setPaymentStep('method');
-    } finally {
+      notifyError(err.response?.data?.error || 'Failed to start the payment.');
+      setPaymentStep('summary');
       setProcessing(false);
     }
   };
+
+  // Confirm the order after returning from PayHere.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const orderNumber = params.get('payhere_order_id');
+    const cancelled = params.get('payhere_cancelled');
+
+    if (!orderNumber && !cancelled) return;
+
+    const clearQuery = () => window.history.replaceState({}, '', window.location.pathname);
+
+    if (cancelled) {
+      // Release the stock the abandoned checkout had reserved.
+      if (orderNumber) cancelPayhereOrder(orderNumber).catch(() => {});
+      notifyWarning('Payment was cancelled.');
+      sessionStorage.removeItem('pendingPayhereCheckout');
+      clearQuery();
+      fetchCart();
+      return;
+    }
+
+    const finalize = async () => {
+      let pending: any = {};
+      try {
+        pending = JSON.parse(sessionStorage.getItem('pendingPayhereCheckout') || '{}');
+      } catch {
+        pending = {};
+      }
+
+      try {
+        setProcessing(true);
+        setPaymentOpen(true);
+        setPaymentStep('processing');
+
+        const result = await confirmPayhereOrder(orderNumber!);
+
+        if (result.status !== 'paid') {
+          notifyWarning(result.message || 'Payment is still being verified.');
+          setPaymentStep('summary');
+          setPaymentOpen(false);
+          fetchCart();
+          return;
+        }
+
+        setReceipt({
+          transactionId: result.order_number || orderNumber!,
+          amountPaid: Number(result.amount_paid ?? pending.amountPaid ?? 0),
+          paymentDate: new Date().toLocaleString(),
+          method: 'PayHere',
+          referenceId: pending.referenceId || orderNumber!,
+          senderDetails: {
+            senderName: '',
+            senderBankName: '',
+            senderAccountNumber: '',
+            senderPhone: '',
+            senderNote: '',
+          },
+          items: pending.items || [],
+        });
+        setPaymentStep('success');
+        notifySuccess('Payment completed successfully.');
+        fetchCart();
+      } catch (err: any) {
+        notifyError(err.response?.data?.error || 'Failed to confirm the payment.');
+        setPaymentStep('summary');
+      } finally {
+        sessionStorage.removeItem('pendingPayhereCheckout');
+        setProcessing(false);
+        clearQuery();
+      }
+    };
+
+    finalize();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleDownloadReceipt = () => {
     if (!receipt) return;
@@ -392,7 +441,7 @@ export default function CartPage() {
           <p className="text-xs font-bold uppercase tracking-[0.28em] text-emerald-300/80">Secure Customer Checkout</p>
           <h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-4xl">{t('Your Cart')}</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-            Premium banking-style payment flow with secure verification and instant receipt generation.
+            Secure online checkout powered by PayHere with instant receipt generation.
           </p>
         </div>
         <div className="flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200">
@@ -403,7 +452,7 @@ export default function CartPage() {
         </div>
       </div>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className="grid items-start gap-4">
         <Card
           title={t('Order Summary')}
           subtitle={t('Review the items in your cart before making payment')}
@@ -506,65 +555,6 @@ export default function CartPage() {
           )}
         </Card>
 
-        <Card
-          title={t('Banking Preview')}
-          subtitle={t('A secure transfer card styled like a mobile banking app')}
-          className="flex min-h-0 flex-col overflow-hidden border-white/10 bg-white/[0.08] backdrop-blur-2xl"
-        >
-          <div className="flex min-h-0 flex-1 flex-col rounded-[1.75rem] border border-white/10 bg-[linear-gradient(180deg,rgba(3,12,22,0.96),rgba(8,47,73,0.88)_55%,rgba(6,78,59,0.28))] p-5 text-white shadow-[0_20px_60px_rgba(2,6,23,0.3)]">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-emerald-200/80">Secure Receiver</p>
-                <h3 className="mt-2 text-xl font-black tracking-tight">Farm Account</h3>
-                <p className="mt-2 max-w-sm text-sm leading-6 text-slate-300">
-                  Transfer to the verified farm account using your preferred mobile banking app.
-                </p>
-              </div>
-              <div className="grid h-12 w-12 place-items-center rounded-2xl border border-white/10 bg-white/10 text-emerald-200">
-                <FiShield className="text-xl" />
-              </div>
-            </div>
-
-            <div className="thin-scrollbar mt-5 min-h-0 flex-1 overflow-y-auto rounded-[1.5rem] border border-white/10 bg-white/[0.95] p-4 pr-2 text-slate-900 shadow-[0_18px_40px_rgba(2,6,23,0.22)]">
-              <div className="flex items-center justify-between border-b border-slate-200/70 pb-4">
-                <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-500">Transfer Snapshot</p>
-                  <p className="mt-1 text-lg font-black text-slate-900">Banking style payment details</p>
-                </div>
-                <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                  {selectedMethodInfo.name}
-                </div>
-              </div>
-              <div className="mt-4 space-y-3">
-                <PreviewRow label="Receiver Name" value={farmAccount.receiverName} />
-                <PreviewRow label="Bank Name" value={farmAccount.bankName} />
-                <PreviewRow label="Account No." value={`**** **** **** ${farmAccount.accountNumber.slice(-4)}`} />
-                <PreviewRow label="Transfer Amount" value={`Rs. ${advanceAmount.toFixed(2)}`} highlight />
-                <PreviewRow label="Reference ID" value={referenceId || 'AUTO-GENERATED'} />
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl bg-slate-50 px-3 py-3">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Branch</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">{farmAccount.branch}</p>
-                </div>
-                <div className="rounded-2xl bg-slate-50 px-3 py-3">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">IBAN</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">{farmAccount.iban}</p>
-                </div>
-                <div className="rounded-2xl bg-emerald-50 px-3 py-3">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-600">Status</p>
-                  <p className="mt-1 text-sm font-semibold text-emerald-800">Verified account</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              <BadgePill icon={<FiLock />} text="Secure Payment" />
-              <BadgePill icon={<FiShield />} text="SSL Encrypted" />
-              <BadgePill icon={<FiSmartphone />} text="Mobile Banking Ready" />
-            </div>
-          </div>
-        </Card>
       </div>
 
       <AnimatePresence>
@@ -674,23 +664,21 @@ export default function CartPage() {
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-emerald-200/75">Secure Payment</p>
-                            <h3 className="mt-2 text-xl font-black sm:text-2xl">SSL Encrypted</h3>
+                            <h3 className="mt-2 text-xl font-black sm:text-2xl">PayHere Payment</h3>
                           </div>
                           <div className="rounded-2xl bg-white/10 p-3 text-emerald-200">
                             <FiLock className="text-2xl" />
                           </div>
                         </div>
                         <div className="thin-scrollbar mt-4 min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1">
-                          <BankChip method={selectedMethodInfo} />
-                          <PreviewRow label="Receiver Name" value={farmAccount.receiverName} />
-                          <PreviewRow label="Bank Name" value={farmAccount.bankName} />
-                          <PreviewRow label="Account Number" value={`**** **** **** ${farmAccount.accountNumber.slice(-4)}`} />
-                          <PreviewRow label="Transfer Amount" value={`Rs. ${advanceAmount.toFixed(2)}`} highlight />
+                          <PreviewRow label="Paying To" value={farmAccount.receiverName} />
+                          <PreviewRow label="Payment Method" value="Card / Bank via PayHere" />
+                          <PreviewRow label="Amount To Pay" value={`Rs. ${advanceAmount.toFixed(2)}`} highlight />
                           <PreviewRow label="Reference ID" value={referenceId} />
                         </div>
-                        <div className="mt-4 flex items-center gap-2 rounded-2xl border border-emerald-400/15 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-100">
-                          <FiShield className="text-emerald-300" />
-                          Verify the receiver details before continuing to your banking app.
+                        <div className="mt-4 flex items-start gap-2 rounded-2xl border border-emerald-400/15 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-100">
+                          <FiCreditCard className="mt-0.5 shrink-0 text-emerald-300" />
+                          <span>You will be redirected to PayHere's secure checkout to complete the payment. Your card details never reach this site.</span>
                         </div>
                         <div className="mt-auto flex w-full items-stretch gap-3 border-t border-white/10 bg-[linear-gradient(180deg,rgba(6,17,28,0),rgba(6,17,28,0.96)_35%)] pt-4">
                           <Button theme="light" variant="ghost" onClick={closePaymentFlow} className="h-12 flex-1 rounded-full bg-white/[0.08] text-white hover:bg-white/[0.12]">
@@ -698,241 +686,17 @@ export default function CartPage() {
                           </Button>
                           <Button
                             theme="light"
-                            onClick={handleContinueToMethod}
+                            onClick={handleVerifyAndPay}
+                            disabled={processing}
                             className="h-12 flex-1 rounded-full bg-emerald-500 px-5 py-3 text-white shadow-[0_18px_35px_rgba(16,185,129,0.25)] hover:bg-emerald-400"
                           >
-                            Continue <FiChevronRight className="ml-2" />
+                            {processing ? 'Redirecting...' : 'Pay with PayHere'} <FiChevronRight className="ml-2" />
                           </Button>
                         </div>
                       </section>
                     </motion.div>
                     )}
 
-                    {paymentStep === 'method' && (
-                    <motion.div
-                      key="method"
-                      initial={{ opacity: 0, x: 24 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -24 }}
-                      className="grid min-h-0 gap-4 lg:grid-cols-[0.9fr_1.1fr]"
-                    >
-                      <section className="flex min-h-0 flex-col rounded-[1.6rem] border border-white/10 bg-white/[0.06] p-4 shadow-[0_20px_50px_rgba(2,6,23,0.18)] sm:p-5">
-                        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-emerald-300/80">Payment Method</p>
-                        <h3 className="mt-2 text-xl font-black sm:text-2xl">Choose your bank app</h3>
-                        <div className="mt-4 rounded-[1.5rem] border border-white/10 bg-slate-950/35 p-4">
-                          <label className="block">
-                            <span className="mb-2 block text-xs font-semibold text-slate-300">Banking app</span>
-                            <select
-                              value={selectedMethod}
-                              onChange={(event) => setSelectedMethod(event.target.value as PaymentMethodId)}
-                              className="farm-input !h-12 !rounded-2xl !bg-white/[0.08] !py-0 !text-white"
-                            >
-                              {paymentMethods.map((method) => (
-                                <option key={method.id} value={method.id}>
-                                  {method.name}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <div className="mt-4 rounded-[1.25rem] border border-white/10 bg-white/[0.05] p-3.5">
-                            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">Selected method</p>
-                            <div className="mt-3">
-                              <BankChip method={selectedMethodInfo} />
-                            </div>
-                            <p className="mt-3 text-xs leading-5 text-slate-400">
-                              Use your selected mobile banking app to send the payment to the farm account shown on the right.
-                            </p>
-                          </div>
-                        </div>
-                      </section>
-
-                      <section className="flex min-h-0 flex-col rounded-[1.6rem] border border-white/10 bg-[linear-gradient(160deg,rgba(6,17,28,0.95),rgba(8,47,73,0.82)_55%,rgba(16,185,129,0.16))] p-4 shadow-[0_20px_50px_rgba(2,6,23,0.22)] sm:p-5">
-                        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-emerald-200/75">Bank Transfer Screen</p>
-                        <h3 className="mt-2 text-xl font-black sm:text-2xl">Confirm transfer details</h3>
-
-                        <div className="thin-scrollbar mt-4 min-h-0 flex-1 overflow-y-auto rounded-[1.5rem] border border-white/10 bg-white/[0.07] p-4 pr-2 shadow-[0_18px_40px_rgba(2,6,23,0.28)]">
-                          <div className="flex items-center justify-between">
-                            <BankChip method={selectedMethodInfo} />
-                            <div className="flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/12 px-3 py-1 text-xs font-semibold text-emerald-200">
-                              <FiLock /> Secure Payment
-                            </div>
-                          </div>
-
-                          <div className="mt-4 space-y-2.5">
-                            <PreviewRow label="Receiver Name" value={farmAccount.receiverName} />
-                            <PreviewRow label="Bank Name" value={farmAccount.bankName} />
-                            <PreviewRow label="Account Number" value={`**** **** **** ${farmAccount.accountNumber.slice(-4)}`} />
-                            <PreviewRow label="Transfer Amount" value={`Rs. ${advanceAmount.toFixed(2)}`} highlight />
-                            <PreviewRow label="Reference ID" value={referenceId} />
-                          </div>
-
-                          <div className="mt-4 grid gap-2 rounded-[1.25rem] border border-white/10 bg-slate-950/35 p-3.5">
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-slate-400">Payment status</span>
-                              <span className="font-semibold text-emerald-300">Ready for verification</span>
-                            </div>
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="text-slate-400">Payment route</span>
-                              <span className="font-semibold text-white">{selectedMethodInfo.name}</span>
-                            </div>
-                          </div>
-
-                          <div className="mt-4 rounded-[1.25rem] border border-white/10 bg-slate-950/35 p-3.5">
-                            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">Payer Details</p>
-                            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                              <label className="block">
-                                <span className="mb-2 block text-xs font-semibold text-slate-300">Sender Name</span>
-                                <input
-                                  value={senderDetails.senderName}
-                                  onChange={(event) => updateSenderDetail('senderName', event.target.value)}
-                                  placeholder="Account holder name"
-                                  className="farm-input !rounded-2xl !bg-white/[0.08] !py-2.5 !text-sm !placeholder:text-slate-500"
-                                />
-                              </label>
-                              <label className="block">
-                                <span className="mb-2 block text-xs font-semibold text-slate-300">Sender Bank</span>
-                                <select
-                                  value={senderDetails.senderBankName}
-                                  onChange={(event) => updateSenderDetail('senderBankName', event.target.value)}
-                                  className="farm-input !rounded-2xl !bg-white/[0.08] !py-2.5 !text-sm !placeholder:text-slate-500"
-                                >
-                                  <option value="" disabled>
-                                    Select bank app
-                                  </option>
-                                  {sriLankaBankApps.map((bank) => (
-                                    <option key={bank} value={bank}>
-                                      {bank}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label className="block">
-                                <span className="mb-2 block text-xs font-semibold text-slate-300">Sender Account No.</span>
-                                <input
-                                  value={senderDetails.senderAccountNumber}
-                                  onChange={(event) => updateSenderDetail('senderAccountNumber', event.target.value)}
-                                  placeholder="XXXX XXXX XXXX"
-                                  className="farm-input !rounded-2xl !bg-white/[0.08] !py-2.5 !text-sm !placeholder:text-slate-500"
-                                />
-                              </label>
-                              <label className="block">
-                                <span className="mb-2 block text-xs font-semibold text-slate-300">Sender Mobile</span>
-                                <input
-                                  value={senderDetails.senderPhone}
-                                  onChange={(event) => updateSenderDetail('senderPhone', event.target.value)}
-                                  placeholder="+94 7X XXX XXXX"
-                                  className="farm-input !rounded-2xl !bg-white/[0.08] !py-2.5 !text-sm !placeholder:text-slate-500"
-                                />
-                              </label>
-                              <label className="block sm:col-span-2">
-                                <span className="mb-2 block text-xs font-semibold text-slate-300">Reference Note</span>
-                                <input
-                                  value={senderDetails.senderNote}
-                                  onChange={(event) => updateSenderDetail('senderNote', event.target.value)}
-                                  placeholder="Optional note for the transaction"
-                                  className="farm-input !rounded-2xl !bg-white/[0.08] !py-2.5 !text-sm !placeholder:text-slate-500"
-                                />
-                              </label>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mt-auto flex w-full items-stretch gap-3 border-t border-white/10 bg-[linear-gradient(180deg,rgba(6,17,28,0),rgba(6,17,28,0.96)_35%)] pt-4">
-                          <Button theme="light" variant="ghost" onClick={() => setPaymentStep('summary')} className="h-12 flex-1 rounded-full bg-white/[0.08] text-white hover:bg-white/[0.12]">
-                            Back
-                          </Button>
-                          <Button
-                            theme="light"
-                            onClick={handlePayClick}
-                            className="h-12 flex-1 rounded-full bg-emerald-500 px-5 py-3 text-white shadow-[0_18px_35px_rgba(16,185,129,0.25)] hover:bg-emerald-400"
-                          >
-                            Pay Securely <FiChevronRight className="ml-2" />
-                          </Button>
-                        </div>
-                      </section>
-                    </motion.div>
-                    )}
-
-                    {paymentStep === 'verify' && (
-                    <motion.div
-                      key="verify"
-                      initial={{ opacity: 0, scale: 0.98 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.98 }}
-                      className="mx-auto flex max-w-xl flex-col rounded-[1.75rem] border border-white/10 bg-[linear-gradient(180deg,rgba(4,11,20,0.98),rgba(8,15,29,0.98))] p-5 shadow-[0_24px_60px_rgba(2,6,23,0.35)]"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-emerald-500/15 text-emerald-300">
-                          <FiLock className="text-2xl" />
-                        </div>
-                        <div>
-                          <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-emerald-300/80">Payment Verification</p>
-                          <h3 className="mt-1 text-2xl font-black">Enter OTP / Transaction PIN</h3>
-                          <p className="mt-2 text-sm leading-6 text-slate-300">
-                            Verify this transaction securely in your banking app.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 rounded-[1.25rem] border border-white/10 bg-white/[0.05] p-3.5">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-slate-400">Reference ID</span>
-                          <span className="font-semibold text-white">{referenceId}</span>
-                        </div>
-                        <div className="mt-3 flex items-center justify-between text-sm">
-                          <span className="text-slate-400">Amount</span>
-                          <span className="font-semibold text-emerald-300">Rs. {advanceAmount.toFixed(2)}</span>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 rounded-[1.25rem] border border-white/10 bg-white/[0.05] p-3.5">
-                        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">Sender Summary</p>
-                        <div className="mt-3 grid gap-2 text-sm">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-slate-400">Sender Name</span>
-                            <span className="font-semibold text-white">{senderDetails.senderName || 'Not entered'}</span>
-                          </div>
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-slate-400">Sender Bank</span>
-                            <span className="font-semibold text-white">{senderDetails.senderBankName || 'Not entered'}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <label className="mt-4 block">
-                        <span className="mb-2 block text-sm font-semibold text-slate-300">OTP / Transaction PIN</span>
-                        <input
-                          type="password"
-                          inputMode="numeric"
-                          value={transactionPin}
-                          onChange={(event) => setTransactionPin(event.target.value)}
-                          placeholder="Enter 4-6 digit PIN"
-                          className="farm-input rounded-2xl !bg-white/[0.08] !text-white !placeholder:text-slate-500"
-                        />
-                      </label>
-
-                      <div className="mt-4 rounded-[1.25rem] border border-emerald-400/15 bg-emerald-500/10 p-3.5 text-sm text-emerald-100">
-                        <div className="flex items-center gap-2">
-                          <FiShield className="text-emerald-300" />
-                          <span>SSL Encrypted</span>
-                        </div>
-                        <p className="mt-2 text-emerald-100/80">Your payment is being processed through a secure banking channel.</p>
-                      </div>
-
-                      <div className="mt-auto flex w-full items-stretch gap-3 border-t border-white/10 bg-[linear-gradient(180deg,rgba(4,11,20,0),rgba(4,11,20,0.96)_35%)] pt-4">
-                        <Button theme="light" variant="ghost" onClick={() => setPaymentStep('method')} className="h-12 flex-1 rounded-full bg-white/[0.08] text-white hover:bg-white/[0.12]">
-                          Back
-                        </Button>
-                        <Button
-                          theme="light"
-                          onClick={handleVerifyAndPay}
-                          className="h-12 flex-1 rounded-full bg-emerald-500 px-5 py-3 text-white shadow-[0_18px_35px_rgba(16,185,129,0.25)] hover:bg-emerald-400"
-                        >
-                          Verify & Pay
-                        </Button>
-                      </div>
-                    </motion.div>
-                    )}
 
                     {paymentStep === 'processing' && (
                     <motion.div
@@ -945,8 +709,8 @@ export default function CartPage() {
                         <div className="mx-auto grid h-20 w-20 place-items-center rounded-full border border-emerald-400/20 bg-emerald-500/12 text-emerald-300">
                           <FiLoader className="animate-spin text-3xl" />
                         </div>
-                        <h3 className="mt-5 text-2xl font-black">Verifying Payment...</h3>
-                        <p className="mt-2 text-sm text-slate-400">Please keep this screen open while your banking app completes the transfer.</p>
+                        <h3 className="mt-5 text-2xl font-black">Processing Payment...</h3>
+                        <p className="mt-2 text-sm text-slate-400">Please keep this screen open while PayHere completes your payment.</p>
                       </div>
                     </motion.div>
                     )}
@@ -978,8 +742,15 @@ export default function CartPage() {
                         <Button theme="light" variant="ghost" onClick={handleDownloadReceipt} className="h-12 flex-1 rounded-full bg-white/[0.08] text-white hover:bg-white/[0.12]">
                           <FiDownload className="mr-2" /> Download Receipt
                         </Button>
-                        <Button theme="light" onClick={closePaymentFlow} className="h-12 flex-1 rounded-full bg-emerald-500 px-5 py-3 text-white shadow-[0_18px_35px_rgba(16,185,129,0.25)] hover:bg-emerald-400">
-                          Done
+                        <Button
+                          theme="light"
+                          onClick={() => {
+                            closePaymentFlow();
+                            navigate('/dashboard/customer/orders');
+                          }}
+                          className="h-12 flex-1 rounded-full bg-emerald-500 px-5 py-3 text-white shadow-[0_18px_35px_rgba(16,185,129,0.25)] hover:bg-emerald-400"
+                        >
+                          View My Order <FiChevronRight className="ml-2" />
                         </Button>
                       </div>
                     </motion.div>

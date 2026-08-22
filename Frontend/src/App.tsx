@@ -37,6 +37,8 @@ import FieldDetailsPage from './pages/FarmManager/FieldDetailsPage';
 
 
 import AttendanceManagementPage from './pages/dashboards/AttendanceManagementPage';
+import LeaveManagementPage from './pages/dashboards/LeaveManagementPage';
+import FarmerLeavePage from './pages/dashboards/FarmerLeavePage';
 import MyAttendancePage from './pages/dashboards/MyAttendancePage';
 import FarmerProfilePage from './pages/dashboards/FarmerProfilePage';
 import RecentFarmerUpdatesPage from './pages/dashboards/RecentFarmerUpdatesPage';
@@ -298,6 +300,11 @@ export default function App() {
           <AttendanceManagementPage />
         </AppShell>
       } />
+      <Route path="/dashboard/farm-manager/leave" element={
+        <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
+          <LeaveManagementPage />
+        </AppShell>
+      } />
       <Route path="/dashboard/farm-manager/salary-approval" element={
         <AppShell role="farm-manager" items={publicNavItems['farm-manager']}>
           <SalaryApprovalPage />
@@ -362,6 +369,11 @@ export default function App() {
       <Route path="/dashboard/farmer-worker/attendance" element={
         <AppShell role="farmer-worker" items={publicNavItems['farmer-worker']}>
           <MyAttendancePage />
+        </AppShell>
+      } />
+      <Route path="/dashboard/farmer-worker/leave" element={
+        <AppShell role="farmer-worker" items={publicNavItems['farmer-worker']}>
+          <FarmerLeavePage />
         </AppShell>
       } />
       <Route path="/dashboard/farmer-worker/profile" element={

@@ -7,26 +7,17 @@ import { useTranslation } from 'react-i18next';
 import { notifyError, notifySuccess, notifyWarning } from '../../utils/notifications';
 
 const activitiesFallback = ['Irrigation', 'Fertilizer Application', 'Pesticide Application', 'Weeding', 'Pruning', 'Harvesting'];
-const stages = ['Seed Sowing', 'Germination', 'Vegetative', 'Flowering', 'Fruiting', 'Harvesting'];
 
 export default function FarmerCropUpdatesPage() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('activities');
   const [tasks, setTasks] = useState<any[]>([]);
-  const [selectedTaskId, setSelectedTaskId] = useState<string>('');
-  
+  const [updatesLoading, setUpdatesLoading] = useState(true);
+  const [taskDetails, setTaskDetails] = useState<Record<string, { evidence: any; reviews: any[] }>>({});
+
   // Crop Stage form states
   const [activeCrops, setActiveCrops] = useState<any[]>([]);
-  const [selectedCropCycleId, setSelectedCropCycleId] = useState('');
-  const [selectedGrowthStage, setSelectedGrowthStage] = useState(stages[0]);
-  const [stageNotes, setStageNotes] = useState('');
-  
-  // Activity form states
-  const [activityDate, setActivityDate] = useState(new Date().toISOString().split('T')[0]);
-  const [activityNotes, setActivityNotes] = useState('');
-  const [activityImage, setActivityImage] = useState<File | null>(null);
-  
-  const [stageImagePreview, setStageImagePreview] = useState<string | null>(null);
+
   const [diseaseImagePreview, setDiseaseImagePreview] = useState<string | null>(null);
   const [diseaseImage, setDiseaseImage] = useState<File | null>(null);
 
@@ -47,16 +38,34 @@ export default function FarmerCropUpdatesPage() {
         const tokenRaw = localStorage.getItem('token');
         const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
         
-        // Fetch tasks
+        // Fetch tasks the farmer has already worked on
         const tasksRes = await fetch('/api/tasks/farmer', { headers: { Authorization: `Bearer ${token}` } });
         if (tasksRes.ok) {
           const data = await tasksRes.json();
-          const activeTasks = data.filter((t: any) => {
+          const submittedTasks = data.filter((t: any) => {
             const status = String(t.status || '').trim().toLowerCase().replace(/\s+/g, '_');
-            return status === 'in_progress' && t.crop_cycle_id != null;
+            return !['assigned', 'accepted', 'todo', 'pending'].includes(status);
           });
-          setTasks(activeTasks);
+          setTasks(submittedTasks);
+
+          const detailEntries = await Promise.all(
+            submittedTasks.map(async (task: any) => {
+              try {
+                const [evidenceRes, reviewsRes] = await Promise.all([
+                  fetch(`/api/tasks/${task.id}/evidence`, { headers: { Authorization: `Bearer ${token}` } }),
+                  fetch(`/api/tasks/${task.id}/reviews`, { headers: { Authorization: `Bearer ${token}` } }),
+                ]);
+                const evidence = evidenceRes.ok ? await evidenceRes.json() : null;
+                const reviews = reviewsRes.ok ? await reviewsRes.json() : [];
+                return [task.id, { evidence, reviews: Array.isArray(reviews) ? reviews : [] }] as const;
+              } catch {
+                return [task.id, { evidence: null, reviews: [] }] as const;
+              }
+            })
+          );
+          setTaskDetails(Object.fromEntries(detailEntries));
         }
+        setUpdatesLoading(false);
 
         // Fetch crops
         const cropsRes = await fetch('/api/crops', { headers: { Authorization: `Bearer ${token}` } });
@@ -64,9 +73,6 @@ export default function FarmerCropUpdatesPage() {
           const cropsData = await cropsRes.json();
           const active = cropsData.filter((c: any) => c.status !== 'Harvested');
           setActiveCrops(active);
-          if (active.length > 0) {
-             setSelectedCropCycleId(active[0].id);
-          }
         }
         
         // Fetch fields
@@ -84,6 +90,7 @@ export default function FarmerCropUpdatesPage() {
         }
       } catch (err) {
         console.error('Failed to fetch data', err);
+        setUpdatesLoading(false);
       }
     };
     fetchData();
@@ -101,100 +108,26 @@ export default function FarmerCropUpdatesPage() {
     }
   }, [selectedDiseaseField, activeCrops]);
 
-  const tasksForDate = tasks.filter(t => {
-    if (!t.due_date) return false;
-    // Convert UTC due_date to local browser timezone YYYY-MM-DD
-    const d = new Date(t.due_date);
-    const localDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    return localDateStr === activityDate;
-  });
-
-  useEffect(() => {
-    if (tasksForDate.length > 0 && !tasksForDate.find(t => t.id === selectedTaskId)) {
-      setSelectedTaskId(tasksForDate[0].id);
-    } else if (tasksForDate.length === 0) {
-      setSelectedTaskId('');
-    }
-  }, [tasksForDate, selectedTaskId]);
-
-  // Fallback unique crops if tasks have crops but API crops failed
-  const uniqueCrops = Array.from(new Set(tasks.filter(t => t.crop_name).map(t => t.crop_name)));
-
-  const selectedTask = tasks.find(t => t.id === selectedTaskId);
-
-  const handleActivitySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedTaskId) return notifyWarning('No task selected');
-
-    const tokenRaw = localStorage.getItem('token');
-    const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
-
-    const formData = new FormData();
-    formData.append('notes', activityNotes);
-    if (activityImage) {
-      formData.append('images', activityImage);
-    }
-
-    try {
-      const selectedTask = tasks.find((t) => t.id === selectedTaskId);
-      const status = String(selectedTask?.status || '').trim().toLowerCase().replace(/\s+/g, '_');
-
-      if (status !== 'in_progress') {
-        notifyWarning('Please start the task before submitting activity.');
-        return;
+  const parseImages = (value: any): any[] => {
+    if (!value) return [];
+    let parsed = value;
+    if (typeof parsed === 'string') {
+      try {
+        parsed = JSON.parse(parsed);
+      } catch {
+        return [parsed];
       }
-
-      const res = await fetch(`/api/tasks/${selectedTaskId}/evidence`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData
-      });
-
-      if (res.ok) {
-        notifySuccess('Activity updated successfully!');
-        setActivityNotes('');
-        setActivityImage(null);
-      } else {
-        notifyError('Failed to update activity');
-      }
-    } catch (err) {
-      console.error(err);
-      notifyError('Error updating activity');
     }
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
   };
 
-  const handleStageSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedCropCycleId) return notifyWarning('No crop selected');
-    
-    const tokenRaw = localStorage.getItem('token');
-    const token = tokenRaw && tokenRaw.startsWith('"') ? tokenRaw.slice(1, -1) : tokenRaw;
+  const imageUrl = (item: any) => (typeof item === 'string' ? item : item?.url || item?.path || '');
 
-    const body = {
-      cropCycleId: selectedCropCycleId,
-      growthStage: selectedGrowthStage,
-      notes: stageNotes
-    };
-
-    try {
-      const res = await fetch('/api/crop-observations', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
-        },
-        body: JSON.stringify(body)
-      });
-      if (res.ok) {
-         notifySuccess('Crop stage updated successfully! The Farm Manager has been notified.');
-         setStageNotes('');
-         setStageImagePreview(null);
-      } else {
-         notifyError('Failed to update crop stage.');
-      }
-    } catch(err) {
-      notifyError('Error updating crop stage');
-    }
+  const fmtWhen = (value?: string | null) => {
+    if (!value) return 'N/A';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 'N/A' : date.toLocaleString();
   };
 
   const handleDiseaseSubmit = async (e: React.FormEvent) => {
@@ -245,171 +178,104 @@ export default function FarmerCropUpdatesPage() {
 
   return (
     <div className="space-y-6 pb-20">
-      <SectionHeading eyebrow={t("Crop Updates")} title={t("Crop Management")} description={t("Update crop stages, record daily activities, and report diseases.")} tone="light" />
+      <SectionHeading eyebrow={t("Crop Updates")} title={t("Crop Management")} description={t("Track your task updates and report diseases.")} tone="light" />
 
       {/* Tabs */}
       <div className="flex space-x-3 border-b border-white/10 pb-4 overflow-x-auto">
-        {['stages', 'activities', 'disease'].map(tab => (
+        {['activities', 'disease'].map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`px-5 py-2 rounded-xl text-sm font-semibold capitalize transition-all whitespace-nowrap ${activeTab === tab ? 'bg-emerald-600 text-white shadow-[0_4px_20px_rgba(16,185,129,0.3)]' : 'bg-slate-900/50 text-slate-300 hover:bg-slate-800 border border-white/5'}`}
           >
-            {tab === 'disease' ? t('Disease Reporting') : tab === 'stages' ? t('Crop Stages') : t('Daily Activities')}
+            {tab === 'disease' ? t('Disease Reporting') : t('My Updates of Task')}
           </button>
         ))}
       </div>
 
-      {activeTab === 'stages' && (
-        <Card title={t("Update Crop Stage")} subtitle={t("Select crop and update current growth stage")}>
-          <form className="space-y-6 mt-4" onSubmit={handleStageSubmit}>
-            <div className="grid gap-6 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-white/80">{t("Select Crop")}</span>
-                <select 
-                  className="farm-input w-full appearance-none"
-                  value={selectedCropCycleId}
-                  onChange={e => setSelectedCropCycleId(e.target.value)}
-                >
-                  {activeCrops.length > 0 ? (
-                    activeCrops.map(c => <option key={c.id} value={c.id}>{c.crop_name} {c.field_name ? `(${c.field_name})` : ''}</option>)
-                  ) : (
-                    uniqueCrops.length > 0 
-                      ? uniqueCrops.map(c => <option key={c} value={c}>{c}</option>)
-                      : <option value="">{t("No active crops found")}</option>
-                  )}
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-white/80">{t("Current Stage")}</span>
-                <select 
-                  className="farm-input w-full appearance-none"
-                  value={selectedGrowthStage}
-                  onChange={e => setSelectedGrowthStage(e.target.value)}
-                >
-                  {stages.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </label>
-            </div>
-            
-            <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Add Notes")}</span>
-              <textarea 
-                className="farm-input w-full min-h-32" 
-                placeholder={t("Describe the growth condition...")} 
-                value={stageNotes}
-                onChange={e => setStageNotes(e.target.value)}
-              />
-            </label>
-
-            <label className="block cursor-pointer">
-              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Upload Images")}</span>
-              <div className="grid place-items-center rounded-2xl border-2 border-dashed border-white/20 bg-white/5 p-8 text-center hover:bg-white/10 transition-colors cursor-pointer relative overflow-hidden">
-                {stageImagePreview ? (
-                  <img src={stageImagePreview} alt="Preview" className="max-h-48 object-contain rounded-lg" />
-                ) : (
-                  <>
-                    <FiUploadCloud className="text-4xl text-emerald-400" />
-                    <p className="mt-4 text-sm text-slate-300">{t("Drag and drop images here")}</p>
-                  </>
-                )}
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      setStageImagePreview(URL.createObjectURL(e.target.files[0]));
-                    }
-                  }}
-                />
-              </div>
-            </label>
-
-            <Button type="submit" className="w-full sm:w-auto" disabled={!selectedCropCycleId}>{t("Update Progress")}</Button>
-          </form>
-        </Card>
-      )}
-
       {activeTab === 'activities' && (
-        <Card title={t("Record Daily Activity")} subtitle={t("Log irrigation, fertilizing, and other field tasks")}>
-           <form className="space-y-6 mt-4" onSubmit={handleActivitySubmit}>
-            <div className="grid gap-6 md:grid-cols-2">
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-white/80">{t("Activity Type (Today's Tasks)")}</span>
-                <select 
-                  className="farm-input w-full appearance-none"
-                  value={selectedTaskId}
-                  onChange={(e) => setSelectedTaskId(e.target.value)}
-                >
-                  {tasksForDate.length === 0 ? (
-                    <option value="">No tasks assigned for selected date</option>
-                  ) : (
-                    tasksForDate.map(t => (
-                      <option key={t.id} value={t.id}>{t.title}</option>
-                    ))
-                  )}
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-2 block text-sm font-semibold text-white/80">{t("Crop / Field")}</span>
-                <input 
-                  type="text" 
-                  readOnly 
-                  value={selectedTask?.crop_name || t('N/A')}
-                  className="farm-input w-full bg-white/5 cursor-not-allowed text-white/50" 
-                  placeholder={t("Crop will auto-fill from task")}
-                />
-              </label>
+        <Card title={t("My Updates of Task")} subtitle={t("Evidence you submitted and the manager's review notes")}>
+          {updatesLoading ? (
+            <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-8 text-center text-sm text-white/50">{t("Loading your task updates...")}</div>
+          ) : tasks.length === 0 ? (
+            <div className="mt-4 rounded-xl border border-dashed border-white/10 bg-black/20 p-8 text-center text-sm text-white/50">{t("You have not submitted any task updates yet.")}</div>
+          ) : (
+            <div className="mt-4 space-y-4">
+              {tasks.map(task => {
+                const detail = taskDetails[task.id] || { evidence: null, reviews: [] };
+                const evidence = detail.evidence;
+                const images = parseImages(evidence?.images);
+                const managerNotes = detail.reviews.filter((r: any) => String(r.comments || r.reason || '').trim());
+                return (
+                  <div key={task.id} className="rounded-xl border border-white/10 bg-black/20 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h4 className="text-base font-semibold text-white">{task.title}</h4>
+                        <p className="mt-1 text-xs text-white/45">
+                          {task.crop_name || task.livestock_name || t('General')} · {t('Submitted')} {fmtWhen(evidence?.created_at || task.submission_time || task.updated_at)}
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-emerald-300">
+                        {String(task.status || '').replace(/_/g, ' ')}
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-wider text-white/45">{t("My Notes")}</div>
+                        <p className="mt-2 text-sm leading-relaxed text-white/70">{evidence?.notes || t('No notes submitted.')}</p>
+                        {evidence?.progress_percentage != null && (
+                          <p className="mt-2 text-xs text-white/45">{t("Progress reported")}: {evidence.progress_percentage}%</p>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-wider text-white/45">{t("Evidence")}</div>
+                        {images.length === 0 ? (
+                          <p className="mt-2 text-sm text-white/45">{t('No evidence images uploaded.')}</p>
+                        ) : (
+                          <div className="mt-2 grid grid-cols-3 gap-2">
+                            {images.map((item: any, index: number) => (
+                              <a
+                                key={index}
+                                href={imageUrl(item)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block overflow-hidden rounded-lg border border-white/10 transition hover:border-emerald-500/40"
+                              >
+                                <img src={imageUrl(item)} alt={t('Evidence')} className="h-24 w-full object-cover" />
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.02] p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-400">{t("Manager Review Notes")}</div>
+                      {managerNotes.length === 0 && !evidence?.manager_comment ? (
+                        <p className="mt-2 text-sm text-white/45">{t('No review notes from the manager yet.')}</p>
+                      ) : (
+                        <div className="mt-2 space-y-3">
+                          {evidence?.manager_comment ? (
+                            <p className="text-sm leading-relaxed text-white/75">{evidence.manager_comment}</p>
+                          ) : null}
+                          {managerNotes.map((review: any, index: number) => (
+                            <div key={review.id || index} className="border-l-2 border-emerald-500/30 pl-3">
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-white/45">
+                                <span className="font-medium text-white/70">{review.manager_name || t('Manager')}</span>
+                                <span>{fmtWhen(review.created_at)}</span>
+                              </div>
+                              <p className="mt-1 text-sm leading-relaxed text-white/75">{review.comments || review.reason}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            
-            <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Date")}</span>
-              <input 
-                type="date" 
-                className="farm-input w-full" 
-                value={activityDate}
-                onChange={e => setActivityDate(e.target.value)}
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Manager's Instructions")}</span>
-              <textarea 
-                className="farm-input w-full min-h-24 bg-white/5 cursor-not-allowed text-white/50" 
-                placeholder={t("Details from manager...")} 
-                readOnly
-                value={selectedTask?.description || t('No specific instructions provided.')}
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Farmer's Notes")}</span>
-              <textarea 
-                className="farm-input w-full min-h-24" 
-                placeholder={t("Describe what you actually did...")} 
-                value={activityNotes}
-                onChange={e => setActivityNotes(e.target.value)}
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-white/80">{t("Upload Image of Work")}</span>
-              <input 
-                type="file" 
-                accept="image/*"
-                onChange={e => e.target.files && setActivityImage(e.target.files[0])}
-                className="block w-full text-sm text-slate-300
-                  file:mr-4 file:py-2 file:px-4
-                  file:rounded-full file:border-0
-                  file:text-sm file:font-semibold
-                  file:bg-emerald-500/10 file:text-emerald-500
-                  hover:file:bg-emerald-500/20 transition-all cursor-pointer"
-              />
-            </label>
-
-            <Button type="submit" className="w-full sm:w-auto" disabled={!selectedTaskId}>{t("Save Activity")}</Button>
-          </form>
+          )}
         </Card>
       )}
 

@@ -38,11 +38,21 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 
+# Django and the Node backend MUST share one database. Django owns login/signup and
+# writes app_users.password_hash; Node owns the profile/password-change endpoints and
+# reads the same table. When these point at different databases, a password changed in
+# the app is written to one database while login verifies against the other, so the new
+# password silently never takes effect.
+#
+# DATABASE_URL is the single source of truth (same value as Backend/.env); the hardcoded
+# local block is only a fallback for working offline.
 DATABASES = {
-    "default": dj_database_url.parse(
-        os.getenv("DATABASE_URL"),
+    "default": dj_database_url.config(
+        default=os.getenv(
+            "DATABASE_URL",
+            "postgresql://postgres:Kristo%4018@localhost:5432/annam_integrated_farm",
+        ),
         conn_max_age=600,
-        ssl_require=True,
     )
 }
 

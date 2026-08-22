@@ -5,7 +5,11 @@ import fs from 'fs';
 import exifr from 'exifr';
 import { sendEmail, sendTaskAssignedEmail } from '../services/emailService.js';
 import { getDefaultFarmId } from './livestockController.js';
+import { isWorkerOnLeave } from './leaveController.js';
 import { daysInMonth } from '../utils/payrollMath.js';
+
+// A rejected task still pays the worker a fraction of the shift wage for the time spent.
+const REJECTED_TASK_WAGE_RATE = 0.25;
 
 function safeJsonParse(value, fallback) {
   if (value === null || value === undefined) return fallback;
@@ -258,15 +262,18 @@ async function upsertMonthlyPayrollAfterApproval({ farmId, managerId, workerId, 
   // authoritative total (the same rule the worker's earnings page uses), otherwise fall
   // back to the shift wage so the manager and worker never see different numbers.
   const ledgerRes = await pool.query(`
-    SELECT COALESCE(SUM(amount), 0)::numeric AS total
+    SELECT COALESCE(SUM(amount), 0)::numeric AS total, COUNT(*)::int AS entries
     FROM salary_ledger
     WHERE farm_id = $1 AND worker_id = $2
       AND created_at >= $3::date
       AND created_at < ($3::date + INTERVAL '1 month')
   `, [farmId, workerId, monthStart]);
-  const ledgerEarnings = Number(ledgerRes.rows[0]?.total || 0);
+  const ledgerEarnings = Math.max(0, Number(ledgerRes.rows[0]?.total || 0));
+  // Presence of entries decides, not a positive total: a reversed rejection can net to
+  // zero and must not fall back to the full shift wage.
+  const hasLedger = Number(ledgerRes.rows[0]?.entries || 0) > 0;
 
-  const gross = ledgerEarnings > 0
+  const gross = hasLedger
     ? Number((ledgerEarnings + bonus - deductions).toFixed(2))
     : Number((shiftWageEarned + overtimePay + bonus - deductions).toFixed(2));
   const monthDays = daysInMonth(paymentMonthNumber, paymentYear);
@@ -423,6 +430,32 @@ async function resolveShiftForTask(farmId, { shiftId, session }) {
   return null;
 }
 
+// A rejected task still pays REJECTED_TASK_WAGE_RATE of the shift wage. That wage was only
+// ever written to shift_attendances, which the manager's attendance screen reads - but the
+// worker's earnings page and the dynamic payroll both total salary_ledger, so the credit was
+// invisible to the worker. Post it to the ledger too, topping up to the entitlement so this
+// is safe to call repeatedly (the sync runs on every dashboard load).
+async function ensureRejectionLedgerEntry({ farmId, workerId, taskId, baseWage }) {
+  const entitlement = Number((Number(baseWage || 0) * REJECTED_TASK_WAGE_RATE).toFixed(2));
+  if (!(entitlement > 0) || !farmId || !workerId || !taskId) return 0;
+
+  const existing = await pool.query(`
+    SELECT COALESCE(SUM(amount), 0)::numeric AS total
+    FROM salary_ledger
+    WHERE farm_id = $1 AND worker_id = $2 AND task_id = $3
+  `, [farmId, workerId, taskId]);
+
+  const shortfall = Number((entitlement - Number(existing.rows[0]?.total || 0)).toFixed(2));
+  if (!(shortfall > 0)) return 0;
+
+  await pool.query(`
+    INSERT INTO salary_ledger (farm_id, worker_id, task_id, task_update_id, approved_progress, amount, status)
+    VALUES ($1, $2, $3, NULL, $4, $5, 'Rejected Task Wage')
+  `, [farmId, workerId, taskId, Math.round(REJECTED_TASK_WAGE_RATE * 100), shortfall]);
+
+  return shortfall;
+}
+
 export async function syncAttendanceFromCompletedTasks({ farmId, workerId = null, month = null, year = null, managerId = null } = {}) {
   const params = [farmId];
   const filters = [];
@@ -448,14 +481,20 @@ export async function syncAttendanceFromCompletedTasks({ farmId, workerId = null
       t.end_time,
       t.updated_at,
       t.working_hours,
+      t.status,
+      t.task_wage,
+      t.completion_percentage,
+      t.approved_progress,
+      sh.base_wage,
       TO_CHAR(COALESCE(t.completed_at, t.end_time, t.updated_at), 'YYYY-MM-DD') AS attendance_date
     FROM tasks t
+    LEFT JOIN shifts sh ON sh.id = t.shift_id
     LEFT JOIN shift_attendances sa
       ON sa.worker_id = t.assigned_to_user_id
       AND sa.shift_id = t.shift_id
       AND sa.date = TO_CHAR(COALESCE(t.completed_at, t.end_time, t.updated_at), 'YYYY-MM-DD')::date
     WHERE t.farm_id = $1
-      AND t.status IN ('Completed', 'approved')
+      AND LOWER(t.status) IN ('completed', 'approved', 'rejected')
       AND t.assigned_to_user_id IS NOT NULL
       AND COALESCE(t.completed_at, t.end_time, t.updated_at) IS NOT NULL
       AND sa.id IS NULL
@@ -486,10 +525,19 @@ export async function syncAttendanceFromCompletedTasks({ farmId, workerId = null
       continue;
     }
 
+    // Rejected tasks are still attended shifts, but only pay the reduced rejection rate.
+    const isRejected = String(task.status || '').toLowerCase() === 'rejected';
+    const fullShiftWage = Number(task.base_wage || task.task_wage || 0);
+    const paidPercentage = isRejected
+      ? Math.round(REJECTED_TASK_WAGE_RATE * 100)
+      : Math.min(100, Math.max(0, Number(task.approved_progress ?? task.completion_percentage ?? 100)));
+    const payableWage = Number((fullShiftWage * (paidPercentage / 100)).toFixed(2));
+
     await pool.query(`
       INSERT INTO shift_attendances (
-        worker_id, date, shift_id, check_in_time, check_out_time, total_hours, shift_status, farm_id
-      ) VALUES ($1, $2::date, $3, $4, $5, $6, 'Present', $7)
+        worker_id, date, shift_id, check_in_time, check_out_time, total_hours, shift_status, farm_id,
+        full_shift_wage, approved_completion_percentage, payable_wage
+      ) VALUES ($1, $2::date, $3, $4, $5, $6, 'Present', $7, $8, $9, $10)
     `, [
       task.worker_id,
       attendanceDate,
@@ -498,11 +546,49 @@ export async function syncAttendanceFromCompletedTasks({ farmId, workerId = null
       checkOutTime,
       hours,
       farmId,
+      fullShiftWage,
+      paidPercentage,
+      payableWage,
     ]);
 
     const previous = workersToRebuild.get(task.worker_id);
     if (!previous || attendanceDate > previous) {
       workersToRebuild.set(task.worker_id, attendanceDate);
+    }
+  }
+
+  // Rejected tasks are handled separately from the loop above: that query only returns tasks
+  // with no attendance row yet, so a rejection whose attendance was already written would
+  // otherwise never get its ledger credit.
+  const rejectedRes = await pool.query(`
+    SELECT
+      t.id,
+      t.assigned_to_user_id AS worker_id,
+      COALESCE(NULLIF(sh.base_wage, 0), t.task_wage, 0) AS base_wage,
+      TO_CHAR(COALESCE(t.completed_at, t.end_time, t.updated_at), 'YYYY-MM-DD') AS attendance_date
+    FROM tasks t
+    LEFT JOIN shifts sh ON sh.id = t.shift_id
+    WHERE t.farm_id = $1
+      AND LOWER(t.status) = 'rejected'
+      AND t.assigned_to_user_id IS NOT NULL
+      AND COALESCE(t.completed_at, t.end_time, t.updated_at) IS NOT NULL
+      ${filters.length > 0 ? `AND ${filters.join(' AND ')}` : ''}
+  `, params);
+
+  for (const task of rejectedRes.rows) {
+    const credited = await ensureRejectionLedgerEntry({
+      farmId,
+      workerId: task.worker_id,
+      taskId: task.id,
+      baseWage: task.base_wage,
+    });
+
+    if (credited > 0) {
+      const attendanceDate = normalizeDateInput(task.attendance_date);
+      const previous = workersToRebuild.get(task.worker_id);
+      if (attendanceDate && (!previous || attendanceDate > previous)) {
+        workersToRebuild.set(task.worker_id, attendanceDate);
+      }
     }
   }
 
@@ -569,7 +655,10 @@ export async function createTask(req, res) {
       dueDate,
       livestockGroupId,
       shiftId,
-      session
+      session,
+      diseaseReportId,
+      attachmentUrl,
+      attachmentName
     } = req.body;
 
     const resolvedShift = await resolveShiftForTask(farmId, { shiftId, session });
@@ -582,13 +671,27 @@ export async function createTask(req, res) {
       return;
     }
 
+    // The date picker greys out approved leave, but the rule has to hold here
+    // too - the UI is a convenience, not the guarantee.
+    if (validatedDueDate) {
+      const leave = await isWorkerOnLeave(assignedToUserId, validatedDueDate);
+      if (leave) {
+        const from = new Date(leave.start_date).toLocaleDateString();
+        const to = new Date(leave.end_date).toLocaleDateString();
+        return res.status(409).json({
+          error: `This worker is on approved ${leave.leave_type} leave from ${from} to ${to}. Pick another date or another worker.`
+        });
+      }
+    }
+
     // Insert task
     const result = await pool.query(`
       INSERT INTO tasks 
-      (farm_id, title, description, crop_cycle_id, livestock_group_id, assigned_to_user_id, created_by_user_id, priority, due_date, status, shift_id, session, shift_start_time, shift_end_time)
+      (farm_id, title, description, crop_cycle_id, livestock_group_id, assigned_to_user_id, created_by_user_id, priority, due_date, status, shift_id, session, shift_start_time, shift_end_time, disease_report_id, attachment_url, attachment_name)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'Pending', $10, $11,
               CASE WHEN $12::time IS NOT NULL AND $9::date IS NOT NULL THEN ($9::date + $12::time) ELSE NULL END,
-              CASE WHEN $13::time IS NOT NULL AND $9::date IS NOT NULL THEN ($9::date + $13::time) ELSE NULL END)
+              CASE WHEN $13::time IS NOT NULL AND $9::date IS NOT NULL THEN ($9::date + $13::time) ELSE NULL END,
+              $14, $15, $16)
       RETURNING *
     `, [
       farmId,
@@ -603,7 +706,10 @@ export async function createTask(req, res) {
       resolvedShift.id,
       normalizeShiftKey(resolvedShift.shift_name),
       resolvedShift.start_time || null,
-      resolvedShift.end_time || null
+      resolvedShift.end_time || null,
+      diseaseReportId || null,
+      attachmentUrl || null,
+      attachmentName || null
     ]);
 
     const task = result.rows[0];
@@ -761,10 +867,21 @@ export async function getFarmerTasks(req, res) {
     const farmId = await getDefaultFarmId(userId);
 
     const result = await pool.query(`
-      SELECT t.*, c.crop_name, c.variety, l.species as livestock_name
+      SELECT t.*, c.crop_name, c.variety, l.species as livestock_name,
+             rep.disease_report
       FROM tasks t
       LEFT JOIN crop_cycles c ON t.crop_cycle_id = c.id
       LEFT JOIN livestock_groups l ON t.livestock_group_id = l.id
+      LEFT JOIN LATERAL (
+        SELECT json_build_object(
+          'id', dr.id, 'title', dr.title, 'description', dr.description,
+          'severity', dr.severity, 'status', dr.status, 'crop_name', dr.crop_name,
+          'field_name', dr.field_name, 'affected_plants', dr.affected_plants,
+          'image_urls', dr.image_urls, 'manager_notes', dr.manager_notes,
+          'reported_at', dr.reported_at
+        ) AS disease_report
+        FROM disease_reports dr WHERE dr.id = t.disease_report_id
+      ) rep ON TRUE
       WHERE t.farm_id = $1 AND t.assigned_to_user_id = $2
       ORDER BY t.created_at DESC
     `, [farmId, userId]);
@@ -796,7 +913,8 @@ export async function getFarmManagerTasks(req, res) {
         latest_update.verification_result as latest_verification_result,
         latest_update.ai_explanation as latest_ai_explanation,
         latest_update.fraud_summary as latest_fraud_summary,
-        latest_update.evidence_completeness as latest_evidence_completeness
+        latest_update.evidence_completeness as latest_evidence_completeness,
+        rep.disease_report
       FROM tasks t
       LEFT JOIN app_users u ON t.assigned_to_user_id = u.id
       LEFT JOIN crop_cycles c ON t.crop_cycle_id = c.id
@@ -808,6 +926,16 @@ export async function getFarmManagerTasks(req, res) {
         ORDER BY tu.created_at DESC
         LIMIT 1
       ) latest_update ON true
+      LEFT JOIN LATERAL (
+        SELECT json_build_object(
+          'id', dr.id, 'title', dr.title, 'description', dr.description,
+          'severity', dr.severity, 'status', dr.status, 'crop_name', dr.crop_name,
+          'field_name', dr.field_name, 'affected_plants', dr.affected_plants,
+          'image_urls', dr.image_urls, 'manager_notes', dr.manager_notes,
+          'reported_at', dr.reported_at
+        ) AS disease_report
+        FROM disease_reports dr WHERE dr.id = t.disease_report_id
+      ) rep ON TRUE
       WHERE t.farm_id = $1
       ORDER BY t.created_at DESC
     `, [farmId]);
@@ -1162,6 +1290,11 @@ export async function reviewTask(req, res) {
       earnedAmount = Number((Number(fullShiftWageForDelta || task.task_wage || 0) * (Number(approvedDelta) / 100)).toFixed(2));
     }
 
+    // Rejected tasks are paid a flat REJECTED_TASK_WAGE_RATE share of the shift wage,
+    // topping up whatever partial progress was already approved on this task.
+    const rejectionBaseWage = Number(fullShiftWageForDelta || task.task_wage || 0);
+    const rejectionEntitlement = Number((rejectionBaseWage * REJECTED_TASK_WAGE_RATE).toFixed(2));
+
     let updateQuery = `
       UPDATE tasks
       SET status = $1, manager_review_notes = $2, manager_reviewed_at = NOW(), updated_at = NOW(), needs_manager_review = false
@@ -1182,6 +1315,18 @@ export async function reviewTask(req, res) {
       queryParams = [status, reason || null, taskId, farmId, cumulativeProgress, earnedAmount];
     }
 
+    if (status === 'rejected') {
+      updateQuery = `
+        UPDATE tasks
+        SET status = $1, manager_review_notes = $2, manager_reviewed_at = NOW(), updated_at = NOW(),
+            earned_salary = GREATEST(COALESCE(earned_salary, 0), $5),
+            needs_manager_review = false
+        WHERE id = $3 AND farm_id = $4
+        RETURNING *
+      `;
+      queryParams = [status, reason || null, taskId, farmId, rejectionEntitlement];
+    }
+
     const result = await pool.query(updateQuery, queryParams);
 
     const updatedTask = result.rows[0];
@@ -1194,7 +1339,44 @@ export async function reviewTask(req, res) {
       `, [farmId, workerId, taskId, approvedDelta, earnedAmount]);
     }
 
+    if (status === 'rejected') {
+      // Tops up to the entitlement based on what the ledger already holds for this task, so
+      // this cannot double-credit alongside the sync-time backfill.
+      await ensureRejectionLedgerEntry({ farmId, workerId, taskId, baseWage: rejectionBaseWage });
+    }
+
     const attendanceDate = normalizeDateInput(updatedTask.completed_at || updatedTask.end_time || updatedTask.updated_at || new Date()) || new Date().toISOString().slice(0, 10);
+
+    // A rejected task still counts as worked time: record/keep attendance paying the reduced wage.
+    if (status === 'rejected' && updatedTask.shift_id) {
+      const rejectedPercentage = Math.round(REJECTED_TASK_WAGE_RATE * 100);
+      const existingRejectedAttendance = await pool.query(
+        `SELECT id, payable_wage FROM shift_attendances WHERE worker_id = $1 AND shift_id = $3 AND date = $2::date LIMIT 1`,
+        [workerId, attendanceDate, updatedTask.shift_id]
+      );
+
+      const checkIn = updatedTask.started_at || updatedTask.updated_at;
+      const checkOut = updatedTask.completed_at || updatedTask.end_time || updatedTask.updated_at;
+      const workedHours = Number(updatedTask.working_hours || 0);
+
+      if (existingRejectedAttendance.rows.length > 0) {
+        // Never downgrade an attendance already paying more from an approved task on the same shift.
+        if (Number(existingRejectedAttendance.rows[0].payable_wage || 0) < rejectionEntitlement) {
+          await pool.query(`
+            UPDATE shift_attendances
+            SET full_shift_wage = $2, approved_completion_percentage = $3, payable_wage = $4, updated_at = NOW()
+            WHERE id = $1
+          `, [existingRejectedAttendance.rows[0].id, rejectionBaseWage, rejectedPercentage, rejectionEntitlement]);
+        }
+      } else {
+        await pool.query(`
+          INSERT INTO shift_attendances (worker_id, date, shift_id, check_in_time, check_out_time, total_hours, shift_status, farm_id, full_shift_wage, approved_completion_percentage, payable_wage)
+          VALUES ($1, $2::date, $3, $4, $5, $6, 'present', $7, $8, $9, $10)
+        `, [workerId, attendanceDate, updatedTask.shift_id, checkIn, checkOut, workedHours, farmId, rejectionBaseWage, rejectedPercentage, rejectionEntitlement]);
+      }
+
+      await upsertMonthlyPayrollAfterApproval({ farmId, managerId: userId, workerId, effectiveDate: attendanceDate });
+    }
 
 
     // Increment rework count if not approved
@@ -1311,15 +1493,19 @@ export async function reviewTask(req, res) {
     }
 
     // Notify worker
+    const reviewMessage = status === 'rejected'
+      ? `Your task "${updatedTask.title}" has been rejected. ${Math.round(REJECTED_TASK_WAGE_RATE * 100)}% of the shift wage (Rs. ${rejectionEntitlement.toFixed(2)}) has been credited for the time worked.`
+      : `Your task "${updatedTask.title}" has been ${status}.`;
+
     await pool.query(`
       INSERT INTO notifications (user_id, farm_id, type, title, message, priority, channel)
       VALUES ($1, $2, $3, $4, $5, 'high', 'Dashboard')
-    `, [workerId, farmId, 'TASK_REVIEWED', 'Task Review Completed', `Your task "${updatedTask.title}" has been ${status}.`]);
+    `, [workerId, farmId, 'TASK_REVIEWED', 'Task Review Completed', reviewMessage]);
 
     if (req.io) {
       req.io.to(workerId).emit('notification', {
         title: 'Task Review Completed',
-        message: `Your task "${updatedTask.title}" has been ${status}.`,
+        message: reviewMessage,
         category: 'TASK_REVIEWED',
         priority: 'high'
       });
@@ -1498,6 +1684,49 @@ export async function addActivityUpdate(req, res) {
 }
 
 
+// A rework/rejection zeroes tasks.earned_salary, but the worker's earnings page and the
+// manager's payroll both total salary_ledger. Without a matching reversal the worker keeps
+// seeing wages for work the manager just sent back. Post a negative ledger entry (instead of
+// deleting rows) so the reversal stays visible on the worker's dashboard, then rebuild the
+// attendance wage and monthly payroll from what is still approved.
+async function reverseTaskEarnings({ farmId, managerId, workerId, taskId, shiftId, effectiveDate, reasonStatus }) {
+  const outstandingRes = await pool.query(`
+    SELECT COALESCE(SUM(amount), 0)::numeric AS total
+    FROM salary_ledger
+    WHERE farm_id = $1 AND worker_id = $2 AND task_id = $3
+  `, [farmId, workerId, taskId]);
+  const outstanding = Number(outstandingRes.rows[0]?.total || 0);
+
+  if (outstanding > 0) {
+    await pool.query(`
+      INSERT INTO salary_ledger (farm_id, worker_id, task_id, task_update_id, approved_progress, amount, status)
+      VALUES ($1, $2, $3, NULL, 0, $4, $5)
+    `, [farmId, workerId, taskId, -outstanding, reasonStatus]);
+  }
+
+  if (!shiftId) return;
+
+  // Other tasks may still be approved on the same shift/day, so recompute the attendance
+  // wage from the remaining approved progress rather than blanking it out.
+  await pool.query(`
+    UPDATE shift_attendances sa
+    SET approved_completion_percentage = r.pct,
+        payable_wage = ROUND(COALESCE(sa.full_shift_wage, 0) * r.pct / 100.0, 2),
+        updated_at = NOW()
+    FROM (
+      SELECT COALESCE(MAX(t.approved_progress), 0)::numeric AS pct
+      FROM tasks t
+      WHERE t.farm_id = $1
+        AND t.assigned_to_user_id = $2
+        AND t.shift_id = $3
+        AND DATE(COALESCE(t.completed_at, t.end_time, t.updated_at)) = $4::date
+    ) r
+    WHERE sa.worker_id = $2 AND sa.shift_id = $3 AND sa.date = $4::date
+  `, [farmId, workerId, shiftId, effectiveDate]);
+
+  await upsertMonthlyPayrollAfterApproval({ farmId, managerId, workerId, effectiveDate });
+}
+
 export async function reviewTaskUpdate(req, res) {
   try {
     const userId = req.user.userId;
@@ -1664,6 +1893,16 @@ export async function reviewTaskUpdate(req, res) {
             updated_at = NOW()
         WHERE id = $1
       `, [updateId, reason || null]);
+
+      await reverseTaskEarnings({
+        farmId,
+        managerId: userId,
+        workerId: update.assigned_to_user_id,
+        taskId: update.task_id,
+        shiftId: update.shift_id,
+        effectiveDate: normalizeDateInput(update.created_at) || new Date().toISOString().slice(0, 10),
+        reasonStatus: 'Reversed - Rework Required',
+      });
     }
 
     if (newStatus === 'Rejected') {
@@ -1684,6 +1923,16 @@ export async function reviewTaskUpdate(req, res) {
             updated_at = NOW()
         WHERE id = $1
       `, [updateId, reason || null]);
+
+      await reverseTaskEarnings({
+        farmId,
+        managerId: userId,
+        workerId: update.assigned_to_user_id,
+        taskId: update.task_id,
+        shiftId: update.shift_id,
+        effectiveDate: normalizeDateInput(update.created_at) || new Date().toISOString().slice(0, 10),
+        reasonStatus: 'Reversed - Update Rejected',
+      });
     }
 
     res.json({ message: `Update ${newStatus} successfully` });

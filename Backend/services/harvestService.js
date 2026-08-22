@@ -51,7 +51,8 @@ const calculatePerennial = async (crop, master) => {
     await pool.query(
         `UPDATE crop_cycles
          SET expected_harvest_date = $1, remaining_days = $2, harvest_progress = $3, harvest_status = $4,
-             actual_harvest_date = COALESCE($5, actual_harvest_date)
+             actual_harvest_date = COALESCE($5, actual_harvest_date),
+             status = CASE WHEN status = 'planned' AND planting_date <= CURRENT_DATE THEN 'growing' ELSE status END
          WHERE id = $6`,
         [nextHarvestDate, remainingDays, progress, currentStatus, lastHarvestRaw, crop.id]
     );
@@ -78,6 +79,37 @@ const calculatePerennial = async (crop, master) => {
     return { expectedHarvestDate: nextHarvestDate, remainingDays, progress, currentStatus };
 };
 
+// Crops are typed in by hand ("green chilli", " Tomato "), so an exact match on
+// crop_master misses rows that clearly refer to the same crop. Match loosely,
+// and fall back to a generic season length so every crop still gets an
+// expected harvest date and a status instead of a blank cell.
+const DEFAULT_GROWTH_PERIOD = 90;
+
+const findCropMaster = async (cropName) => {
+    const name = String(cropName || '').trim();
+    if (!name) return null;
+
+    const exact = await pool.query(
+        `SELECT * FROM crop_master WHERE LOWER(TRIM(crop_name)) = LOWER($1)`,
+        [name]
+    );
+    if (exact.rowCount > 0) return exact.rows[0];
+
+    // "green chilli" -> "Chilli", "paddy rice" -> "Paddy": prefer the longest
+    // master name contained in (or containing) what the user typed.
+    const fuzzy = await pool.query(
+        `SELECT * FROM crop_master
+          WHERE LOWER($1) LIKE '%' || LOWER(TRIM(crop_name)) || '%'
+             OR LOWER(TRIM(crop_name)) LIKE '%' || LOWER($1) || '%'
+          ORDER BY LENGTH(crop_name) DESC
+          LIMIT 1`,
+        [name]
+    );
+    if (fuzzy.rowCount > 0) return fuzzy.rows[0];
+
+    return { crop_name: name, average_growth_period: DEFAULT_GROWTH_PERIOD, is_perennial: false, default_status_progression: null };
+};
+
 const notifyFarm = async (farmId, type, title, message, priority) => {
     const usersRes = await pool.query(`
         SELECT owner_id as id FROM farms WHERE id = $1
@@ -99,16 +131,15 @@ export const calculateHarvestForCrop = async (cropId) => {
         if (cropRes.rowCount === 0) return;
         const crop = cropRes.rows[0];
 
-        const masterRes = await pool.query(`SELECT * FROM crop_master WHERE crop_name = $1`, [crop.crop_name]);
-        if (masterRes.rowCount === 0) return; // No master data, can't calculate
-        const master = masterRes.rows[0];
+        const master = await findCropMaster(crop.crop_name);
+        if (!master) return;
 
         if (master.is_perennial) {
             return await calculatePerennial(crop, master);
         }
 
         const plantingDate = new Date(crop.planting_date);
-        const growthPeriod = master.average_growth_period;
+        const growthPeriod = master.average_growth_period || DEFAULT_GROWTH_PERIOD;
         
         const expectedHarvestDate = new Date(plantingDate.getTime() + growthPeriod * 86400 * 1000);
         const now = new Date();
@@ -138,8 +169,10 @@ export const calculateHarvestForCrop = async (cropId) => {
         }
 
         await pool.query(
-            `UPDATE crop_cycles 
-             SET expected_harvest_date = $1, remaining_days = $2, harvest_progress = $3, harvest_status = $4 
+            `UPDATE crop_cycles
+             SET expected_harvest_date = $1, remaining_days = $2, harvest_progress = $3, harvest_status = $4,
+                 -- a crop only stays "planned" until its planting date arrives
+                 status = CASE WHEN status = 'planned' AND planting_date <= CURRENT_DATE THEN 'growing' ELSE status END
              WHERE id = $5`,
             [expectedHarvestDate, remainingDays, progress, currentStatus, cropId]
         );

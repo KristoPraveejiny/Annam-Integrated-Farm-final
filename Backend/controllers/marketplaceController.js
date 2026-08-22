@@ -7,6 +7,17 @@ import {
   sendOrderCompletedEmail,
   sendStockReductionEmail
 } from '../services/emailService.js';
+import {
+  buildCheckout,
+  verifyIpnSignature,
+  retrievePayment,
+  isPaidStatus,
+  isPayhereConfigured,
+  isSandbox,
+  getCurrency,
+  getMinimumAmount,
+} from '../services/payhereService.js';
+
 
 // ==========================================
 // FARMER FUNCTIONS
@@ -329,53 +340,123 @@ export const viewCart = async (req, res) => {
   }
 };
 
-export const placeOrder = async (req, res) => {
+/**
+ * PAYHERE PAYMENT FLOW
+ *
+ * 1. createPayhereCheckout - reserves the order (payment_status pending) and returns
+ *                            the signed form the browser posts to PayHere.
+ * 2. payhereNotify         - PayHere's server-to-server IPN; the authoritative
+ *                            confirmation, verified with the md5sig hash.
+ * 3. confirmPayhereOrder   - called when the customer returns from PayHere; falls back
+ *                            to the Payment Retrieval API when the IPN has not arrived
+ *                            (e.g. localhost has no public URL for PayHere to call).
+ */
+
+async function markOrderPaid(orderId, { amount, currency, method, raw }) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const paymentRes = await client.query(
+      `UPDATE payments
+       SET status = 'paid', amount = $2, currency = $3, payment_method = $4,
+           paid_at = NOW(), raw_payload = $5
+       WHERE order_id = $1 AND status <> 'paid'
+       RETURNING id`,
+      [orderId, amount, currency, method || 'PayHere', JSON.stringify(raw || {})]
+    );
+
+    // Already settled by the other path (IPN vs return url) - nothing to do.
+    if (paymentRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return false;
+    }
+
+    await client.query(`UPDATE orders SET payment_status = 'authorized' WHERE id = $1`, [orderId]);
+    await client.query('COMMIT');
+    return true;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function sendOrderPaidEmails(orderId) {
+  try {
+    const orderRes = await pool.query(
+      `SELECT o.order_number, o.total_amount, u.email, u.full_name,
+              (SELECT amount FROM payments WHERE order_id = o.id ORDER BY created_at DESC LIMIT 1) AS advance
+       FROM orders o JOIN app_users u ON u.id = o.customer_user_id
+       WHERE o.id = $1`,
+      [orderId]
+    );
+    const order = orderRes.rows[0];
+    if (!order || !order.email) return;
+
+    await Promise.allSettled([
+      sendNewOrderEmail(order.email, {
+        orderNumber: order.order_number,
+        totalAmount: Number(order.total_amount || 0),
+        status: 'pending',
+        customerName: order.full_name || 'Customer',
+        advanceAmount: Number(order.advance || 0),
+        paymentMethod: 'PayHere',
+        senderDetails: {},
+      }),
+      sendOrderStatusEmail(order.email, {
+        orderNumber: order.order_number,
+        status: 'Order confirmed and 25% advance received',
+      }),
+    ]);
+  } catch (err) {
+    console.error('Failed to send order emails:', err);
+  }
+}
+
+async function notifyStockReductions(stockReductionEvents) {
+  if (!stockReductionEvents.length) return;
+  const customerEmailsRes = await pool.query(
+    `SELECT email FROM app_users WHERE role = 'customer' AND email IS NOT NULL AND email <> ''`
+  );
+  const customerEmails = customerEmailsRes.rows.map((row) => row.email);
+  for (const event of stockReductionEvents) {
+    for (const email of customerEmails) {
+      await sendStockReductionEmail(email, {
+        productName: event.productName,
+        remainingStock: event.remainingStock,
+        reducedBy: event.reducedBy,
+        unit: event.unit,
+        farmName: 'Annam Integrated Farm',
+      });
+    }
+  }
+}
+
+export const createPayhereCheckout = async (req, res) => {
+  if (!isPayhereConfigured()) {
+    return res.status(503).json({
+      error: 'Online payment is not configured. PAYHERE_MERCHANT_ID and PAYHERE_MERCHANT_SECRET are required.',
+    });
+  }
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const customer_id = req.user.userId;
-    const {
-      advanceAmount,
-      paymentMethod,
-      // Optional: buy one line of the cart instead of the whole cart. Omitted
-      // by the "pay for everything" button, which keeps its original behaviour.
-      cart_item_id = null,
-      senderDetails: senderDetailsInput = {},
-    } = req.body;
-    const senderDetails = {
-      senderName: req.body.senderName || senderDetailsInput.senderName || '',
-      senderBankName: req.body.senderBankName || senderDetailsInput.senderBankName || '',
-      senderAccountNumber: req.body.senderAccountNumber || senderDetailsInput.senderAccountNumber || '',
-      senderPhone: req.body.senderPhone || senderDetailsInput.senderPhone || '',
-      senderNote: req.body.senderNote || senderDetailsInput.senderNote || '',
-    };
-
-    if (advanceAmount && advanceAmount > 0) {
-      const requiredFields = [
-        ['senderName', 'Sender name'],
-        ['senderBankName', 'Sender bank name'],
-        ['senderAccountNumber', 'Sender account number'],
-        ['senderPhone', 'Sender mobile number'],
-      ];
-      const missing = requiredFields.filter(([key]) => !String(senderDetails[key]).trim()).map(([, label]) => label);
-      if (missing.length > 0) {
-        throw new Error(`Please enter sender details before continuing.`);
-      }
-    }
+    const { cart_item_id = null } = req.body;
 
     const customerInfoRes = await client.query(
-      'SELECT email, full_name FROM app_users WHERE id = $1 LIMIT 1',
+      'SELECT email, full_name, phone FROM app_users WHERE id = $1 LIMIT 1',
       [customer_id]
     );
-    const customerEmail = customerInfoRes.rows[0]?.email || null;
-    const customerName = customerInfoRes.rows[0]?.full_name || 'Customer';
+    const customer = customerInfoRes.rows[0] || {};
 
-    // Get cart
     const cartRes = await client.query('SELECT id FROM carts WHERE customer_id = $1', [customer_id]);
     if (cartRes.rows.length === 0) throw new Error('Cart is empty');
     const cart_id = cartRes.rows[0].id;
 
-    // Get items
     const itemsRes = await client.query(
       `SELECT ci.*, p.name as product_name, p.unit, p.available_quantity
        FROM cart_items ci
@@ -384,30 +465,43 @@ export const placeOrder = async (req, res) => {
          AND ($2::uuid IS NULL OR ci.id = $2::uuid)`,
       [cart_id, cart_item_id]
     );
-    if (itemsRes.rows.length === 0) throw new Error(cart_item_id ? 'That item is no longer in your cart' : 'Cart is empty');
+    if (itemsRes.rows.length === 0) {
+      throw new Error(cart_item_id ? 'That item is no longer in your cart' : 'Cart is empty');
+    }
     const items = itemsRes.rows;
 
     let subtotal = 0;
-
-    // Verify stock
     for (const item of items) {
       const prodRes = await client.query('SELECT available_quantity FROM products WHERE id = $1 FOR UPDATE', [item.product_id]);
       const available = prodRes.rows[0].available_quantity;
-      if (item.quantity > available) throw new Error(`Not enough stock for product ID ${item.product_id}`);
+      if (item.quantity > available) throw new Error(`Not enough stock for ${item.product_name}`);
       subtotal += Number(item.quantity) * Number(item.price);
     }
 
+    // The marketplace collects a 25% advance up front, as before.
+    const advanceAmount = Number((subtotal * 0.25).toFixed(2));
+    if (advanceAmount <= 0) throw new Error('Payable amount must be greater than zero');
+
+    // PayHere rejects anything under its floor, so stop here rather than
+    // reserving stock for a payment the gateway will refuse.
+    const minimumAmount = getMinimumAmount();
+    if (advanceAmount < minimumAmount) {
+      const minimumCartTotal = (minimumAmount * 4).toFixed(2);
+      throw new Error(
+        `The 25% advance (Rs. ${advanceAmount.toFixed(2)}) is below PayHere's minimum of Rs. ${minimumAmount.toFixed(2)}. `
+        + `Please order at least Rs. ${minimumCartTotal} worth of items.`
+      );
+    }
+
     const orderNumber = 'ORD-' + Math.random().toString(36).substr(2, 9).toUpperCase();
-    
-    // Create order
+
     const orderRes = await client.query(
-      `INSERT INTO orders (order_number, customer_user_id, status, payment_status, subtotal, total_amount) 
+      `INSERT INTO orders (order_number, customer_user_id, status, payment_status, subtotal, total_amount)
        VALUES ($1, $2, 'pending', 'pending', $3, $4) RETURNING id, order_number`,
       [orderNumber, customer_id, subtotal, subtotal]
     );
     const order_id = orderRes.rows[0].id;
 
-    // Insert order items and reduce stock
     const stockReductionEvents = [];
     for (const item of items) {
       const lineTotal = Number(item.quantity) * Number(item.price);
@@ -415,20 +509,14 @@ export const placeOrder = async (req, res) => {
         `INSERT INTO order_items (order_id, product_id, quantity, unit_price, line_total) VALUES ($1, $2, $3, $4, $5)`,
         [order_id, item.product_id, item.quantity, item.price, lineTotal]
       );
-      
-      // Update stock
       await client.query(
-        `UPDATE products SET available_quantity = available_quantity - $1 
-         WHERE id = $2`,
+        `UPDATE products SET available_quantity = available_quantity - $1 WHERE id = $2`,
         [item.quantity, item.product_id]
       );
-      
-      // If quantity is 0, update status to out_of_stock
       await client.query(
         `UPDATE products SET status = 'out_of_stock' WHERE id = $1 AND available_quantity <= 0 AND status != 'out_of_stock'`,
         [item.product_id]
       );
-
       stockReductionEvents.push({
         productId: item.product_id,
         productName: item.product_name,
@@ -438,117 +526,247 @@ export const placeOrder = async (req, res) => {
       });
     }
 
-    // Clear what was actually ordered - the single line, or the whole cart.
     await client.query(
       'DELETE FROM cart_items WHERE cart_id = $1 AND ($2::uuid IS NULL OR id = $2::uuid)',
       [cart_id, cart_item_id]
     );
 
-    // Insert advance payment record if provided
-    if (advanceAmount && advanceAmount > 0) {
-      await client.query(
-        `INSERT INTO payments (
-           order_id,
-           provider,
-           payment_reference,
-           payment_method,
-           sender_name,
-           sender_bank_name,
-           sender_account_number,
-           sender_phone,
-           sender_note,
-           status,
-           amount,
-           currency,
-           paid_at,
-           raw_payload
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), $13)`,
-        [
-          order_id,
-          'SystemPreorder',
-          'ADV-' + orderNumber,
-          paymentMethod || null,
-          senderDetails.senderName || null,
-          senderDetails.senderBankName || null,
-          senderDetails.senderAccountNumber || null,
-          senderDetails.senderPhone || null,
-          senderDetails.senderNote || null,
-          'paid',
-          advanceAmount,
-          'USD',
-          JSON.stringify({
-            paymentMethod: paymentMethod || null,
-            senderDetails,
-          }),
-        ]
-      );
-      
-      // Update order payment status to authorized/partially_paid 
-      // (Assuming 'pending' is default, we can set 'authorized' or keep 'pending')
-      await client.query(
-        `UPDATE orders SET payment_status = 'authorized' WHERE id = $1`,
-        [order_id]
-      );
-    }
+    // Pending payment row; PayHere flips it to paid via the IPN or the retrieval check.
+    await client.query(
+      `INSERT INTO payments (order_id, provider, payment_reference, payment_method, status, amount, currency, raw_payload)
+       VALUES ($1, 'PayHere', $2, 'PayHere', 'pending', $3, $4, $5)`,
+      [order_id, orderNumber, advanceAmount, getCurrency(), JSON.stringify({ stage: 'checkout_created' })]
+    );
 
     await client.query('COMMIT');
 
-    // Send order confirmation first so it is not delayed by stock alerts.
-    try {
-      if (customerEmail) {
-        await Promise.allSettled([
-          sendNewOrderEmail(customerEmail, {
-            orderNumber: orderRes.rows[0].order_number,
-            totalAmount: subtotal,
-            status: 'pending',
-            customerName,
-            advanceAmount: advanceAmount || 0,
-            paymentMethod: paymentMethod || null,
-            senderDetails,
-          }),
-          sendOrderStatusEmail(customerEmail, {
-            orderNumber: orderRes.rows[0].order_number,
-            status: 'Order confirmed and 25% advance recorded',
-          }),
-        ]);
-      }
-    } catch (e) {
-      console.error('Failed to send order email:', e);
-    }
+    // Stock alerts are informational and must not delay the redirect.
+    notifyStockReductions(stockReductionEvents).catch((err) => console.error('Stock alert failed:', err));
 
-    // Notify customers about relevant stock reductions after commit.
-    try {
-      const customerEmailsRes = await pool.query(
-        `SELECT email 
-         FROM app_users 
-         WHERE role = 'customer' AND email IS NOT NULL AND email <> ''`
-      );
-      const customerEmails = customerEmailsRes.rows.map((row) => row.email);
+    const baseUrl = process.env.APP_PUBLIC_URL || 'http://localhost:5173';
+    const notifyUrl = process.env.PAYHERE_NOTIFY_URL
+      || `${process.env.API_PUBLIC_URL || 'http://localhost:5000'}/api/marketplace/payhere/notify`;
 
-      for (const event of stockReductionEvents) {
-        for (const email of customerEmails) {
-          await sendStockReductionEmail(email, {
-            productName: event.productName,
-            remainingStock: event.remainingStock,
-            reducedBy: event.reducedBy,
-            unit: event.unit,
-            farmName: 'Annam Integrated Farm',
-          });
-        }
-      }
-    } catch (emailErr) {
-      console.error('Failed to send stock reduction email:', emailErr);
-    }
+    const nameParts = String(customer.full_name || 'Customer').trim().split(/\s+/);
+    const checkout = buildCheckout({
+      orderId: orderNumber,
+      amount: advanceAmount,
+      items: items.map((item) => `${item.product_name} x${item.quantity}`).join(', '),
+      customer: {
+        firstName: nameParts[0] || 'Customer',
+        lastName: nameParts.slice(1).join(' '),
+        email: customer.email || '',
+        phone: customer.phone || '',
+      },
+      returnUrl: `${baseUrl}/marketplace/cart?payhere_order_id=${encodeURIComponent(orderNumber)}`,
+      cancelUrl: `${baseUrl}/marketplace/cart?payhere_cancelled=1&payhere_order_id=${encodeURIComponent(orderNumber)}`,
+      notifyUrl,
+    });
 
-    res.status(201).json({ message: 'Order placed successfully', order_id, order_number: orderRes.rows[0].order_number });
+    res.json({ ...checkout, orderNumber, advanceAmount, subtotal, sandbox: isSandbox() });
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Error in placeOrder:', error);
-    res.status(400).json({ error: error.message || 'Internal server error' });
+    console.error('Error in createPayhereCheckout:', error);
+    res.status(400).json({ error: error.message || 'Failed to start payment' });
   } finally {
     client.release();
   }
 };
+
+
+/**
+ * Puts the reserved stock back and cancels an order whose payment never
+ * completed, so an abandoned or refused checkout does not eat inventory.
+ */
+async function releaseUnpaidOrder(orderId) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const guard = await client.query(
+      `SELECT o.id FROM orders o
+       LEFT JOIN payments pm ON pm.order_id = o.id
+       WHERE o.id = $1 AND o.status = 'pending' AND COALESCE(pm.status, 'pending') <> 'paid'
+       FOR UPDATE OF o`,
+      [orderId]
+    );
+    if (guard.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return false;
+    }
+
+    const itemsRes = await client.query('SELECT product_id, quantity FROM order_items WHERE order_id = $1', [orderId]);
+    for (const item of itemsRes.rows) {
+      await client.query(
+        `UPDATE products
+         SET available_quantity = available_quantity + $1,
+             status = CASE WHEN status = 'out_of_stock' THEN 'approved' ELSE status END
+         WHERE id = $2`,
+        [item.quantity, item.product_id]
+      );
+    }
+
+    // payment_status has no 'cancelled' member; an abandoned payment is 'failed'.
+    await client.query(`UPDATE orders SET status = 'cancelled', payment_status = 'failed' WHERE id = $1`, [orderId]);
+    await client.query(`UPDATE payments SET status = 'failed' WHERE order_id = $1 AND status <> 'paid'`, [orderId]);
+
+    await client.query('COMMIT');
+    return true;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Failed to release unpaid order:', err);
+    return false;
+  } finally {
+    client.release();
+  }
+}
+
+export const cancelPayhereOrder = async (req, res) => {
+  try {
+    const orderNumber = req.body.orderNumber || req.body.order_id;
+    if (!orderNumber) return res.status(400).json({ error: 'Order reference is required' });
+
+    const orderRes = await pool.query(
+      'SELECT id FROM orders WHERE order_number = $1 AND customer_user_id = $2 LIMIT 1',
+      [orderNumber, req.user.userId]
+    );
+    if (orderRes.rows.length === 0) return res.status(404).json({ error: 'Order not found' });
+
+    const released = await releaseUnpaidOrder(orderRes.rows[0].id);
+    res.json({ released });
+  } catch (err) {
+    console.error('Error cancelling PayHere order:', err);
+    res.status(500).json({ error: 'Failed to cancel order' });
+  }
+};
+
+/** PayHere IPN. Public endpoint - authenticity comes from the md5sig hash. */
+export const payhereNotify = async (req, res) => {
+  try {
+    const body = req.body || {};
+
+    if (!verifyIpnSignature(body)) {
+      console.warn('PayHere IPN rejected: bad signature for order', body.order_id);
+      return res.status(400).send('invalid signature');
+    }
+
+    const orderRes = await pool.query('SELECT id FROM orders WHERE order_number = $1 LIMIT 1', [body.order_id]);
+    if (orderRes.rows.length === 0) {
+      console.warn('PayHere IPN for unknown order', body.order_id);
+      return res.status(404).send('unknown order');
+    }
+    const orderId = orderRes.rows[0].id;
+
+    if (isPaidStatus(body.status_code)) {
+      const changed = await markOrderPaid(orderId, {
+        amount: Number(body.payhere_amount || 0),
+        currency: body.payhere_currency || getCurrency(),
+        method: body.method || 'PayHere',
+        raw: body,
+      });
+      if (changed) await sendOrderPaidEmails(orderId);
+    } else {
+      await pool.query(
+        `UPDATE payments SET status = 'failed', raw_payload = $2 WHERE order_id = $1 AND status = 'pending'`,
+        [orderId, JSON.stringify(body)]
+      );
+      await releaseUnpaidOrder(orderId);
+    }
+
+    res.status(200).send('ok');
+  } catch (err) {
+    console.error('Error handling PayHere IPN:', err);
+    res.status(500).send('error');
+  }
+};
+
+/** Called by the browser after returning from PayHere. */
+export const confirmPayhereOrder = async (req, res) => {
+  try {
+    const customer_id = req.user.userId;
+    const orderNumber = req.body.orderNumber || req.body.order_id;
+    if (!orderNumber) return res.status(400).json({ error: 'Order reference is required' });
+
+    const orderRes = await pool.query(
+      `SELECT o.id, o.order_number, o.payment_status, o.total_amount,
+              pm.status AS payment_state, pm.amount AS paid_amount
+       FROM orders o
+       LEFT JOIN payments pm ON pm.order_id = o.id
+       WHERE o.order_number = $1 AND o.customer_user_id = $2
+       LIMIT 1`,
+      [orderNumber, customer_id]
+    );
+
+    if (orderRes.rows.length === 0) return res.status(404).json({ error: 'Order not found' });
+    const order = orderRes.rows[0];
+
+    // Already confirmed by the IPN.
+    if (order.payment_state === 'paid') {
+      return res.json({
+        status: 'paid',
+        order_id: order.id,
+        order_number: order.order_number,
+        amount_paid: Number(order.paid_amount || 0),
+      });
+    }
+
+    // No IPN yet. The customer's browser usually gets back before PayHere's
+    // server-to-server callback lands, so wait briefly for it rather than
+    // telling the customer the payment is unverified.
+    let payment = await retrievePayment(orderNumber);
+
+    for (let attempt = 0; attempt < 8 && !payment; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const recheck = await pool.query(
+        'SELECT status, amount FROM payments WHERE order_id = $1 ORDER BY created_at DESC LIMIT 1',
+        [order.id]
+      );
+      if (recheck.rows[0]?.status === 'paid') {
+        return res.json({
+          status: 'paid',
+          order_id: order.id,
+          order_number: order.order_number,
+          amount_paid: Number(recheck.rows[0].amount || 0),
+        });
+      }
+
+      // Retry the API every few seconds in case the IPN never arrives.
+      if (attempt % 3 === 2) payment = await retrievePayment(orderNumber);
+    }
+
+    if (payment && isPaidStatus(payment.status_code)) {
+      const changed = await markOrderPaid(order.id, {
+        amount: Number(payment.amount || order.paid_amount || 0),
+        currency: payment.currency || getCurrency(),
+        method: payment.method || 'PayHere',
+        raw: payment,
+      });
+      if (changed) await sendOrderPaidEmails(order.id);
+
+      return res.json({
+        status: 'paid',
+        order_id: order.id,
+        order_number: order.order_number,
+        amount_paid: Number(payment.amount || order.paid_amount || 0),
+      });
+    }
+
+    res.json({
+      status: payment ? 'pending' : 'unverified',
+      order_id: order.id,
+      order_number: order.order_number,
+      amount_paid: Number(order.paid_amount || 0),
+      message: payment
+        ? 'Payment is still being processed by PayHere.'
+        : 'Payment could not be verified yet. It will be confirmed automatically once PayHere notifies us.',
+    });
+  } catch (err) {
+    console.error('Error confirming PayHere order:', err);
+    res.status(500).json({ error: 'Failed to confirm payment' });
+  }
+};
+
 
 export const getOrderHistory = async (req, res) => {
   try {

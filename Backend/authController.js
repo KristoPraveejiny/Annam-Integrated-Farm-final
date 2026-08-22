@@ -187,3 +187,96 @@ export async function logout(_req, res) {
   // With JWT, logout is handled client‑side by deleting the token.
   res.json({ message: 'Logged out' });
 }
+
+export async function getProfile(req, res) {
+  try {
+    const result = await pool.query(
+      'SELECT id, full_name, email, phone, role FROM app_users WHERE id = $1',
+      [req.user.userId]
+    );
+    const user = result.rows[0];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ id: user.id, name: user.full_name, email: user.email, phone: user.phone, role: user.role });
+  } catch (err) {
+    console.error('Get profile error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function updateProfile(req, res) {
+  try {
+    const { name, email, phone } = req.body;
+    const trimmedName = String(name || '').trim();
+    const trimmedEmail = String(email || '').trim().toLowerCase();
+
+    if (!trimmedName) {
+      return res.status(400).json({ error: 'Full name is required' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      return res.status(400).json({ error: 'A valid email address is required' });
+    }
+
+    let result;
+    try {
+      result = await pool.query(
+        `UPDATE app_users SET full_name = $1, email = $2, phone = $3 WHERE id = $4
+         RETURNING id, full_name, email, phone, role`,
+        [trimmedName, trimmedEmail, String(phone || '').trim() || null, req.user.userId]
+      );
+    } catch (e) {
+      if (e.code === '23505') {
+        return res.status(409).json({ error: 'That email address is already in use' });
+      }
+      throw e;
+    }
+
+    const user = result.rows[0];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    res.json({
+      message: 'Profile updated successfully',
+      user: { id: user.id, name: user.full_name, email: user.email, phone: user.phone, role: user.role },
+    });
+  } catch (err) {
+    console.error('Update profile error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+}
+
+export async function changePassword(req, res) {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current and new password are required' });
+    }
+    if (confirmPassword !== undefined && newPassword !== confirmPassword) {
+      return res.status(400).json({ error: 'New password and confirmation do not match' });
+    }
+    if (!isValidPassword(newPassword)) {
+      return res.status(400).json({ error: passwordValidationMessage() });
+    }
+
+    const result = await pool.query('SELECT password_hash FROM app_users WHERE id = $1', [req.user.userId]);
+    const user = result.rows[0];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const match = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!match) {
+      // Deliberately 400, not 401: the client treats 401 as an expired session and
+      // force-logs-out, which would be wrong for a mistyped current password.
+      return res.status(400).json({ error: 'Current password is incorrect' });
+    }
+    if (await bcrypt.compare(newPassword, user.password_hash)) {
+      return res.status(400).json({ error: 'New password must be different from the current password' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE app_users SET password_hash = $1 WHERE id = $2', [hashedPassword, req.user.userId]);
+
+    res.json({ message: 'Password changed successfully' });
+  } catch (err) {
+    console.error('Change password error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+}

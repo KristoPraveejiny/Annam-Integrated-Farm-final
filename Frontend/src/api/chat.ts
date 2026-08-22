@@ -14,6 +14,9 @@ export interface ChatSession {
   created_at: string;
   updated_at: string;
   messages: ChatMessage[];
+  detection_id?: string | null;
+  /** True when createSession returned an existing session rather than a new one. */
+  reused?: boolean;
 }
 
 export interface ChatResponse {
@@ -49,11 +52,16 @@ export async function fetchSessionMessages(sessionId: string) {
   return handleJson<ChatMessage[]>(response);
 }
 
-export async function createSession(title?: string) {
+/**
+ * Passing a detectionId returns the session already tied to that detection if
+ * one exists, so repeat visits from Disease Detection continue the same
+ * conversation. `reused` says which happened.
+ */
+export async function createSession(title?: string, detectionId?: string) {
   const response = await apiFetch('/api/chat/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title }),
+    body: JSON.stringify({ title, detectionId }),
   });
   return handleJson<ChatSession>(response);
 }

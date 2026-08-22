@@ -11,7 +11,7 @@ import { apiFetch } from '../../utils/apiFetch';
 import { notifySuccess, notifyError } from '../../utils/notifications';
 import { EnterpriseHarvestCalendar } from './EnterpriseHarvestCalendar';
 import { useNavigate } from 'react-router-dom';
-import { generateTextPDF } from '../../utils/pdfGenerator';
+import { generateTextPDF, buildTextPDFFile } from '../../utils/pdfGenerator';
 import { BarChart, Bar, CartesianGrid, Cell, Legend, PieChart, Pie, ResponsiveContainer, Tooltip, XAxis, YAxis, LineChart, Line, AreaChart, Area } from 'recharts';
 
 type CalendarView = 'month' | 'week' | 'day' | 'agenda';
@@ -88,6 +88,7 @@ export default function FarmManagerCropsPage() {
   const [reportNotes, setReportNotes] = useState('');
   const [reportPdfFile, setReportPdfFile] = useState<File | null>(null);
   const [reportPdfUrl, setReportPdfUrl] = useState<string | null>(null);
+  const [savingReport, setSavingReport] = useState(false);
 
   const growthStageMap: Record<string, string[]> = {
     papaya: ['Seed', 'Seedling', 'Vegetative', 'Flowering', 'Fruiting', 'Harvest'],
@@ -377,25 +378,125 @@ export default function FarmManagerCropsPage() {
     fetchData();
   }, []);
 
+  /**
+   * The report document, built once so the copy the manager downloads and the
+   * copy attached to a worker's task are always the same.
+   */
+  const buildReportDoc = (report: any, status?: string, notes?: string) => {
+    const title = `Manager Disease Report: ${report.crop_name}`;
+    let content = `Date: ${new Date().toLocaleDateString()}\n`;
+    content += `Crop: ${report.crop_name}\n`;
+    content += `Disease Title: ${report.title}\n`;
+    content += `Submitted By: ${report.worker_name || report.farmer_name || 'Worker'}\n`;
+    content += `Severity: ${report.severity}\n`;
+    content += `Status: ${status ?? report.status}\n\n`;
+
+    if (report.description) {
+      content += `Description from worker:\n${report.description}\n\n`;
+    }
+
+    const managerNotes = notes ?? report.manager_notes;
+    if (managerNotes) {
+      content += `Manager Notes & Recommendations:\n${managerNotes}\n`;
+    }
+
+    return { title, content, filename: `Disease_Report_${report.crop_name}` };
+  };
+
+  /**
+   * Hand a report to a worker as a task.
+   *
+   * Prefers the PDF already saved on the report; only generates a fresh one if
+   * the manager never attached anything, so the worker sees the same document
+   * the manager filed.
+   */
+  const assignTaskFromReport = async (report: any) => {
+    let attachmentUrl: string | null = report.report_pdf_url || null;
+    let attachmentName: string | undefined = report.report_pdf_name || undefined;
+
+    if (!attachmentUrl) {
+      try {
+        const { title, content, filename } = buildReportDoc(report);
+        const form = new FormData();
+        form.append('file', buildTextPDFFile(title, content, filename));
+        const res = await apiFetch('/api/disease-reports/report-pdf', { method: 'POST', body: form });
+        if (res.ok) {
+          const saved = await res.json();
+          attachmentUrl = saved.url;
+          attachmentName = saved.name;
+        } else {
+          notifyError('Could not attach a report PDF; assigning without it.');
+        }
+      } catch (err) {
+        console.error('Report PDF upload failed', err);
+        notifyError('Could not attach a report PDF; assigning without it.');
+      }
+    }
+
+    navigate('/dashboard/farm-manager/tasks', {
+      state: {
+        isNewTask: true,
+        prefillTitle: `Treat ${report.crop_name} for Disease`,
+        prefillDescription: report.manager_notes || `Disease detected: ${report.title}. Please take necessary action.`,
+        prefillCategory: 'Planting & Maintenance',
+        prefillAttachmentUrl: attachmentUrl,
+        prefillAttachmentName: attachmentName,
+        // Links the task to the report so the assigned worker sees the
+        // symptoms, severity and photo, not just a title.
+        prefillDiseaseReportId: report.id
+      }
+    });
+  };
+
   const handleSaveReport = async () => {
     if (!selectedReport) return;
+    setSavingReport(true);
     try {
+      // A newly chosen file only exists as a browser blob until it is uploaded;
+      // storing that blob URL is what made the attachment vanish on reopen.
+      let pdfUrl: string | undefined;
+      let pdfName: string | undefined;
+
+      if (reportPdfFile) {
+        const form = new FormData();
+        form.append('file', reportPdfFile);
+        const upload = await apiFetch('/api/disease-reports/report-pdf', { method: 'POST', body: form });
+        if (!upload.ok) {
+          notifyError('Could not upload the PDF. Nothing was saved.');
+          return;
+        }
+        const saved = await upload.json();
+        pdfUrl = saved.url;
+        pdfName = saved.name;
+      }
+
       const res = await apiFetch(`/api/disease-reports/${selectedReport.id}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: reportStatus, manager_notes: reportNotes })
+        body: JSON.stringify({
+          status: reportStatus,
+          manager_notes: reportNotes,
+          report_pdf_url: pdfUrl,
+          report_pdf_name: pdfName
+        })
       });
+
       if (res.ok) {
+        const { report } = await res.json();
         notifySuccess('Disease report updated successfully!');
-        setDiseaseReports(prev => prev.map(r => r.id === selectedReport.id ? { ...r, status: reportStatus, manager_notes: reportNotes } : r));
+        setDiseaseReports(prev => prev.map(r => (r.id === selectedReport.id ? { ...r, ...report } : r)));
         setShowReportModal(false);
         setSelectedReport(null);
+        setReportPdfFile(null);
+        setReportPdfUrl(null);
       } else {
         notifyError('Failed to update report status');
       }
     } catch (err) {
       console.error(err);
       notifyError('Error updating report status');
+    } finally {
+      setSavingReport(false);
     }
   };
 
@@ -927,6 +1028,13 @@ export default function FarmManagerCropsPage() {
                         >
                           {t("Review")}
                         </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => assignTaskFromReport(report)}
+                          className="ml-2 py-1 px-3 text-xs bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 border-emerald-500/30"
+                        >
+                          <FiPlus className="mr-1 inline" /> {t("Assign Task")}
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -1042,7 +1150,20 @@ export default function FarmManagerCropsPage() {
                   }}
                   className="w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-600/20 file:text-emerald-400 hover:file:bg-emerald-600/30"
                 />
-                {reportPdfFile && <p className="text-xs text-emerald-400 mt-2">Attached: {reportPdfFile.name}</p>}
+                {reportPdfFile ? (
+                  <p className="text-xs text-emerald-400 mt-2">{t('Will be saved')}: {reportPdfFile.name}</p>
+                ) : selectedReport.report_pdf_url ? (
+                  <a
+                    href={`http://localhost:5000${selectedReport.report_pdf_url}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-flex items-center gap-2 text-xs font-semibold text-emerald-400 hover:underline"
+                  >
+                    <FiFileText /> {selectedReport.report_pdf_name || t('Open saved PDF')}
+                  </a>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-500">{t('No PDF saved for this report yet.')}</p>
+                )}
               </div>
             </div>
 
@@ -1051,52 +1172,19 @@ export default function FarmManagerCropsPage() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    const title = `Manager Disease Report: ${selectedReport.crop_name}`;
-                    let content = `Date: ${new Date().toLocaleDateString()}\n`;
-                    content += `Crop: ${selectedReport.crop_name}\n`;
-                    content += `Disease Title: ${selectedReport.title}\n`;
-                    content += `Submitted By: ${selectedReport.worker_name || 'Worker'}\n`;
-                    content += `Severity: ${selectedReport.severity}\n`;
-                    content += `Status: ${reportStatus}\n\n`;
-
-                    if (selectedReport.description) {
-                      content += `Description from worker:\n${selectedReport.description}\n\n`;
-                    }
-
-                    if (reportNotes) {
-                      content += `Manager Notes & Recommendations:\n${reportNotes}\n`;
-                    }
-
-                    generateTextPDF(title, content, `Disease_Report_${selectedReport.crop_name}`);
+                    const { title, content, filename } = buildReportDoc(selectedReport, reportStatus, reportNotes);
+                    generateTextPDF(title, content, filename);
                   }}
                   className="flex items-center gap-2"
                 >
                   <FiPrinter /> {t("Generate PDF")}
-                </Button>
-                <Button
-                  variant="outline"
-                  className="bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 border-emerald-500/30 flex items-center gap-2"
-                  onClick={() => {
-                    navigate('/dashboard/farm-manager/tasks', {
-                      state: {
-                        isNewTask: true,
-                        prefillTitle: `Treat ${selectedReport.crop_name} for Disease`,
-                        prefillDescription: reportNotes || `Disease detected: ${selectedReport.title}. Please take necessary action.`,
-                        prefillCategory: 'Planting & Maintenance',
-                        prefillAttachmentUrl: reportPdfUrl,
-                        prefillAttachmentName: reportPdfFile?.name
-                      }
-                    });
-                  }}
-                >
-                  <FiPlus /> {t("Assign Task")}
                 </Button>
               </div>
               <div className="flex gap-2">
                 <Button variant="ghost" onClick={() => { setShowReportModal(false); setSelectedReport(null); setReportPdfFile(null); setReportPdfUrl(null); }}>
                   {t("Cancel")}
                 </Button>
-                <Button onClick={handleSaveReport}>{t("Save Updates")}</Button>
+                <Button onClick={handleSaveReport} disabled={savingReport}>{savingReport ? t("Saving...") : t("Save Updates")}</Button>
               </div>
             </div>
           </div>

@@ -7,12 +7,15 @@ import { useTranslation } from 'react-i18next';
 import { dashboardBadges } from '../../data/mock';
 import { Button } from '../ui/Button';
 import { apiFetch } from '../../utils/apiFetch';
+import { clearSession } from '../../utils/logout';
 
 type NavItem = {
   label: string;
   href: string;
   icon: ComponentType<{ className?: string }>;
   matchExact?: boolean;
+  /** Nav entries that perform an action instead of navigating to a page. */
+  action?: 'logout';
 };
 
 type AppShellProps = {
@@ -93,6 +96,12 @@ export function AppShell({ role, items, children }: AppShellProps) {
     return () => clearInterval(interval);
   }, []);
 
+  const handleLogout = async () => {
+    await clearSession();
+    // replace: true so the browser Back button cannot return to the dashboard.
+    navigate('/login', { replace: true });
+  };
+
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     i18n.changeLanguage(e.target.value);
   };
@@ -133,6 +142,27 @@ export function AppShell({ role, items, children }: AppShellProps) {
             <nav className="flex-1 space-y-1 overflow-y-auto pr-1">
               {items.map((item) => {
                 const Icon = item.icon;
+
+                // The Logout entry used to be a plain link to "/", which dropped the user on
+                // the landing page while leaving the session intact. It must clear the
+                // session instead of navigating.
+                if (item.action === 'logout') {
+                  return (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => {
+                        setMobileOpen(false);
+                        handleLogout();
+                      }}
+                      className="flex w-full items-center gap-3 rounded-2xl border border-transparent px-4 py-3 text-left text-sm font-medium tracking-wide text-white/72 transition duration-300 hover:border-white/10 hover:bg-white/6 hover:text-white"
+                    >
+                      <Icon className="text-lg text-emerald-200" />
+                      {t(item.label)}
+                    </button>
+                  );
+                }
+
                 return (
                   <NavLink
                     key={item.label}

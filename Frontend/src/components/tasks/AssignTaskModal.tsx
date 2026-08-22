@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/Button';
 import { FiFileText } from 'react-icons/fi';
 import { apiFetch } from '../../utils/apiFetch';
+import { LeaveAwareDatePicker } from '../ui/LeaveAwareDatePicker';
+import { fetchWorkerLeaveDates } from '../../api/leave';
 import { notifyError, notifySuccess, notifyWarning } from '../../utils/notifications';
 
 type AssignTaskModalProps = {
@@ -18,6 +20,8 @@ type AssignTaskModalProps = {
     description?: string;
     attachmentUrl?: string;
     attachmentName?: string;
+    /** Disease report this task is being raised from, if any. */
+    diseaseReportId?: string;
   };
 };
 
@@ -30,13 +34,54 @@ const emptyFormData = {
   session: 'morning',
   dueDate: '',
   attachmentUrl: '',
-  attachmentName: ''
+  attachmentName: '',
+  diseaseReportId: ''
 };
 
 export function AssignTaskModal({ mode, open, onClose, onCreated, farmers, shifts, relatedOptions, prefill }: AssignTaskModalProps) {
   const { t } = useTranslation();
   const [formData, setFormData] = useState(emptyFormData);
+  const [leaveDates, setLeaveDates] = useState<string[]>([]);
   const todayDate = new Date().toISOString().split('T')[0];
+
+  // Identity of the incoming prefill, so the form reloads when the manager
+  // arrives from a different disease report even if the modal never closed.
+  const prefillKey = [
+    prefill?.diseaseReportId,
+    prefill?.attachmentUrl,
+    prefill?.title,
+    prefill?.description
+  ].join('|');
+
+  // Whenever the chosen worker changes, load the days they are on approved
+  // leave so those dates can be greyed out in the picker.
+  useEffect(() => {
+    let cancelled = false;
+    const workerId = formData.assignedToUserId;
+
+    if (!workerId) {
+      setLeaveDates([]);
+      return;
+    }
+
+    fetchWorkerLeaveDates(workerId)
+      .then((result) => {
+        if (cancelled) return;
+        setLeaveDates(result.dates);
+        // A date picked before the worker was chosen may now be on leave.
+        if (formData.dueDate && result.dates.includes(formData.dueDate)) {
+          setFormData((previous) => ({ ...previous, dueDate: '' }));
+          notifyWarning('That date falls in this worker’s approved leave, so it was cleared.');
+        }
+      })
+      .catch((err) => {
+        console.error('Could not load leave dates', err);
+        if (!cancelled) setLeaveDates([]);
+      });
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.assignedToUserId]);
 
   useEffect(() => {
     if (open) {
@@ -45,11 +90,15 @@ export function AssignTaskModal({ mode, open, onClose, onCreated, farmers, shift
         title: prefill?.title || '',
         description: prefill?.description || '',
         attachmentUrl: prefill?.attachmentUrl || '',
-        attachmentName: prefill?.attachmentName || ''
+        attachmentName: prefill?.attachmentName || '',
+        diseaseReportId: prefill?.diseaseReportId || ''
       });
     }
+    // Keyed on the prefill contents, not just `open`: arriving from a second
+    // disease report while the modal is already open would otherwise keep the
+    // first report's details and link the task to the wrong report.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, prefillKey]);
 
   if (!open) return null;
 
@@ -57,6 +106,10 @@ export function AssignTaskModal({ mode, open, onClose, onCreated, farmers, shift
     e.preventDefault();
     if (formData.dueDate && formData.dueDate < todayDate) {
       notifyWarning('Task date cannot be earlier than today.');
+      return;
+    }
+    if (formData.dueDate && leaveDates.includes(formData.dueDate)) {
+      notifyWarning('This worker is on approved leave that day. Choose another date or another worker.');
       return;
     }
 
@@ -81,6 +134,7 @@ export function AssignTaskModal({ mode, open, onClose, onCreated, farmers, shift
           dueDate: formData.dueDate,
           attachmentUrl: formData.attachmentUrl,
           attachmentName: formData.attachmentName,
+          diseaseReportId: formData.diseaseReportId || undefined,
           shiftId: selectedShift?.id,
           session: String(selectedShift?.shift_name || formData.session).trim().toLowerCase()
         })
@@ -225,13 +279,14 @@ export function AssignTaskModal({ mode, open, onClose, onCreated, farmers, shift
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">Due Date</label>
-              <input
-                type="date"
-                min={todayDate}
+              <label className="block text-sm font-medium text-slate-300 mb-1">{t('Due Date')}</label>
+              <LeaveAwareDatePicker
                 value={formData.dueDate}
-                onChange={e => setFormData({ ...formData, dueDate: e.target.value })}
-                className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-2 text-white focus:border-emerald-500 focus:outline-none [color-scheme:dark]"
+                onChange={(date) => setFormData({ ...formData, dueDate: date })}
+                min={todayDate}
+                disabledDates={leaveDates}
+                disabledReason={t('Worker is on approved leave')}
+                placeholder={t('Select a date')}
               />
             </div>
           </div>

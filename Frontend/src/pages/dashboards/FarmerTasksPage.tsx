@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 
 import { useNavigate } from 'react-router-dom';
+import { DiseaseReportPanel } from '../../components/tasks/DiseaseReportPanel';
 
 export default function FarmerTasksPage() {
   const { t } = useTranslation();
@@ -184,6 +185,17 @@ export default function FarmerTasksPage() {
                     <td className="px-6 py-4 font-bold text-white">
                       {t(task.title)}
                       {task.description && <p className="text-xs text-slate-400 font-normal mt-1">{task.description}</p>}
+                      {task.disease_report && <DiseaseReportPanel report={task.disease_report} attachmentUrl={task.attachment_url} attachmentName={task.attachment_name} />}
+                      {!task.disease_report && task.attachment_url && (
+                        <a
+                          href={task.attachment_url.startsWith('http') ? task.attachment_url : `http://localhost:5000${task.attachment_url}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20"
+                        >
+                          {task.attachment_name || t('Open attached report')}
+                        </a>
+                      )}
                       <div className="mt-2 flex items-center gap-2">
                         <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                           <div className="h-full bg-emerald-500" style={{ width: `${task.completion_percentage || 0}%` }} />

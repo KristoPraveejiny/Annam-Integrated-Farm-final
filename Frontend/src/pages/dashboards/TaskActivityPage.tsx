@@ -6,6 +6,7 @@ import { SectionHeading } from '../../components/ui/SectionHeading';
 import { FiUploadCloud, FiCheckCircle, FiClock, FiAlertTriangle } from 'react-icons/fi';
 import { notifyError, notifySuccess } from '../../utils/notifications';
 import { motion, AnimatePresence } from 'framer-motion';
+import { DiseaseReportPanel } from '../../components/tasks/DiseaseReportPanel';
 
 const ACTIVITY_TYPES = [
   'Soil Preparation',
@@ -20,6 +21,13 @@ const ACTIVITY_TYPES = [
   'Cleaning Farm',
   'Other'
 ];
+
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];
+const MAX_IMAGE_MB = 5;
+const MAX_VIDEO_MB = 50;
+
+const isVideoFile = (file: File) => ALLOWED_VIDEO_TYPES.includes(file.type);
 
 export default function TaskActivityPage() {
   const { id: taskId } = useParams<{ id: string }>();
@@ -76,17 +84,23 @@ export default function TaskActivityPage() {
       const newErrors: string[] = [];
 
       newFiles.forEach(file => {
-        if (file.size > 5 * 1024 * 1024) {
-          newErrors.push(`${file.name} is larger than 5MB.`);
-        } else if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-          newErrors.push(`${file.name} format is not allowed (only JPG, PNG, WEBP).`);
+        const isVideo = ALLOWED_VIDEO_TYPES.includes(file.type);
+        const isImage = ALLOWED_IMAGE_TYPES.includes(file.type);
+        // Video needs a far larger allowance than a photo - 5MB is only a few
+        // seconds of phone footage.
+        const maxBytes = isVideo ? MAX_VIDEO_MB * 1024 * 1024 : MAX_IMAGE_MB * 1024 * 1024;
+
+        if (!isImage && !isVideo) {
+          newErrors.push(`${file.name} format is not allowed (JPG, PNG, WEBP, MP4, WEBM, MOV).`);
+        } else if (file.size > maxBytes) {
+          newErrors.push(`${file.name} is larger than ${isVideo ? MAX_VIDEO_MB : MAX_IMAGE_MB}MB.`);
         } else {
           validFiles.push(file);
         }
       });
 
       if (images.length + validFiles.length > 5) {
-        newErrors.push('You can upload a maximum of 5 images.');
+        newErrors.push('You can upload a maximum of 5 files.');
       } else {
         setImages([...images, ...validFiles]);
       }
@@ -101,7 +115,7 @@ export default function TaskActivityPage() {
     setErrors([]);
     const newErrors = [];
     if (notes.length < 20) newErrors.push('Description must be at least 20 characters.');
-    if (images.length < 1) newErrors.push('At least 1 image is required.');
+    if (images.length < 1) newErrors.push('At least 1 photo or video is required.');
     
     if (newErrors.length > 0) {
       setErrors(newErrors);
@@ -169,6 +183,8 @@ export default function TaskActivityPage() {
         tone="light" 
       />
 
+      {task.disease_report && <DiseaseReportPanel report={task.disease_report} attachmentUrl={task.attachment_url} attachmentName={task.attachment_name} />}
+
       {/* Progress Bar */}
       <Card>
         <div className="mb-2 flex justify-between text-sm text-slate-300">
@@ -227,20 +243,20 @@ export default function TaskActivityPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Evidence Images (2-5 for final, up to 5 for update)</label>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Evidence Photos or Video (up to 5 files)</label>
             <div className="border-2 border-dashed border-white/20 rounded-xl p-8 text-center bg-slate-900/50 hover:bg-slate-900 transition-colors relative">
               <input 
                 type="file" 
                 multiple 
-                accept="image/jpeg, image/png, image/webp" 
+                accept="image/jpeg, image/png, image/webp, video/mp4, video/webm, video/quicktime" 
                 onChange={handleImageChange}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
                 id="image-upload" 
               />
               <div className="flex flex-col items-center pointer-events-none">
                 <FiUploadCloud className="text-4xl text-emerald-500 mb-2" />
-                <span className="text-white font-medium">Click or Drag to upload images</span>
-                <span className="text-slate-400 text-sm mt-1">Max 5MB each (JPG, PNG, WEBP)</span>
+                <span className="text-white font-medium">Click or Drag to upload photos or video</span>
+                <span className="text-slate-400 text-sm mt-1">Photos max {MAX_IMAGE_MB}MB (JPG, PNG, WEBP) &middot; Video max {MAX_VIDEO_MB}MB (MP4, WEBM, MOV)</span>
               </div>
             </div>
 
@@ -248,7 +264,11 @@ export default function TaskActivityPage() {
               <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
                 {images.map((img, i) => (
                   <div key={i} className="relative group rounded-xl overflow-hidden border border-white/10">
-                    <img src={URL.createObjectURL(img)} alt="preview" className="w-full h-24 object-cover" />
+                    {isVideoFile(img) ? (
+                      <video src={URL.createObjectURL(img)} className="w-full h-24 object-cover" muted playsInline controls />
+                    ) : (
+                      <img src={URL.createObjectURL(img)} alt="preview" className="w-full h-24 object-cover" />
+                    )}
                     <button 
                       type="button"
                       onClick={() => setImages(images.filter((_, idx) => idx !== i))}

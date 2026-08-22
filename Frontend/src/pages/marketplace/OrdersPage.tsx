@@ -66,7 +66,10 @@ export default function OrdersPage({ role }: { role: 'customer' | 'farm-manager'
         <div className="grid gap-4">
           {orders.map((order) => {
             const payments = order.payments ? (typeof order.payments === 'string' ? JSON.parse(order.payments) : order.payments) : [];
-            const advancePayment = payments.find((p: any) => p.status === 'paid' && p.provider === 'SystemPreorder');
+            // Any settled advance counts, whichever gateway took it.
+            const advancePayment = payments.find((p: any) => p.status === 'paid');
+            const unpaidPayment = payments.find((p: any) => p.status !== 'paid');
+            const isGatewayPayment = advancePayment && advancePayment.provider !== 'SystemPreorder';
 
             return (
               <Card key={order.id} className="overflow-hidden !aspect-auto p-0 border border-slate-200">
@@ -110,7 +113,7 @@ export default function OrdersPage({ role }: { role: 'customer' | 'farm-manager'
                     {advancePayment ? (
                       <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3">
                         <div className="mb-2 flex items-center justify-between">
-                          <span className="text-sm font-semibold text-emerald-800">25% Advance Paid:</span>
+                          <span className="text-sm font-semibold text-emerald-800">Advance paid successfully (25%)</span>
                           <span className="text-sm font-bold text-emerald-900">Rs. {Number(advancePayment.amount).toFixed(2)}</span>
                         </div>
                         <p className="text-xs text-emerald-600">Paid at: {new Date(advancePayment.paid_at).toLocaleString()}</p>
@@ -122,14 +125,26 @@ export default function OrdersPage({ role }: { role: 'customer' | 'farm-manager'
                           </span>
                         </div>
                         <div className="mt-3 rounded-2xl border border-emerald-200/70 bg-white/70 p-3">
-                          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">Sender details</p>
+                          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">
+                            {isGatewayPayment ? 'Payment details' : 'Sender details'}
+                          </p>
                           <div className="mt-2 grid gap-1 text-sm text-slate-700">
-                            <p><span className="font-semibold">Name:</span> {advancePayment.sender_name || '-'}</p>
-                            <p><span className="font-semibold">Bank:</span> {advancePayment.sender_bank_name || '-'}</p>
-                            <p><span className="font-semibold">Account:</span> {advancePayment.sender_account_number || '-'}</p>
-                            <p><span className="font-semibold">Mobile:</span> {advancePayment.sender_phone || '-'}</p>
-                            {advancePayment.sender_note ? <p><span className="font-semibold">Note:</span> {advancePayment.sender_note}</p> : null}
-                            {advancePayment.payment_method ? <p><span className="font-semibold">Method:</span> {advancePayment.payment_method}</p> : null}
+                            {isGatewayPayment ? (
+                              <>
+                                <p><span className="font-semibold">Paid via:</span> {advancePayment.provider}</p>
+                                {advancePayment.payment_method ? <p><span className="font-semibold">Method:</span> {advancePayment.payment_method}</p> : null}
+                                <p><span className="font-semibold">Status:</span> Payment successful</p>
+                              </>
+                            ) : (
+                              <>
+                                <p><span className="font-semibold">Name:</span> {advancePayment.sender_name || '-'}</p>
+                                <p><span className="font-semibold">Bank:</span> {advancePayment.sender_bank_name || '-'}</p>
+                                <p><span className="font-semibold">Account:</span> {advancePayment.sender_account_number || '-'}</p>
+                                <p><span className="font-semibold">Mobile:</span> {advancePayment.sender_phone || '-'}</p>
+                                {advancePayment.sender_note ? <p><span className="font-semibold">Note:</span> {advancePayment.sender_note}</p> : null}
+                                {advancePayment.payment_method ? <p><span className="font-semibold">Method:</span> {advancePayment.payment_method}</p> : null}
+                              </>
+                            )}
                           </div>
                         </div>
                         {role === 'farm-manager' && (
@@ -146,8 +161,14 @@ export default function OrdersPage({ role }: { role: 'customer' | 'farm-manager'
                         )}
                       </div>
                     ) : (
-                      <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3">
-                        <p className="text-sm text-amber-800 font-medium">No advance payment recorded.</p>
+                      <div className={`rounded-2xl border p-3 ${unpaidPayment?.status === 'failed' ? 'border-rose-100 bg-rose-50' : 'border-amber-100 bg-amber-50'}`}>
+                        <p className={`text-sm font-medium ${unpaidPayment?.status === 'failed' ? 'text-rose-800' : 'text-amber-800'}`}>
+                          {unpaidPayment?.status === 'failed'
+                            ? 'Payment was not completed. This order was cancelled.'
+                            : unpaidPayment
+                              ? 'Payment is being confirmed with the gateway...'
+                              : 'No advance payment recorded.'}
+                        </p>
                       </div>
                     )}
                   </div>

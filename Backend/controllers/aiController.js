@@ -78,7 +78,7 @@ export async function detectDisease(req, res) {
         severity, 
         confidence, 
         '1.0', 
-        aiRecommendation.disease_explanation || '', 
+        aiRecommendation?.disease_explanation || '',
         confidence >= 60 ? 'Detected' : 'Unconfirmed'
       ]
     );
@@ -99,7 +99,7 @@ export async function detectDisease(req, res) {
 
   } catch (error) {
     console.error('Error in detectDisease:', error);
-    res.status(500).json({ error: 'Internal server error during disease detection' });
+    res.status(500).json({ error: 'Internal server error during disease detection', details: error.message });
   }
 }
 

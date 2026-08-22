@@ -90,19 +90,22 @@ export async function getFarmerSalaryStats(farmId, workerId, payrollMonth) {
     `, [farmId, workerId, monthNum, yearNum]);
 
     const ledgerRes = await pool.query(`
-      SELECT COALESCE(SUM(amount), 0)::numeric AS total
+      SELECT COALESCE(SUM(amount), 0)::numeric AS total, COUNT(*)::int AS entries
       FROM salary_ledger
       WHERE farm_id = $1 AND worker_id = $2
         AND EXTRACT(MONTH FROM created_at) = $3
         AND EXTRACT(YEAR FROM created_at) = $4
     `, [farmId, workerId, monthNum, yearNum]);
     const ledgerEarnings = Number(ledgerRes.rows[0].total || 0);
+    // Keyed off entry count, not the total: a reversed rejection can legitimately net to
+    // zero, and falling back to the shift wage there would re-pay the rejected work.
+    const hasLedger = Number(ledgerRes.rows[0].entries || 0) > 0;
 
     const metrics = calculatePayrollMetrics(attendances.rows, { month: monthNum, year: yearNum, deductions: 0 });
     // Ledger entries already are the approved task earnings, so they replace the shift
     // wage rather than adding to it (otherwise the same work is counted twice).
-    netSalary = ledgerEarnings > 0 ? ledgerEarnings : metrics.netSalary;
-    grossSalary = ledgerEarnings > 0 ? ledgerEarnings : metrics.grossSalary;
+    netSalary = hasLedger ? Math.max(0, ledgerEarnings) : metrics.netSalary;
+    grossSalary = hasLedger ? Math.max(0, ledgerEarnings) : metrics.grossSalary;
   }
 
   // 2. Calculate total successful PAID advances for that month.
@@ -497,9 +500,11 @@ export const getMyEarnings = async (req, res) => {
     }, 0);
 
     // Ledger entries are already the earned task wages. Prefer them over the
-    // stale/generated payroll total so shift wages are not counted twice.
-    const earnedSalary = ledgerEarningsTotal > 0
-      ? ledgerEarningsTotal
+    // stale/generated payroll total so shift wages are not counted twice. Presence of
+    // entries (not a positive total) is the trigger, so a fully reversed rejection
+    // correctly reports zero instead of falling back to the shift wage.
+    const earnedSalary = ledgerRes.rows.length > 0
+      ? Math.max(0, ledgerEarningsTotal)
       : hasPayment
         ? Math.max(0, Number(currentPayment.net_salary ?? currentPayment.gross_salary ?? 0))
         : Math.max(0, Number(stats.net_salary || 0));
@@ -615,22 +620,31 @@ export const requestSalaryAdvance = async (req, res) => {
     res.json(insertRes.rows[0]);
 
     try {
+      // Managers are linked to a farm through farm_memberships; app_users has no farm_id.
       const managerRes = await pool.query(
-        `SELECT id, email, phone FROM app_users WHERE farm_id = $1 AND LOWER(role::text) IN ('farm_manager', 'super_admin')`,
+        `SELECT u.id, u.email, u.phone
+         FROM app_users u
+         JOIN farm_memberships fm ON fm.user_id = u.id
+         WHERE fm.farm_id = $1 AND LOWER(u.role::text) IN ('farm_manager', 'super_admin')`,
         [farmId]
       );
 
+      const workerRes = await pool.query('SELECT full_name FROM app_users WHERE id = $1', [userId]);
+      const workerName = workerRes.rows[0]?.full_name || 'A worker';
+      const alertMessage = `${workerName} requested a Rs. ${requestedAmount.toFixed(2)} salary advance for ${monthValue}.`;
+
       for (const manager of managerRes.rows) {
         await pool.query(`
-          INSERT INTO notifications (user_id, title, message, category, delivery_channel)
-          VALUES ($1, 'Salary Advance Request', $2, 'PAYROLL', '["Dashboard", "Email", "SMS"]')
-        `, [manager.id, `Salary advance request for ${monthValue} from worker ${userId}`]);
+          INSERT INTO notifications (user_id, farm_id, type, title, message, priority, channel)
+          VALUES ($1, $2, 'SALARY_ADVANCE_REQUEST', 'Salary Advance Request', $3, 'high', 'Dashboard')
+        `, [manager.id, farmId, alertMessage]);
 
         if (req.io) {
           req.io.to(manager.id).emit('notification', {
             title: 'Salary Advance Request',
-            message: `Salary advance request for ${monthValue} from worker ${userId}`,
+            message: alertMessage,
             category: 'PAYROLL',
+            priority: 'high',
           });
         }
 
@@ -638,8 +652,8 @@ export const requestSalaryAdvance = async (req, res) => {
           await sendEmail({
             to: manager.email,
             subject: 'Salary Advance Request',
-            html: `<p>A salary advance request was submitted for <strong>${monthValue}</strong>.</p><p>Amount: Rs. ${requestedAmount.toFixed(2)}</p><p>Reason: ${reason}</p>`,
-            text: `Salary advance request for ${monthValue}. Amount: Rs. ${requestedAmount.toFixed(2)}. Reason: ${reason}`,
+            html: `<p>${workerName} submitted a salary advance request for <strong>${monthValue}</strong>.</p><p>Amount: Rs. ${requestedAmount.toFixed(2)}</p><p>Reason: ${reason}</p>`,
+            text: `${alertMessage} Reason: ${reason}`,
           });
         }
       }

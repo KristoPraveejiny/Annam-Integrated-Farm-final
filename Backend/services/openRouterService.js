@@ -1,11 +1,84 @@
 import axios from 'axios';
 
+// A low OpenRouter balance rejects the request outright (402) but names the
+// token budget it CAN afford, so retry once inside that budget instead of
+// losing the answer entirely.
+async function askOpenRouter(apiKey, prompt, maxTokens) {
+  const post = (tokens) => axios.post(
+    'https://openrouter.ai/api/v1/chat/completions',
+    {
+      model: 'google/gemini-2.5-flash',
+      max_tokens: tokens,
+      messages: [{ role: 'user', content: prompt }],
+    },
+    {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+
+  try {
+    return await post(maxTokens);
+  } catch (err) {
+    const affordable = err.response?.status === 402
+      ? Number(JSON.stringify(err.response.data).match(/can only afford (\d+)/)?.[1])
+      : NaN;
+    if (!(affordable > 50)) throw err;
+    console.warn(`OpenRouter low balance, retrying with ${affordable - 20} tokens.`);
+    return await post(affordable - 20);
+  }
+}
+
+// The advice call is best-effort: a missing API key, no OpenRouter credit, or a
+// malformed reply must never break a detection that already succeeded. Instead
+// of returning null (which callers then dereference), fall back to generic but
+// genuinely usable guidance and flag it so the UI can say the advice is not
+// AI-generated.
+function buildFallbackRecommendation(cropName, diseaseName, weatherSummary, confidence) {
+  const weatherNote = weatherSummary
+    ? `Current conditions: ${weatherSummary.temperature}°C, ${weatherSummary.humidity}% humidity, ${weatherSummary.description || 'n/a'}.`
+    : 'Weather data is not available right now.';
+
+  return {
+    is_fallback: true,
+    disease_explanation: `The image of your ${cropName} looks like ${diseaseName} (${confidence}% match). Detailed AI advice could not be generated right now, so here are the standard steps for this kind of leaf problem.`,
+    possible_causes: [
+      'Long wet leaves - rain, dew, or watering from the top.',
+      'High humidity and poor air flow between plants.',
+      'Infected leaves or plant waste left in the field from the last crop.'
+    ],
+    organic_treatment: [
+      'Pick off and burn or bury the badly affected leaves. Do not leave them in the field.',
+      'Spray neem oil mixed with water, early morning or late evening, every 7 days.',
+      'Water at the base of the plant only, so the leaves stay dry.'
+    ],
+    chemical_treatment: [
+      'Use a copper-based fungicide from your local agri shop.',
+      'Follow the dose written on the packet - do not use more than it says.',
+      'Spray again after 10-14 days if new spots keep appearing.'
+    ],
+    immediate_action: [
+      'Remove the worst affected leaves today.',
+      'Stop watering over the top of the plants.',
+      'Check the plants next to it for the same spots.'
+    ],
+    future_prevention: [
+      'Leave more space between plants so air can move.',
+      'Rotate to a different crop family next season.',
+      'Clear all old plant waste before planting again.'
+    ],
+    weather_based_advice: `${weatherNote} If it is humid or raining, spray only when the weather is dry, and check your plants more often.`
+  };
+}
+
 export async function generateDiseaseRecommendations(cropName, diseaseName, weatherSummary, confidence, languageCode = 'en') {
   try {
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
       console.warn('OpenRouter API Key is not set.');
-      return null;
+      return buildFallbackRecommendation(cropName, diseaseName, weatherSummary, confidence);
     }
 
     const weatherJSON = weatherSummary ? JSON.stringify(weatherSummary) : "Not available";
@@ -54,20 +127,7 @@ Please provide your advice structured EXACTLY as the following JSON. Do not incl
 }
 `;
 
-    const response = await axios.post(
-      'https://openrouter.ai/api/v1/chat/completions',
-      {
-        model: 'google/gemini-2.5-flash',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }],
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    const response = await askOpenRouter(apiKey, prompt, 1000);
 
     const content = response.data.choices[0].message.content;
     
@@ -77,7 +137,7 @@ Please provide your advice structured EXACTLY as the following JSON. Do not incl
 
   } catch (error) {
     console.error('Error generating AI recommendations:', error.response?.data || error.message);
-    return null;
+    return buildFallbackRecommendation(cropName, diseaseName, weatherSummary, confidence);
   }
 }
 
@@ -131,20 +191,7 @@ Write your entire response in ${targetLanguage}. Return raw JSON only, no markdo
 }
 `;
 
-    const response = await axios.post(
-      'https://openrouter.ai/api/v1/chat/completions',
-      {
-        model: 'google/gemini-2.5-flash',
-        max_tokens: 900,
-        messages: [{ role: 'user', content: prompt }],
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    const response = await askOpenRouter(apiKey, prompt, 900);
 
     const content = response.data.choices[0].message.content;
     const jsonStr = content.replace(/^```json/m, '').replace(/```$/m, '').trim();
@@ -186,20 +233,7 @@ Write your entire response in ${targetLanguage}. Return raw JSON only, no markdo
 }
 `;
 
-    const response = await axios.post(
-      'https://openrouter.ai/api/v1/chat/completions',
-      {
-        model: 'google/gemini-2.5-flash',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }],
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    const response = await askOpenRouter(apiKey, prompt, 1000);
 
     const content = response.data.choices[0].message.content;
     const jsonStr = content.replace(/^```json/m, '').replace(/```$/m, '').trim();

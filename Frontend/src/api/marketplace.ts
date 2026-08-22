@@ -82,6 +82,21 @@ export const viewCart = async (): Promise<any> => {
   return response.data;
 };
 
+export const createPayhereCheckout = async (data?: any): Promise<{ action: string; fields: Record<string, string>; orderNumber: string; advanceAmount: number }> => {
+  const response = await axios.post(`${API_BASE_URL}/orders/payhere/checkout`, data || {}, getAuthHeaders());
+  return response.data as any;
+};
+
+export const confirmPayhereOrder = async (orderNumber: string): Promise<any> => {
+  const response = await axios.post(`${API_BASE_URL}/orders/payhere/confirm`, { orderNumber }, getAuthHeaders());
+  return response.data;
+};
+
+export const cancelPayhereOrder = async (orderNumber: string): Promise<any> => {
+  const response = await axios.post(`${API_BASE_URL}/orders/payhere/cancel`, { orderNumber }, getAuthHeaders());
+  return response.data;
+};
+
 export const placeOrder = async (data?: any): Promise<any> => {
   const response = await axios.post(`${API_BASE_URL}/orders/create`, data || {}, getAuthHeaders());
   return response.data;

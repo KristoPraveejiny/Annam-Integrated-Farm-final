@@ -5,6 +5,16 @@ import blockhash from 'blockhash-core';
 import exifr from 'exifr';
 import { pool } from '../db.js'; // Ensure we can query the DB for duplicates
 
+// Video evidence goes through the same pipeline as photos, but the pixel-level
+// checks (brightness, resolution, perceptual hash) only apply to still images.
+// Running them on a video file throws, which previously read as a corrupt image
+// and scored it as a FAIL - punishing the worker for a format we accept.
+const isVideoFile = (file) => {
+    const mime = String(file?.mimetype || '');
+    if (mime.startsWith('video/')) return true;
+    return /\.(mp4|webm|mov|m4v|avi)$/i.test(String(file?.path || file?.url || ''));
+};
+
 // Helper: Hamming distance for pHash
 function hammingDistance(hash1, hash2) {
     let distance = 0;
@@ -49,6 +59,15 @@ async function checkImageQuality(filePath) {
     }
 }
 
+const sha256OfFile = (filePath) => {
+    try {
+        return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+    } catch (err) {
+        console.error('Hashing error:', err.message);
+        return null;
+    }
+};
+
 // 2. Duplicate Detection
 export async function computeHashes(filePath) {
     let sha256_hash = null;
@@ -64,10 +83,14 @@ export async function computeHashes(filePath) {
         try {
             // pHash (Might fail for some image formats/types)
             const image = await Jimp.read(fileBuffer);
-            image.resize(16, 16);
+            // Jimp v1 takes an options object; resize(16, 16) throws, which
+            // silently left every phash null and reduced duplicate detection to
+            // byte-identical files only.
+            image.resize({ w: 16, h: 16 });
             const imgData = { width: image.bitmap.width, height: image.bitmap.height, data: image.bitmap.data };
-            const bhash = blockhash.bmvbhash(imgData, 8);
-            phash = blockhash.hashToHex(bhash);
+            // bmvbhash already returns a hex string; blockhash-core has no
+            // hashToHex, and calling it threw before a phash was ever produced.
+            phash = blockhash.bmvbhash(imgData, 8);
         } catch (jimpErr) {
             console.error("Jimp hashing error:", jimpErr.message);
         }
@@ -141,15 +164,27 @@ async function checkFreshness(filePath, taskStartTime) {
 }
 
 // 4. Vision Verification Provider
+
+/**
+ * The vision check could not run.
+ *
+ * It must never be reported as a set of PASSes: an unreachable provider is not
+ * evidence that the work was done, and defaulting to PASS silently turned every
+ * outage into a clean verification at a fixed 80% score.
+ */
+const visionUnavailable = (reason) => ({
+    available: false,
+    cropMatch: "UNKNOWN", activityMatch: "UNKNOWN", progressionValid: "UNKNOWN", sequenceLabels: "UNKNOWN",
+    screenshotDetected: "UNKNOWN", editedDetected: "UNKNOWN",
+    aiConfidence: 0,
+    aiExplanation: `Image content could not be verified automatically (${reason}). Needs a manual check.`
+});
+
 async function evaluateWithVisionProvider(images, task) {
     if (!process.env.OPENROUTER_API_KEY) {
-        return { 
-            cropMatch: "PASS", activityMatch: "PASS", progressionValid: "PASS", sequenceLabels: "PASS", 
-            aiConfidence: 80, aiExplanation: "LLM Provider not configured. Defaulting to PASS.",
-            screenshotDetected: "PASS", editedDetected: "PASS"
-        };
+        return visionUnavailable('AI provider not configured');
     }
-    
+
     try {
         // Construct the prompt for multiple images
         const contentArray = [
@@ -184,12 +219,26 @@ Respond ONLY in valid JSON:
             }
         ];
 
-        // Add up to 3 images to the prompt
-        for (let i = 0; i < Math.min(images.length, 3); i++) {
-            const fileBuffer = fs.readFileSync(images[i].path);
+        // Only still images can be sent to the vision model; a video would be
+        // rejected as a malformed image, failing the whole verification.
+        const stillImages = images.filter((img) => !isVideoFile(img));
+        const videoCount = images.length - stillImages.length;
+
+        if (stillImages.length === 0) {
+            return visionUnavailable('evidence contains only video, which cannot be analysed automatically');
+        }
+
+        for (let i = 0; i < Math.min(stillImages.length, 3); i++) {
+            const fileBuffer = fs.readFileSync(stillImages[i].path);
             const base64Image = fileBuffer.toString('base64');
-            const mimeType = images[i].mimetype || 'image/jpeg';
+            const mimeType = stillImages[i].mimetype || 'image/jpeg';
             contentArray.push({ type: "image_url", image_url: { url: `data:${mimeType};base64,${base64Image}` } });
+        }
+
+        if (videoCount > 0) {
+            contentArray[0].text += `
+
+Note: the worker also submitted ${videoCount} video file(s) which are not shown here. Judge only the still images provided, and do not treat the missing footage as evidence either way.`;
         }
 
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -200,32 +249,57 @@ Respond ONLY in valid JSON:
             },
             body: JSON.stringify({
                 model: "google/gemini-2.5-flash",
+                max_tokens: 700,
                 messages: [{ role: "user", content: contentArray }]
             })
         });
 
+        if (!response.ok) {
+            const errText = await response.text();
+            console.error('Vision verification HTTP error:', response.status, errText.slice(0, 300));
+            return visionUnavailable(`provider returned ${response.status}`);
+        }
+
         const data = await response.json();
-        let aiText = data.choices?.[0]?.message?.content || '{}';
-        aiText = aiText.replace(/```json/g, '').replace(/```/g, '').trim();
-        const aiJson = JSON.parse(aiText);
+        const rawText = data.choices?.[0]?.message?.content;
+        if (!rawText) {
+            console.error('Vision verification returned no content:', JSON.stringify(data).slice(0, 300));
+            return visionUnavailable('empty response from provider');
+        }
+
+        const aiText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+
+        let aiJson;
+        try {
+            aiJson = JSON.parse(aiText);
+        } catch {
+            console.error('Vision verification returned non-JSON:', aiText.slice(0, 300));
+            return visionUnavailable('unreadable response from provider');
+        }
+
+        // A verdict the model did not actually give is not a PASS. Anything
+        // missing or unrecognised stays UNKNOWN so it shows up for review.
+        const verdict = (value) => {
+            const v = String(value || '').trim().toUpperCase();
+            return v === 'PASS' || v === 'FAIL' ? v : 'UNKNOWN';
+        };
+
+        const confidence = Number.parseInt(aiJson.aiConfidence, 10);
 
         return {
-            cropMatch: aiJson.cropMatch || "PASS",
-            activityMatch: aiJson.activityMatch || "PASS",
-            progressionValid: aiJson.progressionValid || "PASS",
-            sequenceLabels: aiJson.sequenceLabels || "PASS",
-            screenshotDetected: aiJson.screenshotDetected || "PASS",
-            editedDetected: aiJson.editedDetected || "PASS",
-            aiConfidence: parseInt(aiJson.aiConfidence) || 80,
+            available: true,
+            cropMatch: verdict(aiJson.cropMatch),
+            activityMatch: verdict(aiJson.activityMatch),
+            progressionValid: verdict(aiJson.progressionValid),
+            sequenceLabels: verdict(aiJson.sequenceLabels),
+            screenshotDetected: verdict(aiJson.screenshotDetected),
+            editedDetected: verdict(aiJson.editedDetected),
+            aiConfidence: Number.isFinite(confidence) ? Math.min(100, Math.max(0, confidence)) : 0,
             aiExplanation: aiJson.aiExplanation || "Automated analysis completed."
         };
     } catch (err) {
         console.error("LLM Error:", err);
-        return { 
-            cropMatch: "PASS", activityMatch: "PASS", progressionValid: "PASS", sequenceLabels: "PASS", 
-            aiConfidence: 50, aiExplanation: "Error communicating with AI Provider.",
-            screenshotDetected: "PASS", editedDetected: "PASS"
-        };
+        return visionUnavailable(err.message || 'provider unreachable');
     }
 }
 
@@ -244,13 +318,19 @@ export async function calculateAIEvidenceVerification(images, currentTask, isFin
 
     // Process all images individually for quality, duplicates, and freshness
     for (const img of images) {
-        // 1. Quality
-        const quality = await checkImageQuality(img.path);
-        if (quality.brightness === 'FAIL' || quality.resolution === 'FAIL') worstQuality = 'FAIL';
-        else if (quality.brightness === 'WARNING' || quality.resolution === 'WARNING' && worstQuality !== 'FAIL') worstQuality = 'WARNING';
+        const isVideo = isVideoFile(img);
+
+        // 1. Quality - still images only; a video has no single frame to judge.
+        if (!isVideo) {
+            const quality = await checkImageQuality(img.path);
+            if (quality.brightness === 'FAIL' || quality.resolution === 'FAIL') worstQuality = 'FAIL';
+            else if (quality.brightness === 'WARNING' || quality.resolution === 'WARNING' && worstQuality !== 'FAIL') worstQuality = 'WARNING';
+        }
         
         // 2. Duplicate
-        const hashes = await computeHashes(img.path);
+        const hashes = isVideo
+            ? { sha256_hash: sha256OfFile(img.path), phash: null }
+            : await computeHashes(img.path);
         hashResults.push({ imgPath: img.path, ...hashes });
         
         let dupCheck;
@@ -284,8 +364,21 @@ export async function calculateAIEvidenceVerification(images, currentTask, isFin
     let qualScoreComp = worstQuality === 'PASS' ? 100 : worstQuality === 'WARNING' ? 50 : 0;
     let freshScoreComp = (worstFreshness === 'PASS') ? 100 : (worstFreshness === 'WARNING') ? 50 : 0;
     
-    let totalScore = (dupScoreComp * 0.30) + (taskScoreComp * 0.20) + (progScoreComp * 0.15) + (qualScoreComp * 0.10) + (freshScoreComp * 0.10) + (aiResult.aiConfidence * 0.15);
-    totalScore = Math.round(totalScore);
+    // When the vision check could not run, its 50% of the weighting is neither
+    // awarded nor deducted - the remaining deterministic checks (duplicates,
+    // quality, freshness) are rescaled to stand on their own, and the result is
+    // forced to manual review below. Inventing a score either way would be a
+    // guess presented as a measurement.
+    let totalScore;
+    if (aiResult.available === false) {
+        const deterministic = (dupScoreComp * 0.30) + (qualScoreComp * 0.10) + (freshScoreComp * 0.10);
+        totalScore = Math.round(deterministic / 0.50);
+    } else {
+        totalScore = Math.round(
+            (dupScoreComp * 0.30) + (taskScoreComp * 0.20) + (progScoreComp * 0.15) +
+            (qualScoreComp * 0.10) + (freshScoreComp * 0.10) + (aiResult.aiConfidence * 0.15)
+        );
+    }
 
     // Fatal overrides
     let fatalReason = null;
@@ -301,7 +394,11 @@ export async function calculateAIEvidenceVerification(images, currentTask, isFin
     let riskLevel = 'Low Risk';
     let verificationResult = 'Verified';
 
-    if (totalScore >= 90) {
+    if (aiResult.available === false && !fatalReason) {
+        // Nothing confirmed what the photos actually show, so a human decides.
+        riskLevel = 'Medium Risk';
+        verificationResult = 'Manual Review Required';
+    } else if (totalScore >= 90) {
         riskLevel = 'Low Risk';
         verificationResult = 'Verified';
     } else if (totalScore >= 70) {

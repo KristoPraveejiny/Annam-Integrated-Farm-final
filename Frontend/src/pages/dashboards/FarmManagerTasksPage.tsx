@@ -17,7 +17,7 @@ export default function FarmManagerTasksPage() {
   const [crops, setCrops] = useState<any[]>([]);
   const [shifts, setShifts] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const [taskPrefill, setTaskPrefill] = useState<{ title?: string; description?: string; attachmentUrl?: string; attachmentName?: string }>({});
+  const [taskPrefill, setTaskPrefill] = useState<{ title?: string; description?: string; attachmentUrl?: string; attachmentName?: string; diseaseReportId?: string }>({});
   const [loading, setLoading] = useState(true);
   const [filterWorker, setFilterWorker] = useState('');
   const [filterTask, setFilterTask] = useState('');
@@ -117,16 +117,30 @@ export default function FarmManagerTasksPage() {
         title: location.state.prefillTitle || '',
         description: location.state.prefillDescription || '',
         attachmentUrl: location.state.prefillAttachmentUrl || '',
-        attachmentName: location.state.prefillAttachmentName || ''
+        attachmentName: location.state.prefillAttachmentName || '',
+        diseaseReportId: location.state.prefillDiseaseReportId || ''
       });
       setShowModal(true);
 
-      // Clear state so it doesn't reopen on refresh
-      window.history.replaceState({}, document.title);
+      // Clear it through the router, not window.history: replaceState leaves
+      // React Router's location.state untouched, so this effect fired again on
+      // every crops refresh - reopening the modal with the previous report's
+      // details and attaching the wrong PDF.
+      navigate(location.pathname, { replace: true, state: null });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state, crops]);
 
-  
+  /**
+   * Prefill is single-use. Left in state, the next task opened from the plain
+   * "Assign Task" button would inherit the previous disease report's PDF and
+   * hand the worker the wrong document.
+   */
+  const closeTaskModal = () => {
+    setShowModal(false);
+    setTaskPrefill({});
+  };
+
   const filteredTasks = tasks.filter(task => {
     const risk = getRiskLevel(task);
     const workerName = String(task.assigned_to_name || '').toLowerCase();
@@ -209,7 +223,7 @@ export default function FarmManagerTasksPage() {
              <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="bg-slate-900 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:border-emerald-500 focus:outline-none [color-scheme:dark]" />
              <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="bg-slate-900 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:border-emerald-500 focus:outline-none [color-scheme:dark]" />
           </div>
-          <Button onClick={() => setShowModal(true)} className="flex items-center gap-2 whitespace-nowrap">
+          <Button onClick={() => { setTaskPrefill({}); setShowModal(true); }} className="flex items-center gap-2 whitespace-nowrap">
             <FiPlus className="text-lg" /> {t("Assign Task")}
           </Button>
         </div>
@@ -250,6 +264,14 @@ export default function FarmManagerTasksPage() {
                           <FiAlertTriangle className="text-amber-500 shrink-0" title="Needs Manager Review" />
                         )}
                       </div>
+                      {task.disease_report && (
+                        <span
+                          className="mt-1 inline-block rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300"
+                          title={`From disease report: ${task.disease_report.title || ''}`}
+                        >
+                          Disease Report
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">{task.crop_name || 'N/A'}</td>
                     <td className="px-4 py-3 capitalize">{task.session || 'morning'}</td>
@@ -274,13 +296,13 @@ export default function FarmManagerTasksPage() {
                       }`}>{String(getDisplayStatus(task)).replace(/_/g, ' ')}</span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {task.latest_update || getDisplayStatus(task) === 'waiting_manager_approval' || getDisplayStatus(task) === 'waiting_for_manager_approval' || getDisplayStatus(task) === 'completed' || getDisplayStatus(task) === 'approved' || task.total_updates > 0 ? (
+                      {task.latest_update || getDisplayStatus(task) === 'waiting_manager_approval' || getDisplayStatus(task) === 'waiting_for_manager_approval' || getDisplayStatus(task) === 'completed' || getDisplayStatus(task) === 'approved' || getDisplayStatus(task) === 'rejected' || task.total_updates > 0 ? (
                         <Button
                           type="button"
                           variant="ghost"
                           onClick={() => {
                             const status = getDisplayStatus(task);
-                            if (status === 'completed' || status === 'approved' || status === 'done') {
+                            if (status === 'completed' || status === 'approved' || status === 'done' || status === 'rejected' || status === 'invalid' || status === 'failed') {
                               navigate('/dashboard/farm-manager/recent-updates', { state: { taskId: task.id } });
                             } else {
                               navigate(`/dashboard/farm-manager/tasks/${task.id}/review`);
@@ -306,8 +328,8 @@ export default function FarmManagerTasksPage() {
       <AssignTaskModal
         mode="crop"
         open={showModal}
-        onClose={() => setShowModal(false)}
-        onCreated={fetchData}
+        onClose={closeTaskModal}
+        onCreated={() => { closeTaskModal(); fetchData(); }}
         farmers={farmers}
         shifts={shifts}
         relatedOptions={crops}

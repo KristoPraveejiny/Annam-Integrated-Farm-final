@@ -21,6 +21,11 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage });
+// Evidence may be video, so the cap has to clear a short phone clip. Without an
+// explicit limit multer accepts any size and writes it to disk regardless.
+const upload = multer({
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 }
+});
 
 export default upload;

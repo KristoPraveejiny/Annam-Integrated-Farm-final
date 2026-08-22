@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FiUser, FiChevronDown, FiLogOut } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
+import { clearSession } from '../../utils/logout';
 
 export default function UserProfile() {
   const [user, setUser] = useState<any>(null);
@@ -18,10 +19,9 @@ export default function UserProfile() {
     }
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    navigate('/login');
+  const handleLogout = async () => {
+    await clearSession();
+    navigate('/login', { replace: true });
   };
 
   if (!user) return null;

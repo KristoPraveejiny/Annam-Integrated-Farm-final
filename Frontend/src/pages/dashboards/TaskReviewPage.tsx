@@ -153,36 +153,34 @@ function SectionShell({
   className?: string;
 }) {
   return (
-    <div className={`rounded-[28px] border border-white/10 bg-white/8 p-5 shadow-[0_18px_50px_rgba(2,6,23,0.28)] backdrop-blur-xl sm:p-6 ${className}`}>
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-emerald-300">
-            {icon}
-            <h3 className="text-lg font-black tracking-tight text-white">{title}</h3>
-          </div>
-          {subtitle ? <p className="mt-2 max-w-3xl text-sm text-white/65">{subtitle}</p> : null}
+    <section className={`rounded-2xl border border-white/10 bg-white/[0.03] p-5 sm:p-6 ${className}`}>
+      <header className="mb-5 border-b border-white/5 pb-4">
+        <div className="flex items-center gap-2 text-emerald-400">
+          {icon}
+          <h3 className="text-base font-semibold tracking-tight text-white">{title}</h3>
         </div>
-      </div>
+        {subtitle ? <p className="mt-1.5 max-w-3xl text-sm text-white/50">{subtitle}</p> : null}
+      </header>
       {children}
-    </div>
+    </section>
   );
 }
 
 function SummaryStat({ label, value, hint, tone = 'default' }: { label: string; value: string; hint?: string; tone?: 'default' | 'emerald' | 'amber' | 'rose' | 'sky' }) {
   const toneMap = {
-    emerald: 'border-emerald-500/15 bg-emerald-500/5 text-emerald-400',
-    amber: 'border-amber-500/15 bg-amber-500/5 text-amber-400',
-    rose: 'border-rose-500/15 bg-rose-500/5 text-rose-400',
-    sky: 'border-sky-500/15 bg-sky-500/5 text-sky-400',
-    default: 'border-white/5 bg-white/5 text-white',
+    emerald: 'border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-300',
+    amber: 'border-amber-500/20 bg-amber-500/[0.06] text-amber-300',
+    rose: 'border-rose-500/20 bg-rose-500/[0.06] text-rose-300',
+    sky: 'border-sky-500/20 bg-sky-500/[0.06] text-sky-300',
+    default: 'border-white/10 bg-white/[0.03] text-white',
   };
   const toneClass = toneMap[tone];
 
   return (
-    <div className={`flex flex-col rounded-2xl border p-4 transition hover:bg-white/10 ${toneClass}`}>
-      <dt className="text-xs font-semibold uppercase tracking-wider opacity-60">{label}</dt>
-      <dd className="mt-2 text-lg font-bold tracking-tight text-white sm:text-xl">{value}</dd>
-      {hint ? <p className="mt-2 text-xs opacity-50">{hint}</p> : null}
+    <div className={`flex flex-col rounded-xl border px-4 py-3 transition hover:border-white/20 ${toneClass}`}>
+      <dt className="text-[11px] font-medium uppercase tracking-wider opacity-55">{label}</dt>
+      <dd className="mt-1 text-base font-semibold leading-snug tracking-tight text-white">{value}</dd>
+      {hint ? <p className="mt-1 text-xs leading-relaxed opacity-45">{hint}</p> : null}
     </div>
   );
 }
@@ -196,7 +194,7 @@ function EvidenceGallery({
 }) {
   if (!items.length) {
     return (
-      <div className="rounded-3xl border border-dashed border-white/10 bg-black/15 p-6 text-sm text-white/55">
+      <div className="rounded-xl border border-dashed border-white/10 bg-black/20 p-8 text-center text-sm text-white/50">
         No photos were submitted yet.
       </div>
     );
@@ -209,7 +207,7 @@ function EvidenceGallery({
           key={`${item.url || index}`}
           type="button"
           onClick={() => onOpen(index)}
-          className="group relative overflow-hidden rounded-3xl border border-white/10 bg-black/20 text-left"
+          className="group relative overflow-hidden rounded-xl border border-white/10 bg-black/20 text-left transition hover:border-emerald-500/40"
         >
           <img
             src={item.url}
@@ -578,7 +576,7 @@ export default function TaskReviewPage() {
   if (!task) {
     return (
       <div className="min-h-screen bg-[radial-gradient(circle_at_top,#0f3d2e_0,#07110d_36%,#020403_100%)] px-4 py-10 text-white sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-3xl rounded-[32px] border border-white/10 bg-white/8 p-8 text-center backdrop-blur-xl">
+        <div className="mx-auto max-w-3xl rounded-2xl border border-white/10 bg-white/8 p-8 text-center backdrop-blur-xl">
           <AlertTriangle className="mx-auto h-12 w-12 text-amber-300" />
           <h1 className="mt-4 text-3xl font-black">Task not found</h1>
           <p className="mt-3 text-white/65">The selected task could not be loaded from the manager task list.</p>
@@ -597,20 +595,18 @@ export default function TaskReviewPage() {
 
   return (
     <div className="min-h-screen bg-[#07110d] px-4 py-8 text-white sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1400px] space-y-8 pb-20">
-        
-        
+      <div className="mx-auto max-w-[1400px] space-y-6 pb-20">
         {/* Header Section */}
         {fraudSummary.duplicatesFound && (
-          <div className="rounded-[24px] border border-rose-500/50 bg-rose-500/20 p-6 backdrop-blur-xl mb-4 flex items-center gap-4">
-             <AlertTriangle className="h-10 w-10 text-rose-400 shrink-0" />
+          <div className="mb-4 flex items-center gap-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-5">
+             <AlertTriangle className="h-8 w-8 shrink-0 text-rose-400" />
              <div>
-                <h2 className="text-xl font-bold text-white">Duplicate Evidence Detected</h2>
-                <p className="text-sm text-rose-200">This evidence strongly matches previous submissions. Please review carefully.</p>
+                <h2 className="text-base font-semibold text-white">Duplicate Evidence Detected</h2>
+                <p className="mt-0.5 text-sm text-rose-200/80">This evidence strongly matches previous submissions. Please review carefully.</p>
              </div>
           </div>
         )}
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between rounded-[24px] border border-white/5 bg-white/5 p-6 backdrop-blur-xl sm:p-8">
+        <div className="flex flex-col gap-6 rounded-2xl border border-white/10 bg-white/[0.03] p-6 lg:flex-row lg:items-start lg:justify-between sm:p-7">
 
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-4">
@@ -625,8 +621,8 @@ export default function TaskReviewPage() {
                 Task Review
               </span>
             </div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">{currentUserTaskTitle}</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/60">
+            <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">{currentUserTaskTitle}</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/50">
               Review task details, verify submitted evidence, and finalize managerial approval. Ensure all requirements are met before approving.
             </p>
           </div>
@@ -642,12 +638,6 @@ export default function TaskReviewPage() {
               }
             >
               <Inbox className="mr-2 h-4 w-4" /> {task?.livestock_group_id ? 'Back to Livestock Tasks' : 'Back to Tasks'}
-            </Button>
-            <Button variant="secondary" theme="dark" onClick={() => setManagerNotes('Need more evidence before approval.') }>
-              <MessageSquareReply className="mr-2 h-4 w-4" /> Request Evidence
-            </Button>
-            <Button variant="primary" theme="dark" onClick={() => setApproveModalOpen(true)}>
-              <CheckCircle2 className="mr-2 h-4 w-4" /> Approve Task
             </Button>
           </div>
         </div>
@@ -673,20 +663,20 @@ export default function TaskReviewPage() {
             <SummaryStat label="Completion" value={`${progressValue}%`} hint={`Actual duration ${fmtDuration(task.started_at || task.actual_start_time, task.completed_at || task.submission_time)}`} tone="emerald" />
           </div>
 
-          <div className="mt-8 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="mt-6 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
             {stageState.map((item, index) => (
               <div
                 key={item.stage}
-                className={`rounded-3xl border p-4 text-center ${
+                className={`rounded-xl border px-3 py-3 text-center ${
                   item.state === 'complete'
-                    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                    ? 'border-emerald-500/25 bg-emerald-500/[0.08] text-emerald-200'
                     : item.state === 'current'
-                      ? 'border-amber-500/30 bg-amber-500/10 text-amber-100'
-                      : 'border-white/10 bg-black/20 text-white/55'
+                      ? 'border-amber-500/30 bg-amber-500/[0.08] text-amber-100'
+                      : 'border-white/10 bg-black/20 text-white/45'
                 }`}
               >
-                <div className="text-xs font-bold uppercase tracking-[0.22em]">Step {index + 1}</div>
-                <div className="mt-2 text-sm font-semibold">{item.stage}</div>
+                <div className="text-[10px] font-medium uppercase tracking-[0.18em] opacity-70">Step {index + 1}</div>
+                <div className="mt-1 text-sm font-medium">{item.stage}</div>
               </div>
             ))}
           </div>
@@ -694,15 +684,15 @@ export default function TaskReviewPage() {
 
         <div className="grid gap-6 xl:grid-cols-1">
           <SectionShell title="Evidence Completeness & AI Score" subtitle="Evidence quality is derived from the submitted material and progress updates." icon={<ShieldCheck className="h-5 w-5" />}>
-            <div className="grid gap-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <SummaryStat label="Overall AI Score" value={`${verificationScore}%`} tone={verificationScore >= 90 ? 'emerald' : verificationScore >= 70 ? 'amber' : 'rose'} />
               <SummaryStat label="Risk Level" value={`${riskLevel}`} tone={riskLevel === 'Low Risk' ? 'emerald' : riskLevel === 'Medium Risk' ? 'amber' : 'rose'} />
               <SummaryStat label="AI Confidence" value={`${aiConfidence}%`} tone={aiConfidence >= 80 ? 'emerald' : 'amber'} />
               <SummaryStat label="Completeness" value={newEvidenceCompleteness.minImagesMet ? 'Met' : 'Missing Images'} tone={newEvidenceCompleteness.minImagesMet ? 'emerald' : 'rose'} />
             </div>
 
-            <div className="mt-5 rounded-3xl border border-emerald-500/15 bg-emerald-500/10 p-4 text-sm text-emerald-100">
-              <div className="mb-2 flex items-center gap-2 font-bold">
+            <div className="mt-5 rounded-xl border border-emerald-500/15 bg-emerald-500/[0.06] p-4 text-sm text-emerald-100/90">
+              <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-400">
                 <Sparkles className="h-4 w-4" /> AI Evidence Summary
               </div>
               <div className="space-y-2">
@@ -720,8 +710,8 @@ export default function TaskReviewPage() {
             </div>
 
             {approvalBlockedReasons.length > 0 ? (
-              <div className="mt-4 rounded-3xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
-                <div className="mb-2 flex items-center gap-2 font-bold">
+              <div className="mt-4 rounded-xl border border-rose-500/20 bg-rose-500/[0.07] p-4 text-sm text-rose-100/90">
+                <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-rose-300">
                   <XCircle className="h-4 w-4" /> Approval Blocked
                 </div>
                 <div className="space-y-1">
@@ -737,7 +727,7 @@ export default function TaskReviewPage() {
 
         
         {/* Farmer Completion Report */}
-        <div className="grid gap-6 xl:grid-cols-1 mb-8">
+        <div className="grid gap-6 xl:grid-cols-1">
           <SectionShell title="Farmer Completion Report" subtitle="Exactly what the farmer submitted." icon={<FileText className="h-5 w-5" />}>
              <div className="grid gap-4 sm:grid-cols-2">
                 <SummaryStat label="Completion Notes" value={taskUpdate?.notes || task?.completion_notes || 'No notes provided'} tone="default" />
@@ -745,7 +735,7 @@ export default function TaskReviewPage() {
                 {task?.quantity && <SummaryStat label="Quantity Completed" value={String(task.quantity)} tone="default" />}
              </div>
              {taskUpdate?.description && (
-               <div className="mt-4 p-4 rounded-xl border border-white/10 bg-black/20 text-sm text-white/80">
+               <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4 text-sm leading-relaxed text-white/65">
                  {taskUpdate.description}
                </div>
              )}
@@ -755,15 +745,15 @@ export default function TaskReviewPage() {
         <div className="grid gap-6 lg:grid-cols-1">
           <SectionShell title="Evidence Verification" subtitle="Manager-side review of photos and videos." icon={<Eye className="h-5 w-5" />}>
             <div className="space-y-6">
-              <div className="rounded-2xl border border-white/5 bg-white/5 p-5">
-                <div className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-emerald-400">
+              <div className="rounded-xl border border-white/10 bg-black/20 p-5">
+                <div className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-400">
                   <ImageIcon className="h-4 w-4" /> Photo Verification
                 </div>
                 <EvidenceGallery items={rawEvidenceImages} onOpen={setActiveImageIndex} />
               </div>
 
-              <div className="rounded-2xl border border-white/5 bg-white/5 p-5">
-                <div className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-emerald-400">
+              <div className="rounded-xl border border-white/10 bg-black/20 p-5">
+                <div className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-400">
                   <FileVideo className="h-4 w-4" /> Video Verification
                 </div>
                 {rawVideos.length ? (
@@ -785,29 +775,29 @@ export default function TaskReviewPage() {
                 )}
               </div>
 
-              <div className="rounded-2xl border border-white/5 bg-white/5 p-5">
-                <div className="mb-4 flex items-center justify-between text-xs font-bold uppercase tracking-widest text-emerald-400">
+              <div className="rounded-xl border border-white/10 bg-black/20 p-5">
+                <div className="mb-4 flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-wider text-emerald-400">
                   <div className="flex items-center gap-2"><Sparkles className="h-4 w-4" /> AI Verification Summary</div>
-                  <span className={`px-2 py-1 rounded text-white ${evidenceScore >= 90 ? 'bg-emerald-500/30' : evidenceScore >= 70 ? 'bg-amber-500/30' : 'bg-rose-500/30'}`}>{evidenceScore >= 90 ? 'PASS' : evidenceScore >= 70 ? 'WARNING' : 'FAIL'}</span>
-                </div>
-                
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-6">
-                   <div className="flex items-center gap-2 text-sm"><CheckCircle2 className="h-4 w-4 text-emerald-400" /> Task Match ✓ Passed</div>
-                   <div className="flex items-center gap-2 text-sm"><CheckCircle2 className="h-4 w-4 text-emerald-400" /> Crop Match ✓ Passed</div>
-                   <div className="flex items-center gap-2 text-sm"><CheckCircle2 className="h-4 w-4 text-emerald-400" /> Evidence Sequence ✓ Passed</div>
-                   <div className="flex items-center gap-2 text-sm"><CheckCircle2 className={`h-4 w-4 ${fraudSummary.duplicateImage === 'FAIL' ? 'text-rose-400' : 'text-emerald-400'}`} /> Duplicate Check {fraudSummary.duplicateImage === 'FAIL' ? '✗ Failed' : '✓ Passed'}</div>
-                   <div className="flex items-center gap-2 text-sm"><CheckCircle2 className="h-4 w-4 text-emerald-400" /> Image Quality ✓ Passed</div>
-                   <div className="flex items-center gap-2 text-sm font-bold"><ShieldCheck className="h-4 w-4 text-emerald-400" /> AI Confidence {aiConfidence}%</div>
+                  <span className={`rounded-full border px-2.5 py-1 ${evidenceScore >= 90 ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : evidenceScore >= 70 ? 'border-amber-500/30 bg-amber-500/10 text-amber-300' : 'border-rose-500/30 bg-rose-500/10 text-rose-300'}`}>{evidenceScore >= 90 ? 'PASS' : evidenceScore >= 70 ? 'WARNING' : 'FAIL'}</span>
                 </div>
 
-                <div className="bg-black/30 border border-white/10 rounded-xl p-4 mb-4 text-sm text-white/80">
-                   <div className="font-bold text-white mb-1">AI Explanation:</div>
+                <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                   <div className="flex items-center gap-2 text-sm text-white/70"><CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" /> Task Match ✓ Passed</div>
+                   <div className="flex items-center gap-2 text-sm text-white/70"><CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" /> Crop Match ✓ Passed</div>
+                   <div className="flex items-center gap-2 text-sm text-white/70"><CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" /> Evidence Sequence ✓ Passed</div>
+                   <div className="flex items-center gap-2 text-sm text-white/70"><CheckCircle2 className={`h-4 w-4 shrink-0 ${fraudSummary.duplicateImage === 'FAIL' ? 'text-rose-400' : 'text-emerald-400'}`} /> Duplicate Check {fraudSummary.duplicateImage === 'FAIL' ? '✗ Failed' : '✓ Passed'}</div>
+                   <div className="flex items-center gap-2 text-sm text-white/70"><CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" /> Image Quality ✓ Passed</div>
+                   <div className="flex items-center gap-2 text-sm font-semibold text-white"><ShieldCheck className="h-4 w-4 shrink-0 text-emerald-400" /> AI Confidence {aiConfidence}%</div>
+                </div>
+
+                <div className="mb-4 rounded-xl border border-white/10 bg-white/[0.02] p-4 text-sm leading-relaxed text-white/70">
+                   <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/45">AI Explanation</div>
                    {taskUpdate?.ai_explanation || (fraudSummary.duplicateImage === 'FAIL' ? 'Duplicate evidence detected from previous submissions.' : 'Submitted evidence appears consistent with the assigned task. The images show a reasonable progression.')}
                 </div>
 
                 <button 
                   onClick={() => setShowVerificationDetails(!showVerificationDetails)}
-                  className="text-xs font-bold uppercase tracking-wider text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition"
+                  className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-emerald-400 transition hover:text-emerald-300"
                 >
                   {showVerificationDetails ? 'Hide Verification Details' : 'View Verification Details'}
                 </button>
@@ -828,44 +818,36 @@ export default function TaskReviewPage() {
         <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <SectionShell title="Manager Review Panel" subtitle="Approve, reject, request changes, or return the task to the worker." icon={<PenSquare className="h-5 w-5" />}>
             <div className="grid gap-4 lg:grid-cols-2">
-              <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
-                <div className="mb-3 text-xs font-bold uppercase tracking-[0.22em] text-white/50">Evidence Status</div>
-                <div className={`inline-flex rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] ${reviewDecision === 'verified' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' : reviewDecision === 'needs_more' ? 'border-amber-500/30 bg-amber-500/10 text-amber-200' : 'border-rose-500/30 bg-rose-500/10 text-rose-200'}`}>
-                  {reviewDecision === 'verified' ? 'Verified' : reviewDecision === 'needs_more' ? 'Needs More Evidence' : 'Invalid Evidence'}
+              <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-white/45">Evidence Status</span>
+                  <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider ${scorePillClass(evidenceScore)}`}>
+                    {verificationStatus}
+                  </span>
                 </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  {(['verified', 'needs_more', 'invalid'] as const).map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setReviewDecision(option)}
-                      className={`rounded-2xl border px-4 py-3 text-sm font-semibold capitalize transition ${reviewDecision === option ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100' : 'border-white/10 bg-white/5 text-white/75 hover:bg-white/10'}`}
-                    >
-                      {option.replace('_', ' ')}
+
+                <label className="mt-5 mb-2 block text-[11px] font-semibold uppercase tracking-wider text-white/45">Manager Rating</label>
+                <div className="flex items-center gap-2">
+                  {Array.from({ length: 5 }, (_, index) => index + 1).map((star) => (
+                    <button key={star} type="button" onClick={() => setManagerRating(star)} className={`transition ${star <= managerRating ? 'text-amber-400' : 'text-white/20 hover:text-white/40'}`}>
+                      <Star className="h-5 w-5 fill-current" />
                     </button>
                   ))}
                 </div>
+
+                <label className="mt-5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">Completion %</label>
+                <input value={taskCompletionEdit} onChange={(e) => setTaskCompletionEdit(e.target.value)} className="mt-2 w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm text-white outline-none transition focus:border-emerald-500/40" />
               </div>
 
-              <div className="rounded-3xl border border-white/10 bg-black/20 p-4">
-                <label className="mb-2 block text-xs font-bold uppercase tracking-[0.22em] text-white/50">Manager Rating</label>
-                <div className="flex items-center gap-3">
-                  {Array.from({ length: 5 }, (_, index) => index + 1).map((star) => (
-                    <button key={star} type="button" onClick={() => setManagerRating(star)} className={star <= managerRating ? 'text-amber-300' : 'text-white/30'}>
-                      <Star className="h-6 w-6 fill-current" />
-                    </button>
-                  ))}
-                </div>
-                <label className="mt-4 block text-xs font-bold uppercase tracking-[0.22em] text-white/50">Completion %</label>
-                <input value={taskCompletionEdit} onChange={(e) => setTaskCompletionEdit(e.target.value)} className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none focus:border-emerald-500/40" />
-                <label className="mt-4 block text-xs font-bold uppercase tracking-[0.22em] text-white/50">Task Notes</label>
-                <textarea value={taskNotesEdit} onChange={(e) => setTaskNotesEdit(e.target.value)} className="mt-2 min-h-[120px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none focus:border-emerald-500/40" />
-                <label className="mt-4 block text-xs font-bold uppercase tracking-[0.22em] text-white/50">Review Notes</label>
-                <textarea value={managerNotes} onChange={(e) => setManagerNotes(e.target.value)} className="mt-2 min-h-[120px] w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none focus:border-emerald-500/40" placeholder="Add manager remarks, evidence concerns, or approval context." />
+              <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-white/45">Task Notes</label>
+                <textarea value={taskNotesEdit} onChange={(e) => setTaskNotesEdit(e.target.value)} className="mt-2 min-h-[110px] w-full resize-y rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-emerald-500/40" placeholder="Internal notes about the task itself." />
+                <label className="mt-4 block text-[11px] font-semibold uppercase tracking-wider text-white/45">Review Notes</label>
+                <textarea value={managerNotes} onChange={(e) => setManagerNotes(e.target.value)} className="mt-2 min-h-[110px] w-full resize-y rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-white/30 focus:border-emerald-500/40" placeholder="Add manager remarks, evidence concerns, or approval context." />
               </div>
             </div>
 
-            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-white/5 pt-5">
               {progressValue < 100 ? (
                 <>
                   <Button variant="primary" theme="dark" onClick={() => taskUpdate?.id && reviewUpdate(taskUpdate.id, 'Approve')} disabled={actionLoading || !taskUpdate?.id}>
@@ -894,9 +876,9 @@ export default function TaskReviewPage() {
             </div>
 
             {progressValue === 100 && (
-              <div className="mt-5 rounded-3xl border border-white/10 bg-black/20 p-4 text-sm text-white/70">
-                <div className="font-bold text-white">Salary Protection Rules</div>
-                <p className="mt-2">Salary must never be approved automatically. Manager confirmation is required after required evidence, checklist completion, AI verification, and progress updates are present.</p>
+              <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4 text-sm leading-relaxed text-white/55">
+                <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-white/45">Salary Protection Rules</div>
+                <p>Salary must never be approved automatically. Manager confirmation is required after required evidence, checklist completion, AI verification, and progress updates are present.</p>
               </div>
             )}
           </SectionShell>
@@ -916,39 +898,16 @@ export default function TaskReviewPage() {
                 <SummaryStat label="Completion %" value={`${workerSubmissionSummary.completionPercentage}%`} tone="sky" />
               </div>
             </SectionShell>
-
-            <SectionShell title="Discussion" subtitle="Manager and worker communication with approval context." icon={<MessageSquareReply className="h-5 w-5" />}>
-              <div className="space-y-3">
-                {taskReviews.length === 0 ? (
-                  <div className="rounded-3xl border border-dashed border-white/10 bg-black/20 p-6 text-sm text-white/55">No review discussion yet.</div>
-                ) : (
-                  taskReviews.map((review, index) => (
-                    <div key={review.id || index} className={`rounded-3xl border p-4 ${index % 2 === 0 ? 'border-emerald-500/15 bg-emerald-500/8' : 'border-white/10 bg-black/20'}`}>
-                      <div className="flex items-center justify-between gap-3 text-sm">
-                        <div className="font-semibold text-white">{review.manager_name || review.user_name || 'Manager'}</div>
-                        <div className="text-white/55">{fmtDate(review.created_at)}</div>
-                      </div>
-                      <p className="mt-2 text-sm text-white/75">{review.comments || review.reason || 'No comments provided.'}</p>
-                    </div>
-                  ))
-                )}
-
-                <div className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
-                  <div className="font-bold text-white">Add a note</div>
-                  <textarea value={managerNotes} onChange={(e) => setManagerNotes(e.target.value)} className="mt-3 min-h-[110px] w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none" placeholder="Write manager comments for the worker conversation." />
-                </div>
-              </div>
-            </SectionShell>
           </div>
         </div>
 
-        {statusMessage ? <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">{statusMessage}</div> : null}
+        {statusMessage ? <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.07] p-4 text-sm text-emerald-200">{statusMessage}</div> : null}
       </div>
 
       <AnimatePresence>
         {approveModalOpen ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
-            <motion.div initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} className="w-full max-w-2xl rounded-[32px] border border-white/10 bg-slate-950 p-6 shadow-2xl">
+            <motion.div initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} className="w-full max-w-2xl rounded-2xl border border-white/10 bg-slate-950 p-6 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.28em] text-emerald-200">Manager Review</p>
@@ -983,7 +942,7 @@ export default function TaskReviewPage() {
 
         {rejectModalOpen ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
-            <motion.div initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} className="w-full max-w-xl rounded-[32px] border border-white/10 bg-slate-950 p-6 shadow-2xl">
+            <motion.div initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} className="w-full max-w-xl rounded-2xl border border-white/10 bg-slate-950 p-6 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.28em] text-rose-200">Approval Decision</p>
@@ -1004,7 +963,7 @@ export default function TaskReviewPage() {
 
         {reworkModalOpen ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
-            <motion.div initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} className="w-full max-w-2xl rounded-[32px] border border-white/10 bg-slate-950 p-6 shadow-2xl">
+            <motion.div initial={{ scale: 0.96, y: 12 }} animate={{ scale: 1, y: 0 }} className="w-full max-w-2xl rounded-2xl border border-white/10 bg-slate-950 p-6 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.28em] text-amber-200">Request Changes</p>
@@ -1031,10 +990,10 @@ export default function TaskReviewPage() {
               </button>
             </div>
             <div className="grid w-full max-w-6xl gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-              <div className="flex items-center justify-center rounded-[32px] border border-white/10 bg-white/8 p-4">
-                <img src={rawEvidenceImages[activeImageIndex]?.url} alt="Evidence" className="max-h-[80vh] rounded-[24px] object-contain" />
+              <div className="flex items-center justify-center rounded-2xl border border-white/10 bg-white/8 p-4">
+                <img src={rawEvidenceImages[activeImageIndex]?.url} alt="Evidence" className="max-h-[80vh] rounded-xl object-contain" />
               </div>
-              <div className="rounded-[32px] border border-white/10 bg-white/8 p-5 text-white">
+              <div className="rounded-2xl border border-white/10 bg-white/8 p-5 text-white">
                 <h3 className="text-2xl font-black">Evidence Details</h3>
                 <div className="mt-5 space-y-3 text-sm text-white/70">
                   <div>Caption: {rawEvidenceImages[activeImageIndex]?.caption || 'N/A'}</div>
@@ -1055,7 +1014,7 @@ export default function TaskReviewPage() {
 
         {selectedAttachment ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-xl">
-            <div className="w-full max-w-4xl rounded-[32px] border border-white/10 bg-white/8 p-5 text-white">
+            <div className="w-full max-w-4xl rounded-2xl border border-white/10 bg-white/8 p-5 text-white">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h3 className="text-2xl font-black">Attachment Preview</h3>
@@ -1065,7 +1024,7 @@ export default function TaskReviewPage() {
                   <X className="h-4 w-4" />
                 </button>
               </div>
-              <div className="mt-5 overflow-hidden rounded-[24px] border border-white/10 bg-black/40">
+              <div className="mt-5 overflow-hidden rounded-xl border border-white/10 bg-black/40">
                 {String(selectedAttachment.type || selectedAttachment.kind || '').toLowerCase().includes('video') ? (
                   <video controls className="max-h-[70vh] w-full" src={selectedAttachment.url} />
                 ) : String(selectedAttachment.type || selectedAttachment.kind || '').toLowerCase().includes('image') ? (
